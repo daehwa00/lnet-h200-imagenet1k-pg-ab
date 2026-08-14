@@ -1,0 +1,87 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lnet"
+version = "0.1.0"
+description = "Pole-residue Laplace neural network research prototype."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+  "numpy>=2.0.0",
+  "mamba-ssm>=2.3.2",
+  "rich>=14.0.0",
+  "scipy>=1.13.0",
+  # The confirmatory workers use the CUDA 12.8-compatible Torch 2.9 ABI.
+  # mamba-ssm 2.3.x does not currently build against the CUDA 13 Torch ABI.
+  "torch>=2.9.0,<2.10",
+  "torchvision>=0.24.0,<0.25",
+  "typer>=0.20.0",
+  "wfdb>=4.3.1",
+]
+
+[project.scripts]
+lnet = "lnet.cli:app"
+lnet-bench = "lnet.benchmark_cli:main"
+lnet-hybrid-experiments = "lnet.hybrid_experiment_cli:main"
+lnet-tapped-prl-experiments = "lnet.tapped_prl_experiment_cli:app"
+lnet-selective-tapped-prl = "lnet.selective_tapped_prl_cli:app"
+lnet-hybrid-branch-ablation = "lnet.hybrid_branch_ablation_cli:app"
+lnet-controlled-damping = "lnet.controlled_damping_cli:app"
+lnet-pac-hybrid-prl = "lnet.pac_hybrid_cli:app"
+lnet-pac-overnight = "lnet.pac_overnight_cli:app"
+lnet-pac-optimization = "lnet.pac_optimization_cli:app"
+lnet-pac-paper-queue = "lnet.pac_paper_queue_cli:app"
+lnet-pac-interpretability = "lnet.pac_interpretability_cli:app"
+lnet-pac-tf-mechanism = "lnet.pac_tf_mechanism_cli:app"
+
+[tool.pytest.ini_options]
+# `scripts` is on the path because 37 test modules import the experiment
+# runners directly.  Without it those tests only import when some earlier
+# test file happens to have inserted the directory itself, which makes a
+# single-file run fail while the full suite passes.
+pythonpath = ["src", "scripts", "."]
+testpaths = ["tests"]
+
+[tool.uv.extra-build-dependencies]
+# mamba-ssm imports torch from setup.py but does not declare it as a PEP 517
+# build dependency. Keep the build environment aligned with the resolved runtime.
+mamba-ssm = [{ requirement = "torch", match-runtime = true }]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "COM812",
+  "D",
+  "D203",
+  "D213",
+  "INP001",
+  "PLR0913",
+  "PLR2004",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["PLR2004", "S101"]
+
+[tool.basedpyright]
+typeCheckingMode = "all"
+pythonVersion = "3.13"
+include = ["src", "tests"]
+reportMissingTypeStubs = false
+reportAny = false
+reportUnknownArgumentType = false
+reportUnknownMemberType = false
+reportUnknownParameterType = false
+reportUnknownVariableType = false
+reportImplicitOverride = false
+reportUnannotatedClassAttribute = false
+reportUnnecessaryComparison = false
+reportUnreachable = false
+reportUntypedBaseClass = false
+reportUntypedFunctionDecorator = false
+reportUnusedCallResult = false

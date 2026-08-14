@@ -1,0 +1,41 @@
+__pycache__/
+*.py[cod]
+.venv/
+.cache/
+.codegraph
+.pytest_cache/
+.ruff_cache/
+node_modules/
+test-results/
+playwright-report/
+
+.omx/logs/
+.omx/state/
+.omx/cache/
+.omx/tmux-hook.json
+/.omo/
+
+.env
+auth.json
+.codex/
+.codex-remote-patches/
+
+# Unpublished manuscripts and generated LaTeX artifacts are excluded from the
+# reusable authoring platform. Publish with the allowlist exporter.
+/paper/
+/project-library/
+
+# Local experiment outputs and generated release archives are never source
+# release inputs. Keeping them ignored prevents raw results or machine
+# provenance from being staged accidentally.
+/artifacts/
+/dist/
+/outputs/
+/tmp/
+/work/
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.synctex.gz
