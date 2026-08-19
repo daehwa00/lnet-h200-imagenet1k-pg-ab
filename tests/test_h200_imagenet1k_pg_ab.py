@@ -40,16 +40,23 @@ def test_imagenet1k_models_change_only_pg_topology() -> None:
     assert sum(isinstance(module, PhaseGatedComplexFFN) for module in no_pg_model.modules()) == 0
 
 
-def test_contract_is_1000_way_and_paired() -> None:
-    data_root = Path("/home/qlab/data/ImageNet100")
-    if not data_root.exists():
-        return
-    payload = runner._contract(_args(data_root))
+def test_contract_is_1000_way_and_independent_of_imagenet100_manifest(
+    tmp_path: Path,
+) -> None:
+    payload = runner._contract(_args(tmp_path))
     assert payload["model"]["output_dim"] == runner.NUM_CLASSES
     assert payload["variants"] == list(runner.VARIANTS)
     assert payload["seeds"] == list(runner.SEEDS)
     assert set(payload["parameter_counts"]) == set(runner.VARIANTS)
     assert payload["comparison"]["controlled_factor"].startswith("Stage1-3")
+    assert payload["data"] == {
+        "classes": runner.NUM_CLASSES,
+        "dataset": "ImageNet-1K",
+        "layout": "ImageFolder train/val validated by h200/run.sh",
+        "train_images": 1_281_167,
+        "validation_images": 50_000,
+    }
+    assert json.loads(json.dumps(payload)) == payload
 
 
 def test_summary_reports_paired_percentage_points(tmp_path: Path) -> None:

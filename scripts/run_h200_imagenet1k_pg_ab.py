@@ -11,6 +11,7 @@ import json
 import netrc
 import os
 from copy import deepcopy
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -117,44 +118,103 @@ def _build(variant: str, config: ComplexScanConfig) -> torch.nn.Module:
 
 
 def _contract(args: Namespace) -> dict[str, Any]:
-    payload = base._contract(args)
     selected = tuple(args.variants)
     ramp = base.control.control.control.stemres.uniform.base
     config = ramp.PoleModelConfig(output_dim=NUM_CLASSES, stem_strides=(2, 2))
     models = {variant: _build(variant, config) for variant in selected}
-
-    payload["schema"] = "lnet.a2d.pgv2_h96.k3_rmsmatch.pg_ab.imagenet1k.h200.v1"
-    payload["evidence_status"] = "controlled one-H200 ImageNet-1K PG contribution test"
-    payload["model"]["output_dim"] = NUM_CLASSES
-    payload["variants"] = list(selected)
-    payload["seeds"] = list(SEEDS)
-    payload["parameter_counts"] = {
-        variant: sum(parameter.numel() for parameter in model.parameters())
-        for variant, model in models.items()
-    }
-    payload["variant_configs"] = {
+    variant_configs = {
         variant: deepcopy(base._variant_config(variant)) for variant in selected
     }
-    for variant_config in payload["variant_configs"].values():
+    for variant_config in variant_configs.values():
         variant_config["task"] = {
             "dataset": "ImageNet-1K",
             "classes": NUM_CLASSES,
             "image_size": 224,
         }
-    payload["recipe"]["augmentation"] = "matched ImageNet-1K 224px recipe"
-    payload["recipe"]["selection"] = "fixed epoch 100; paired seed 501; no tuning"
-    payload["comparison"] = {
-        "controlled_factor": "Stage1-3 PhaseGated mode residual present versus absent",
-        "fixed": (
-            "seed, K3 RMSMatch reader, D4 scan, Q descriptor, path GWL, carry, head, "
-            "optimizer, schedule, augmentation, precision, and batch size"
-        ),
-        "pg": PG_VARIANT,
-        "no_pg": NO_PG_VARIANT,
-    }
     digest = ramp.heads.harness._digest
-    payload["source_sha256"]["h200_imagenet1k_pg_ab_runner"] = digest(Path(__file__))
-    return payload
+    payload = {
+        "schema": "lnet.a2d.pgv2_h96.k3_rmsmatch.pg_ab.imagenet1k.h200.v2",
+        "evidence_status": "controlled one-H200 ImageNet-1K PG contribution test",
+        "variants": list(selected),
+        "seeds": list(SEEDS),
+        "priority": list(selected),
+        "model": asdict(config),
+        "variant_configs": variant_configs,
+        "parameter_counts": {
+            variant: sum(parameter.numel() for parameter in model.parameters())
+            for variant, model in models.items()
+        },
+        "recipe": {
+            "epochs": args.epochs,
+            "batch_size": args.batch_size,
+            "gradient_accumulation_steps": args.gradient_accumulation_steps,
+            "effective_batch_size": args.batch_size * args.gradient_accumulation_steps,
+            "optimizer": "AdamW (fused, pole-aware parameter groups)",
+            "fused_optimizer": True,
+            "learning_rate": 3.0e-3,
+            "modal_learning_rate_multiplier": 1.0 / 3.0,
+            "pole_geometry_learning_rate_multiplier": 0.1,
+            "weight_decay": 0.05,
+            "warmup_epochs": 5,
+            "schedule": "warmup plus cosine",
+            "label_smoothing": 0.1,
+            "mixup_alpha": 0.8,
+            "precision": args.precision,
+            "loader_prefetch_factor": ramp.heads.harness.PREFETCH_FACTOR,
+            "device_prefetch_stream": True,
+            "device_prefetch_scope": "copy_only",
+            "fused_h2d_channels_last": False,
+            "compile_mode": "default",
+            "channels_last": True,
+            "emulate_precision_casts": True,
+            "augmentation": "matched ImageNet-1K 224px recipe",
+            "selection": "fixed epoch 100; paired seed 501; no tuning",
+            "resume": "epoch-boundary exact RNG restore",
+            "kernel": "fused state-plus-stop-gradient-variance Triton recurrence",
+            "runtime_bundle": (
+                "conjugate-pole reuse + split vertical materialization + capture-safe "
+                "orthogonal + channels-last + default torch.compile + fused AdamW"
+            ),
+            "matmul_precision": "high (TF32 enabled)",
+            "compiled_training_preparation": True,
+            "phase_gated_optimizer": {
+                "alpha_gamma_crmsnorm_learning_rate": 3.0e-3,
+                "alpha_gamma_crmsnorm_weight_decay": 0.0,
+                "projection_learning_rate": 3.0e-3,
+                "projection_weight_decay": 0.0,
+                "selection": (
+                    "PhaseGatedComplexFFN type-owned projections use base LR without "
+                    "weight decay; this prevents gamma-gated branches from decaying "
+                    "while task gradients are suppressed"
+                ),
+            },
+        },
+        "data": {
+            "dataset": "ImageNet-1K",
+            "classes": NUM_CLASSES,
+            "layout": "ImageFolder train/val validated by h200/run.sh",
+            "train_images": 1_281_167,
+            "validation_images": 50_000,
+        },
+        "architecture": {
+            variant: variant_configs[variant]["backbone"] for variant in selected
+        },
+        "comparison": {
+            "controlled_factor": "Stage1-3 PhaseGated mode residual present versus absent",
+            "fixed": (
+                "seed, K3 RMSMatch reader, D4 scan, Q descriptor, path GWL, carry, head, "
+                "optimizer, schedule, augmentation, precision, and batch size"
+            ),
+            "pg": PG_VARIANT,
+            "no_pg": NO_PG_VARIANT,
+        },
+        "source_sha256": {
+            "h200_entrypoint": digest(Path(__file__).parents[1] / "h200" / "run.sh"),
+            "h200_imagenet1k_pg_ab_runner": digest(Path(__file__)),
+            "pgv2_h96_local_reader_runner": digest(Path(base.__file__)),
+        },
+    }
+    return json.loads(json.dumps(payload))
 
 
 def _has_wandb_credentials() -> bool:
