@@ -1,0 +1,4 @@
+# Placeholder values used only to generate Env types and document secret names.
+# Set production values with `wrangler secret put`; never commit them.
+WANDB_API_KEY=replace-with-a-scoped-wandb-key
+ALLOWED_EGRESS_IPS=replace-with-the-h200-egress-ip-list

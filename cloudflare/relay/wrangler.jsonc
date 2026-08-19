@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "compatibility_date": "2026-08-19",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "main": "src/index.ts",
+  "name": "lnet-h200-wandb-relay-v3",
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    }
+  },
+  "ratelimits": [
+    {
+      "name": "RELAY_RATE_LIMITER",
+      "namespace_id": "31703",
+      "simple": {
+        "limit": 600,
+        "period": 60
+      }
+    }
+  ],
+  "workers_dev": true
+}

@@ -5,10 +5,8 @@ from __future__ import annotations
 
 # pyright: reportExplicitAny=false, reportImplicitRelativeImport=false
 # pyright: reportPrivateUsage=false
-# ruff: noqa: SLF001, T201
-import hashlib
+# ruff: noqa: ANN401, C901, PLR0915, SLF001, T201
 import json
-import netrc
 import os
 from copy import deepcopy
 from dataclasses import asdict
@@ -31,7 +29,54 @@ NO_PG_VARIANT = base.NO_PG_ALL_VARIANT
 VARIANTS = (PG_VARIANT, NO_PG_VARIANT)
 SEEDS = (501,)
 NUM_CLASSES = 1000
-EXPERIMENT = "h200-imagenet1k-k3-rmsmatch-pg-ab-v2"
+CAMPAIGN_RUNTIME_PATH = Path(__file__).parents[1] / "h200" / "campaign.runtime.json"
+
+
+def _load_campaign_runtime() -> dict[str, Any]:
+    payload = json.loads(CAMPAIGN_RUNTIME_PATH.read_text(encoding="utf-8"))
+    required = {
+        "campaign_id",
+        "manifest_sha256",
+        "dataset_train_images",
+        "dataset_validation_images",
+        "dataset_classes",
+        "dataset_identity_algorithm",
+        "wandb_sdk_version",
+        "wandb_base_url",
+        "wandb_app_url",
+        "entity",
+        "project",
+        "group",
+        "console",
+        "relay_protocol_version",
+        "pg_run_id",
+        "pg_display_name",
+        "pg_tags",
+        "no_pg_run_id",
+        "no_pg_display_name",
+        "no_pg_tags",
+    }
+    missing = sorted(required.difference(payload))
+    if payload.get("schema_version") != 3 or missing:
+        message = f"invalid generated H200 campaign runtime; missing={missing}"
+        raise RuntimeError(message)
+    return payload
+
+
+CAMPAIGN = _load_campaign_runtime()
+EXPERIMENT = str(CAMPAIGN["campaign_id"])
+RUN_METADATA = {
+    PG_VARIANT: {
+        "id": CAMPAIGN["pg_run_id"],
+        "display_name": CAMPAIGN["pg_display_name"],
+        "tags": tuple(CAMPAIGN["pg_tags"]),
+    },
+    NO_PG_VARIANT: {
+        "id": CAMPAIGN["no_pg_run_id"],
+        "display_name": CAMPAIGN["no_pg_display_name"],
+        "tags": tuple(CAMPAIGN["no_pg_tags"]),
+    },
+}
 
 
 def _configure() -> None:
@@ -132,9 +177,35 @@ def _contract(args: Namespace) -> dict[str, Any]:
             "image_size": 224,
         }
     digest = ramp.heads.harness._digest
+    dataset_manifest_path = Path(os.environ["LNET_DATASET_MANIFEST_PATH"])
+    dataset_manifest = json.loads(dataset_manifest_path.read_text(encoding="utf-8"))
+    dataset_identity = str(dataset_manifest.get("identity_sha256", ""))
+    if dataset_identity != os.environ.get("LNET_DATASET_IDENTITY_SHA256"):
+        message = "ImageNet-1K dataset manifest does not match the frozen runtime identity"
+        raise RuntimeError(message)
+    expected_counts = (
+        int(CAMPAIGN["dataset_train_images"]),
+        int(CAMPAIGN["dataset_validation_images"]),
+        int(CAMPAIGN["dataset_classes"]),
+    )
+    actual_counts = (
+        int(dataset_manifest["splits"]["train"]["count"]),
+        int(dataset_manifest["splits"]["val"]["count"]),
+        int(dataset_manifest["classes"]["count"]),
+    )
+    if actual_counts != expected_counts:
+        message = f"ImageNet-1K dataset counts changed: {actual_counts} != {expected_counts}"
+        raise RuntimeError(message)
     payload = {
-        "schema": "lnet.a2d.pgv2_h96.k3_rmsmatch.pg_ab.imagenet1k.h200.v2",
+        "schema": "lnet.a2d.pgv2_h96.k3_rmsmatch.pg_ab.imagenet1k.h200.v3",
         "evidence_status": "controlled one-H200 ImageNet-1K PG contribution test",
+        "campaign": {
+            "id": EXPERIMENT,
+            "manifest_sha256": CAMPAIGN["manifest_sha256"],
+            "deployment_commit": os.environ.get("H200_EXPECTED_COMMIT"),
+            "relay_protocol_version": CAMPAIGN["relay_protocol_version"],
+            "wandb_sdk_version": CAMPAIGN["wandb_sdk_version"],
+        },
         "variants": list(selected),
         "seeds": list(SEEDS),
         "priority": list(selected),
@@ -169,7 +240,10 @@ def _contract(args: Namespace) -> dict[str, Any]:
             "emulate_precision_casts": True,
             "augmentation": "matched ImageNet-1K 224px recipe",
             "selection": "fixed epoch 100; paired seed 501; no tuning",
-            "resume": "epoch-boundary exact RNG restore",
+            "resume": (
+                "epoch-boundary RNG continuity with persistent workers forbidden; "
+                "bitwise CUDA kernel determinism is not claimed"
+            ),
             "kernel": "fused state-plus-stop-gradient-variance Triton recurrence",
             "runtime_bundle": (
                 "conjugate-pole reuse + split vertical materialization + capture-safe "
@@ -195,6 +269,19 @@ def _contract(args: Namespace) -> dict[str, Any]:
             "layout": "ImageFolder train/val validated by h200/run.sh",
             "train_images": 1_281_167,
             "validation_images": 50_000,
+            "identity_algorithm": CAMPAIGN["dataset_identity_algorithm"],
+            "identity_sha256": dataset_identity,
+            "class_names_sha256": dataset_manifest["classes"]["sha256"],
+            "train_relpath_size_content_sha256": dataset_manifest["splits"]["train"][
+                "relpath_size_content_sha256"
+            ],
+            "validation_relpath_size_content_sha256": dataset_manifest["splits"]["val"][
+                "relpath_size_content_sha256"
+            ],
+        },
+        "telemetry": {
+            "authority": "durable local checkpoint, result JSON, and progress JSON",
+            "wandb": "best-effort non-authoritative mirror through the scoped relay",
         },
         "architecture": {
             variant: variant_configs[variant]["backbone"] for variant in selected
@@ -210,21 +297,24 @@ def _contract(args: Namespace) -> dict[str, Any]:
         },
         "source_sha256": {
             "h200_entrypoint": digest(Path(__file__).parents[1] / "h200" / "run.sh"),
+            "campaign_manifest": digest(
+                Path(__file__).parents[1] / "h200" / "campaign.json"
+            ),
+            "campaign_runtime": digest(CAMPAIGN_RUNTIME_PATH),
+            "environment_lock": digest(
+                Path(__file__).parents[1] / "h200" / "requirements.lock"
+            ),
+            "uv_bootstrap_lock": digest(
+                Path(__file__).parents[1] / "h200" / "uv-bootstrap.requirements.txt"
+            ),
+            "dataset_validator": digest(
+                Path(__file__).parents[1] / "h200" / "validate_imagenet1k.py"
+            ),
             "h200_imagenet1k_pg_ab_runner": digest(Path(__file__)),
             "pgv2_h96_local_reader_runner": digest(Path(base.__file__)),
         },
     }
     return json.loads(json.dumps(payload))
-
-
-def _has_wandb_credentials() -> bool:
-    if os.environ.get("WANDB_API_KEY"):
-        return True
-    try:
-        authenticators = netrc.netrc().authenticators("api.wandb.ai")
-    except (FileNotFoundError, netrc.NetrcParseError, OSError):
-        return False
-    return authenticators is not None
 
 
 def _initialize_required_wandb_run(
@@ -235,37 +325,50 @@ def _initialize_required_wandb_run(
     seed: int,
     parameters: int,
 ) -> WandbRun:
-    """Create an online W&B run through the IP- and run-scoped secret relay."""
+    """Attempt a non-authoritative W&B mirror through the scoped secret relay."""
     try:
         import wandb  # noqa: PLC0415
     except ModuleNotFoundError as error:
         message = "the H200 experiment requires the wandb package"
         raise RuntimeError(message) from error
 
-    project = os.environ.get("WANDB_PROJECT", "alphabet2d-imagenet1k-h200")
-    authenticated = _has_wandb_credentials()
-    anonymous = "never" if authenticated else "must"
-    entity = os.environ.get("WANDB_ENTITY") if authenticated else None
-    run_key = f"{EXPERIMENT}::{variant}::seed{seed}"
-    run_id = hashlib.sha256(run_key.encode()).hexdigest()[:16]
+    expected_environment = {
+        "WANDB_API_KEY": "0" * 40,
+        "WANDB_APP_URL": CAMPAIGN["wandb_app_url"],
+        "WANDB_BASE_URL": CAMPAIGN["wandb_base_url"],
+        "WANDB_ENTITY": CAMPAIGN["entity"],
+        "WANDB_PROJECT": CAMPAIGN["project"],
+        "WANDB_GROUP": CAMPAIGN["group"],
+        "WANDB_CONSOLE": CAMPAIGN["console"],
+    }
+    mismatches = {
+        name: {"expected": value, "actual": os.environ.get(name)}
+        for name, value in expected_environment.items()
+        if os.environ.get(name) != value
+    }
+    if mismatches:
+        message = f"frozen W&B relay environment changed: {sorted(mismatches)}"
+        raise RuntimeError(message)
+    metadata = RUN_METADATA[variant]
     tracking_root = root / "wandb"
     tracking_root.mkdir(parents=True, exist_ok=True)
     run = wandb.init(
-        project=project,
-        entity=entity,
-        group=os.environ.get("WANDB_GROUP", EXPERIMENT),
-        name=f"H200-I1K-{'PG' if variant == PG_VARIANT else 'NoPG'}-s{seed}",
-        id=run_id,
+        project=CAMPAIGN["project"],
+        entity=CAMPAIGN["entity"],
+        group=CAMPAIGN["group"],
+        name=metadata["display_name"],
+        id=metadata["id"],
         resume="allow",
         dir=str(tracking_root),
         mode="online",
-        anonymous=anonymous,
+        anonymous="never",
         force=True,
         settings=wandb.Settings(
             disable_code=True,
+            console=CAMPAIGN["console"],
             disable_git=True,
             disable_job_creation=True,
-            init_timeout=float(os.environ.get("WANDB_INIT_TIMEOUT", "300")),
+            init_timeout=float(os.environ.get("WANDB_INIT_TIMEOUT", "30")),
             save_code=False,
             x_disable_meta=True,
             x_disable_stats=True,
@@ -275,12 +378,7 @@ def _initialize_required_wandb_run(
             },
             x_save_requirements=False,
         ),
-        tags=(
-            "H200",
-            "ImageNet-1K",
-            "PG-ablation",
-            "anonymous" if not authenticated else "authenticated",
-        ),
+        tags=metadata["tags"],
         config={
             "experiment": EXPERIMENT,
             "variant": variant,
@@ -290,35 +388,216 @@ def _initialize_required_wandb_run(
             "model_template": contract["model"],
             "recipe": contract["recipe"],
             "schema": contract["schema"],
-            "wandb_auth": "account" if authenticated else "anonymous-claim-required",
+            "campaign_manifest_sha256": CAMPAIGN["manifest_sha256"],
+            "dataset_identity_sha256": contract["data"]["identity_sha256"],
+            "telemetry_authority": "local-artifacts",
+            "wandb_auth": "cloudflare-secret-relay",
         },
     )
     if run is None or not run.url:
-        message = "W&B did not create an online run URL; refusing to spend H200 time"
+        message = "W&B did not create an online mirror URL"
         raise RuntimeError(message)
     print(f"WANDB_RUN_URL={run.url}", flush=True)
     return run
 
 
-def _summarize(root: Path, _contract_payload: dict[str, Any]) -> dict[str, Any] | None:
+def _streaming_qhead_evaluate(
+    model: torch.nn.Module,
+    runtime: torch.nn.Module,
+    loader: Any,
+    device: torch.device,
+    *,
+    precision: str,
+    channels_last: bool = False,
+) -> dict[str, float]:
+    """Evaluate the five-output Q head without retaining ImageNet-1K logits."""
+    phase_gated = base.control.control
+    classifier = getattr(model, "classifier", None)
+    if not isinstance(classifier, phase_gated.head_runner.A2DAffineQClassifier):
+        message = "H200 streaming evaluation requires the frozen affine Q classifier"
+        raise TypeError(message)
+
+    harness = base.control.control.control.stemres.uniform.base.heads.harness
+    model.eval()
+    runtime.eval()
+    total = 0
+    joint_correct = 0
+    joint_loss = 0.0
+    affine_correct = 0
+    affine_loss = 0.0
+    fusion_correct = 0
+    fusion_loss = 0.0
+    lrq_correct = 0
+    lrq_loss = 0.0
+    without_lrq_correct = 0
+    reconstruction_max_error = 0.0
+    ece_bins = 15
+    ece_counts = torch.zeros(ece_bins, dtype=torch.float64)
+    ece_correct = torch.zeros(ece_bins, dtype=torch.float64)
+    ece_confidence = torch.zeros(ece_bins, dtype=torch.float64)
+
+    with torch.inference_mode():
+        for inputs, targets in harness._device_batches(
+            loader,
+            device,
+            channels_last=channels_last,
+        ):
+            harness._begin_cudagraph_step(device)
+            with torch.autocast(
+                device_type=device.type,
+                dtype=torch.bfloat16,
+                enabled=precision == "bfloat16",
+            ):
+                output = runtime(inputs)
+            if not isinstance(output, tuple) or len(output) != 5:
+                message = "affine Q-head evaluation lost branch outputs"
+                raise RuntimeError(message)
+            joint, affine, fusion, lrq, descriptor = output
+            batch_size = targets.numel()
+            total += batch_size
+            joint_loss += float(
+                torch.nn.functional.cross_entropy(
+                    joint.float(),
+                    targets,
+                    reduction="sum",
+                )
+            )
+            joint_predictions = joint.argmax(dim=-1)
+            joint_correct += int(joint_predictions.eq(targets).sum())
+
+            probabilities = joint.float().softmax(dim=-1)
+            confidence, predictions = probabilities.max(dim=-1)
+            # This is equivalent to the reference intervals (lower, upper].
+            indices = torch.ceil(confidence * ece_bins).to(torch.long).sub_(1)
+            indices.clamp_(0, ece_bins - 1)
+            ones = torch.ones_like(confidence, dtype=torch.float64)
+            ece_counts += torch.bincount(
+                indices,
+                weights=ones,
+                minlength=ece_bins,
+            ).cpu()
+            ece_correct += torch.bincount(
+                indices,
+                weights=predictions.eq(targets).to(torch.float64),
+                minlength=ece_bins,
+            ).cpu()
+            ece_confidence += torch.bincount(
+                indices,
+                weights=confidence.to(torch.float64),
+                minlength=ece_bins,
+            ).cpu()
+
+            if classifier.affine is not None:
+                affine_correct += int(affine.argmax(dim=-1).eq(targets).sum())
+                affine_loss += float(
+                    torch.nn.functional.cross_entropy(
+                        affine.float(),
+                        targets,
+                        reduction="sum",
+                    )
+                )
+                standardized = classifier.affine.standardizer(descriptor)
+                reconstructed = classifier.affine.linear(standardized)
+                reconstruction_max_error = max(
+                    reconstruction_max_error,
+                    float((affine - reconstructed).abs().max()),
+                )
+            if classifier.fusion is not None:
+                fusion_correct += int(fusion.argmax(dim=-1).eq(targets).sum())
+                fusion_loss += float(
+                    torch.nn.functional.cross_entropy(
+                        fusion.float(),
+                        targets,
+                        reduction="sum",
+                    )
+                )
+            if classifier.lrq is not None and classifier.beta_lrq is not None:
+                lrq_correct += int(lrq.argmax(dim=-1).eq(targets).sum())
+                lrq_loss += float(
+                    torch.nn.functional.cross_entropy(
+                        lrq.float(),
+                        targets,
+                        reduction="sum",
+                    )
+                )
+                without_lrq = joint - float(classifier.beta_lrq.detach()) * lrq
+                without_lrq_correct += int(
+                    without_lrq.argmax(dim=-1).eq(targets).sum()
+                )
+
+    if total == 0:
+        message = "ImageNet-1K validation loader produced no examples"
+        raise RuntimeError(message)
+    nonempty = ece_counts > 0
+    ece = float(
+        (
+            (ece_counts[nonempty] / total)
+            * (
+                ece_correct[nonempty] / ece_counts[nonempty]
+                - ece_confidence[nonempty] / ece_counts[nonempty]
+            ).abs()
+        ).sum()
+    )
+    result = {
+        "accuracy": joint_correct / total,
+        "cross_entropy": joint_loss / total,
+        "nll": joint_loss / total,
+        "ece": ece,
+    }
+    if classifier.affine is not None:
+        result.update(
+            {
+                "affine_only_accuracy": affine_correct / total,
+                "affine_only_nll": affine_loss / total,
+                "affine_reconstruction_max_error": reconstruction_max_error,
+            }
+        )
+    if classifier.fusion is not None:
+        result.update(
+            {
+                "fusion_only_accuracy": fusion_correct / total,
+                "fusion_only_nll": fusion_loss / total,
+            }
+        )
+    if classifier.lrq is not None and classifier.beta_lrq is not None:
+        without_lrq_accuracy = without_lrq_correct / total
+        result.update(
+            {
+                "lrq_only_accuracy": lrq_correct / total,
+                "lrq_only_nll": lrq_loss / total,
+                "without_lrq_accuracy": without_lrq_accuracy,
+                "lrq_removal_drop_pp": 100.0
+                * (result["accuracy"] - without_lrq_accuracy),
+            }
+        )
+    model._latest_evaluation_metrics = result  # pyright: ignore[reportAttributeAccessIssue]
+    return result
+
+
+def _summarize(root: Path, contract_payload: dict[str, Any]) -> dict[str, Any] | None:
     paths = {
         variant: root / "results" / f"{variant}__seed{SEEDS[0]}.json"
         for variant in VARIANTS
     }
     if not all(path.exists() for path in paths.values()):
         return None
+    harness = base.control.control.control.stemres.uniform.base.heads.harness
     rows = {variant: json.loads(path.read_text()) for variant, path in paths.items()}
     pg_accuracy = float(rows[PG_VARIANT]["final_validation"]["accuracy"])
     no_pg_accuracy = float(rows[NO_PG_VARIANT]["final_validation"]["accuracy"])
     payload = {
-        "schema": "lnet.a2d.pgv2_h96.k3_rmsmatch.pg_ab.imagenet1k.h200.summary.v1",
+        "schema": "lnet.a2d.pgv2_h96.k3_rmsmatch.pg_ab.imagenet1k.h200.summary.v2",
+        "campaign": {
+            "id": EXPERIMENT,
+            "manifest_sha256": CAMPAIGN["manifest_sha256"],
+        },
+        "contract_sha256": harness._contract_sha256(contract_payload),
         "seed": SEEDS[0],
         "pg_final_accuracy": pg_accuracy,
         "no_pg_final_accuracy": no_pg_accuracy,
         "pg_minus_no_pg_percentage_points": 100.0 * (pg_accuracy - no_pg_accuracy),
         "results": rows,
     }
-    harness = base.control.control.control.stemres.uniform.base.heads.harness
     harness._atomic_json(root / "summary.json", payload)
     return payload
 
@@ -346,7 +625,7 @@ def main() -> None:
             build_optimizer=residuals.optimizer_source._build_optimizer,
             prepare_model=source._prepare_model,
             train_epoch=source.structured._train_epoch,
-            evaluate=source.heads._evaluate,
+            evaluate=_streaming_qhead_evaluate,
             wandb_model_metrics=base._wandb_model_metrics,
             summarize=_summarize,
         )

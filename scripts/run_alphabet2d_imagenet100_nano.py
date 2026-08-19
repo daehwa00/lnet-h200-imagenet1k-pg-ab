@@ -12,6 +12,7 @@ import platform
 import random
 import time
 from collections import defaultdict
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -80,7 +81,22 @@ def _active_loader_workers(requested: int) -> int:
 
 
 def _persistent_loader_workers(active_workers: int) -> bool:
-    return active_workers > 0 and os.environ.get("LNET_PERSISTENT_WORKERS", "1") == "1"
+    """Keep worker lifetimes at epoch boundaries so loader RNG can be restored.
+
+    A persistent worker owns Python and Torch RNG states that are not represented
+    in an epoch checkpoint.  Reusing that worker after an uninterrupted epoch and
+    recreating it after a restart therefore produce different augmentations.  The
+    confirmatory harness deliberately rejects that configuration instead of
+    claiming an exact resume it cannot provide.
+    """
+    requested = os.environ.get("LNET_PERSISTENT_WORKERS", "0") == "1"
+    if active_workers > 0 and requested:
+        message = (
+            "persistent DataLoader workers are incompatible with RNG-continuous "
+            "epoch-boundary resume; set LNET_PERSISTENT_WORKERS=0"
+        )
+        raise RuntimeError(message)
+    return False
 
 
 def _parse_cpu_set(value: str) -> set[int]:
@@ -240,15 +256,40 @@ def _dataset_digest(root: Path) -> tuple[str, int, int]:
 def _atomic_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + f".tmp-{os.getpid()}")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    with temporary.open("w") as stream:
+        stream.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
     temporary.replace(path)
+    _sync_directory(path.parent)
 
 
 def _atomic_torch(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + f".tmp-{os.getpid()}")
-    torch.save(payload, temporary)
+    with temporary.open("wb") as stream:
+        torch.save(payload, stream)
+        stream.flush()
+        os.fsync(stream.fileno())
     temporary.replace(path)
+    _sync_directory(path.parent)
+
+
+def _sync_directory(path: Path) -> None:
+    """Persist a preceding rename on filesystems that support directory fsync."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _contract_sha256(contract: dict[str, Any]) -> str:
+    canonical = json.dumps(contract, separators=(",", ":"), sort_keys=True).encode()
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def _contract(args: argparse.Namespace) -> dict[str, Any]:
@@ -288,7 +329,11 @@ def _contract(args: argparse.Namespace) -> dict[str, Any]:
             "fused_h2d_channels_last": False,
             "augmentation": ("RandomResizedCrop(224,bicubic)+HFlip+RandAugment(2,9)+RandomErasing"),
             "selection": "fixed final epoch; validation is not used for selection",
-            "resume": "epoch-boundary RNG restore; worker RNG depends on loader persistence",
+            "resume": (
+                "epoch-boundary continuity for sampler, augmentation-worker, mixup, "
+                "process, and CUDA RNG; persistent workers forbidden; bitwise CUDA "
+                "kernel determinism is not claimed"
+            ),
         },
         "data": {
             "manifest_sha256": data_digest,
@@ -315,6 +360,16 @@ def _initialize(root: Path, contract: dict[str, Any]) -> None:
             message = "existing ImageNet Nano root has a different immutable contract"
             raise RuntimeError(message)
     else:
+        artifact_roots = ("checkpoints", "results", "telemetry")
+        stale_artifacts = [
+            candidate
+            for name in artifact_roots
+            for candidate in (root / name).glob("*")
+            if candidate.is_file()
+        ]
+        if stale_artifacts or (root / "summary.json").exists():
+            message = "experiment artifacts exist without their immutable contract"
+            raise RuntimeError(message)
         _atomic_json(path, contract)
 
 
@@ -576,6 +631,7 @@ def _restore_checkpoint(
     scheduler: torch.optim.lr_scheduler.LRScheduler,
     training_generator: torch.Generator,
     mixup_generator: np.random.Generator,
+    contract_sha256: str | None = None,
     progress: dict[str, int] | None = None,
     optimizer_steps_per_epoch: int | None = None,
 ) -> tuple[int, list[dict[str, float]], float]:
@@ -586,6 +642,9 @@ def _restore_checkpoint(
     payload = torch.load(path, map_location="cpu", weights_only=True)
     if payload["variant"] != variant or payload["seed"] != seed:
         message = "checkpoint identity does not match requested ImageNet Nano job"
+        raise RuntimeError(message)
+    if contract_sha256 is not None and payload.get("contract_sha256") != contract_sha256:
+        message = "checkpoint is not bound to the active immutable contract"
         raise RuntimeError(message)
     model.load_state_dict(payload["model"])
     optimizer.load_state_dict(payload["optimizer"])
@@ -916,7 +975,282 @@ def _wandb_model_metrics(_model: nn.Module) -> dict[str, float]:
     return {}
 
 
-def _run_job(
+def _telemetry_spool_path(root: Path, *, variant: str, seed: int) -> Path:
+    return root / "telemetry" / f"{variant}__seed{seed}.jsonl"
+
+
+def _report_telemetry_degraded(operation: str, error: BaseException) -> None:
+    payload = {
+        "error_type": type(error).__name__,
+        "operation": operation,
+        "training_continues": True,
+    }
+    print(  # noqa: T201
+        "H200_TELEMETRY_DEGRADED_JSON="
+        + json.dumps(payload, separators=(",", ":"), sort_keys=True),
+        flush=True,
+    )
+
+
+def _read_telemetry_spool(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    records: list[dict[str, Any]] = []
+    try:
+        lines = path.read_text().splitlines()
+    except OSError as error:
+        _report_telemetry_degraded("read", error)
+        return []
+    for line_number, line in enumerate(lines, start=1):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as error:
+            _report_telemetry_degraded(f"repair-line-{line_number}", error)
+            break
+        if not isinstance(record, dict) or record.get("kind") not in {"epoch", "final"}:
+            error = RuntimeError(f"invalid telemetry record at line {line_number}")
+            _report_telemetry_degraded(f"repair-line-{line_number}", error)
+            break
+        step = record.get("step")
+        if record["kind"] == "epoch" and (
+            isinstance(step, bool) or not isinstance(step, int) or step < 1
+        ):
+            error = RuntimeError(f"invalid epoch telemetry step at line {line_number}")
+            _report_telemetry_degraded(f"repair-line-{line_number}", error)
+            break
+        records.append(record)
+    return records
+
+
+def _telemetry_record_key(record: dict[str, Any]) -> tuple[str, int | None]:
+    kind = str(record["kind"])
+    if kind == "epoch":
+        step = record.get("step")
+        if isinstance(step, bool) or not isinstance(step, int) or step < 1:
+            message = "epoch telemetry step must be a positive integer"
+            raise RuntimeError(message)
+        return kind, step
+    return kind, None
+
+
+def _append_telemetry_record(path: Path, record: dict[str, Any]) -> bool:
+    """Durably append one idempotent telemetry record.
+
+    Checkpoints are the source of truth.  The append-only spool is retained even
+    after a successful upload so a later invocation can reconcile a W&B run whose
+    asynchronous client failed after accepting ``log`` locally.
+    """
+    temporary = path.with_suffix(path.suffix + f".tmp-{os.getpid()}")
+    try:
+        key = _telemetry_record_key(record)
+        records = _read_telemetry_spool(path)
+        for existing in records:
+            if _telemetry_record_key(existing) != key:
+                continue
+            if existing != record:
+                message = f"telemetry record {key} conflicts with durable local history"
+                _report_telemetry_degraded("conflict", RuntimeError(message))
+                return False
+            return True
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with temporary.open("w") as stream:
+            for existing in (*records, record):
+                stream.write(
+                    json.dumps(existing, separators=(",", ":"), sort_keys=True) + "\n"
+                )
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(path)
+        _sync_directory(path.parent)
+    except Exception as error:  # noqa: BLE001  # Telemetry cannot stop training.
+        _report_telemetry_degraded("append", error)
+        with suppress(OSError):
+            temporary.unlink(missing_ok=True)
+        return False
+    return True
+
+
+def _report_wandb_degraded(operation: str, error: BaseException) -> None:
+    """Report a safe failure class without echoing URLs, headers, or credentials."""
+    payload = {
+        "error_type": type(error).__name__,
+        "operation": operation,
+        "training_continues": True,
+    }
+    print(  # noqa: T201
+        "H200_WANDB_DEGRADED_JSON="
+        + json.dumps(payload, separators=(",", ":"), sort_keys=True),
+        flush=True,
+    )
+
+
+def _best_effort_initialize_wandb(
+    root: Path,
+    contract: dict[str, Any],
+    *,
+    variant: str,
+    seed: int,
+    parameters: int,
+) -> WandbRun | None:
+    try:
+        return _initialize_wandb_run(
+            root,
+            contract,
+            variant=variant,
+            seed=seed,
+            parameters=parameters,
+        )
+    except Exception as error:  # noqa: BLE001  # W&B is outside the critical path.
+        _report_wandb_degraded("init", error)
+        return None
+
+
+def _sync_telemetry_spool(
+    wandb_run: WandbRun,
+    path: Path,
+    delivered: set[tuple[str, int | None]],
+) -> bool:
+    """Replay records once per client session; keep the durable spool forever."""
+    for record in _read_telemetry_spool(path):
+        key = _telemetry_record_key(record)
+        if key in delivered:
+            continue
+        try:
+            if record["kind"] == "epoch":
+                wandb_run.log(record["metrics"], step=record["step"])
+            else:
+                for name, value in record["summary"].items():
+                    wandb_run.summary[name] = value
+        except Exception as error:  # noqa: BLE001  # W&B is outside the critical path.
+            _report_wandb_degraded(f"sync-{record['kind']}", error)
+            return False
+        delivered.add(key)
+    return True
+
+
+def _best_effort_finish_wandb(wandb_run: WandbRun) -> None:
+    try:
+        wandb_run.finish()
+    except Exception as error:  # noqa: BLE001  # W&B is outside the critical path.
+        _report_wandb_degraded("finish", error)
+
+
+def _epoch_telemetry_metrics(row: dict[str, float]) -> dict[str, float]:
+    metrics = {
+        "epoch": row["epoch"],
+        "learning_rate": row["learning_rate"],
+        "train/loss": row["train_loss"],
+        "train/mixed_accuracy": row["train_mixed_accuracy"],
+        "validation/accuracy": row["validation_accuracy"],
+        "validation/cross_entropy": row["validation_cross_entropy"],
+    }
+    optional = {
+        "time/training_seconds": "training_seconds",
+        "global_step": "global_step",
+        "optimizer_steps/epoch": "optimizer_steps",
+    }
+    for metric_name, row_name in optional.items():
+        if row_name in row:
+            metrics[metric_name] = row[row_name]
+    return metrics
+
+
+def _final_telemetry_summary(result: dict[str, Any]) -> dict[str, float]:
+    history = result["history"]
+    return {
+        "final_validation_accuracy": float(result["final_validation"]["accuracy"]),
+        "final_validation_cross_entropy": float(
+            result["final_validation"]["cross_entropy"]
+        ),
+        "best_validation_accuracy": max(
+            float(row["validation_accuracy"]) for row in history
+        ),
+        "training_seconds": float(result["training_seconds"]),
+    }
+
+
+def _ensure_completed_telemetry_spool(path: Path, result: dict[str, Any]) -> None:
+    """Backfill only missing keys without replacing richer retained telemetry."""
+    existing = {_telemetry_record_key(record) for record in _read_telemetry_spool(path)}
+    for row in result["history"]:
+        step = int(row["epoch"])
+        if ("epoch", step) in existing:
+            continue
+        _append_telemetry_record(
+            path,
+            {
+                "kind": "epoch",
+                "metrics": _epoch_telemetry_metrics(row),
+                "step": step,
+            },
+        )
+        existing.add(("epoch", step))
+    if ("final", None) not in existing:
+        _append_telemetry_record(
+            path,
+            {"kind": "final", "summary": _final_telemetry_summary(result)},
+        )
+
+
+def _backfill_checkpoint_telemetry(path: Path, history: list[dict[str, float]]) -> None:
+    """Repair a crash window where checkpoint rename preceded spool append."""
+    existing = {_telemetry_record_key(record) for record in _read_telemetry_spool(path)}
+    for row in history:
+        step = int(row["epoch"])
+        if ("epoch", step) in existing:
+            continue
+        _append_telemetry_record(
+            path,
+            {
+                "kind": "epoch",
+                "metrics": _epoch_telemetry_metrics(row),
+                "step": step,
+            },
+        )
+        existing.add(("epoch", step))
+
+
+def _wandb_retry_due(epoch: int) -> bool:
+    """Bound a failed relay's cost to epoch 1 and ten-epoch intervals."""
+    return epoch == 1 or epoch % 10 == 0
+
+
+def _sync_or_abandon_wandb(
+    wandb_run: WandbRun,
+    path: Path,
+    delivered: set[tuple[str, int | None]],
+) -> WandbRun | None:
+    if _sync_telemetry_spool(wandb_run, path, delivered):
+        return wandb_run
+    _best_effort_finish_wandb(wandb_run)
+    delivered.clear()
+    return None
+
+
+def _reconcile_completed_result(
+    root: Path,
+    contract: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    variant: str,
+    seed: int,
+) -> None:
+    spool_path = _telemetry_spool_path(root, variant=variant, seed=seed)
+    _ensure_completed_telemetry_spool(spool_path, result)
+    wandb_run = _best_effort_initialize_wandb(
+        root,
+        contract,
+        variant=variant,
+        seed=seed,
+        parameters=int(result["parameters"]),
+    )
+    if wandb_run is None:
+        return
+    _sync_telemetry_spool(wandb_run, spool_path, set())
+    _best_effort_finish_wandb(wandb_run)
+
+
+def _run_job(  # noqa: C901, PLR0915
     root: Path,
     contract: dict[str, Any],
     *,
@@ -927,8 +1261,24 @@ def _run_job(
     device: torch.device,
     bindings: RunnerBindings,
 ) -> None:
+    contract_sha256 = _contract_sha256(contract)
     result_path = root / "results" / f"{variant}__seed{seed}.json"
     if result_path.exists():
+        result = json.loads(result_path.read_text())
+        if (
+            result.get("variant") != variant
+            or result.get("seed") != seed
+            or result.get("contract_sha256") != contract_sha256
+        ):
+            message = "completed result is not bound to the active immutable contract"
+            raise RuntimeError(message)
+        _reconcile_completed_result(
+            root,
+            contract,
+            result,
+            variant=variant,
+            seed=seed,
+        )
         return
     random.seed(seed)
     torch.manual_seed(seed)
@@ -968,19 +1318,34 @@ def _run_job(
         scheduler=scheduler,
         training_generator=training_generator,
         mixup_generator=mixup_generator,
+        contract_sha256=contract_sha256,
         progress=progress,
         optimizer_steps_per_epoch=steps_per_epoch,
     )
     global_step = progress["global_step"]
     _restore_optimizer_runtime_options(optimizer, recipe)
     parameters = sum(parameter.numel() for parameter in model.parameters())
-    wandb_run = _initialize_wandb_run(
-        root,
-        contract,
-        variant=variant,
-        seed=seed,
-        parameters=parameters,
-    )
+    spool_path = _telemetry_spool_path(root, variant=variant, seed=seed)
+    wandb_run = None
+    delivered_telemetry: set[tuple[str, int | None]] = set()
+    # A fresh job performs no W&B network work until epoch 1 is durably local.
+    # A resumed job already has an authoritative checkpoint, so it can replay
+    # its retained telemetry while the runtime is being rebuilt.
+    if start_epoch > 0:
+        _backfill_checkpoint_telemetry(spool_path, history)
+        wandb_run = _best_effort_initialize_wandb(
+            root,
+            contract,
+            variant=variant,
+            seed=seed,
+            parameters=parameters,
+        )
+    if wandb_run is not None:
+        wandb_run = _sync_or_abandon_wandb(
+            wandb_run,
+            spool_path,
+            delivered_telemetry,
+        )
     runtime = _build_runtime(model, recipe)
     channels_last = bool(recipe.get("channels_last", False))
     for epoch in range(start_epoch, recipe["epochs"]):
@@ -1016,28 +1381,23 @@ def _run_job(
             "train_mixed_accuracy": train["mixed_accuracy"],
             "validation_accuracy": validation["accuracy"],
             "validation_cross_entropy": validation["cross_entropy"],
+            "training_seconds": training_seconds,
+            "global_step": global_step,
+            "optimizer_steps": optimizer_steps,
         }
         history.append(row)
-        if wandb_run is not None:
-            metrics = {
-                "epoch": row["epoch"],
-                "learning_rate": row["learning_rate"],
-                "train/loss": row["train_loss"],
-                "train/mixed_accuracy": row["train_mixed_accuracy"],
-                "validation/accuracy": row["validation_accuracy"],
-                "validation/cross_entropy": row["validation_cross_entropy"],
-                "time/training_seconds": training_seconds,
-                "global_step": global_step,
-                "optimizer_steps/epoch": optimizer_steps,
-            }
+        metrics = _epoch_telemetry_metrics(row)
+        try:
             metrics.update(bindings.wandb_model_metrics(model))
-            wandb_run.log(metrics, step=epoch + 1)
+        except Exception as error:  # noqa: BLE001  # Optional diagnostics are telemetry.
+            _report_wandb_degraded("model-metrics", error)
         scheduler.step()
         _atomic_torch(
             checkpoint_path,
             {
                 "variant": variant,
                 "seed": seed,
+                "contract_sha256": contract_sha256,
                 "epoch": epoch + 1,
                 "global_step": global_step,
                 "model": model.state_dict(),
@@ -1052,6 +1412,40 @@ def _run_job(
                 "mixup_rng_state": mixup_generator.bit_generator.state,
             },
         )
+        _append_telemetry_record(
+            spool_path,
+            {"kind": "epoch", "metrics": metrics, "step": epoch + 1},
+        )
+        progress_payload = {
+            "checkpoint": str(checkpoint_path),
+            "contract_sha256": contract_sha256,
+            "epoch": epoch + 1,
+            "global_step": global_step,
+            "seed": seed,
+            "telemetry_spool": str(spool_path),
+            "training_seconds": training_seconds,
+            "variant": variant,
+        }
+        print(  # noqa: T201
+            "H200_PROGRESS_JSON="
+            + json.dumps(progress_payload, separators=(",", ":"), sort_keys=True),
+            flush=True,
+        )
+        if wandb_run is None and _wandb_retry_due(epoch + 1):
+            wandb_run = _best_effort_initialize_wandb(
+                root,
+                contract,
+                variant=variant,
+                seed=seed,
+                parameters=parameters,
+            )
+            delivered_telemetry = set()
+        if wandb_run is not None:
+            wandb_run = _sync_or_abandon_wandb(
+                wandb_run,
+                spool_path,
+                delivered_telemetry,
+            )
     final_validation = bindings.evaluate(
         model,
         runtime,
@@ -1060,34 +1454,41 @@ def _run_job(
         precision=recipe["precision"],
         channels_last=channels_last,
     )
-    _atomic_json(
-        result_path,
-        {
-            "variant": variant,
-            "seed": seed,
-            "parameters": parameters,
-            "global_step": global_step,
-            "final_validation": final_validation,
-            "best_validation_accuracy_diagnostic": max(
-                row["validation_accuracy"] for row in history
-            ),
-            "training_seconds": training_seconds,
-            "complete_training_examples_per_second": (
-                recipe["epochs"]
-                * len(cast("Sized", cast("object", train_loader.dataset)))
-                / training_seconds
-            ),
-            "history": history,
-        },
-    )
-    if wandb_run is not None:
-        wandb_run.summary["final_validation_accuracy"] = final_validation["accuracy"]
-        wandb_run.summary["final_validation_cross_entropy"] = final_validation["cross_entropy"]
-        wandb_run.summary["best_validation_accuracy"] = max(
+    result = {
+        "variant": variant,
+        "seed": seed,
+        "contract_sha256": contract_sha256,
+        "parameters": parameters,
+        "global_step": global_step,
+        "final_validation": final_validation,
+        "best_validation_accuracy_diagnostic": max(
             row["validation_accuracy"] for row in history
+        ),
+        "training_seconds": training_seconds,
+        "complete_training_examples_per_second": (
+            recipe["epochs"]
+            * len(cast("Sized", cast("object", train_loader.dataset)))
+            / training_seconds
+        ),
+        "history": history,
+    }
+    _atomic_json(result_path, result)
+    _append_telemetry_record(
+        spool_path,
+        {"kind": "final", "summary": _final_telemetry_summary(result)},
+    )
+    if wandb_run is None:
+        wandb_run = _best_effort_initialize_wandb(
+            root,
+            contract,
+            variant=variant,
+            seed=seed,
+            parameters=parameters,
         )
-        wandb_run.summary["training_seconds"] = training_seconds
-        wandb_run.finish()
+        delivered_telemetry = set()
+    if wandb_run is not None:
+        _sync_telemetry_spool(wandb_run, spool_path, delivered_telemetry)
+        _best_effort_finish_wandb(wandb_run)
 
 
 def _summarize(root: Path, contract: dict[str, Any]) -> dict[str, Any] | None:

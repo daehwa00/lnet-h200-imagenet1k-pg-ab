@@ -5,7 +5,7 @@ from __future__ import annotations
 
 # pyright: reportAny=false, reportExplicitAny=false
 # pyright: reportImplicitRelativeImport=false, reportPrivateUsage=false
-# ruff: noqa: PLR0915, SLF001, T201
+# ruff: noqa: C901, PLR0915, SLF001, T201
 import argparse
 import json
 import os
@@ -28,6 +28,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--compile-mode", default="default")
     return parser.parse_args()
 
@@ -103,7 +104,16 @@ def main() -> None:
     if len(dataset.classes) != runner.NUM_CLASSES:
         message = f"expected 1000 ImageNet classes, found {len(dataset.classes)}"
         raise RuntimeError(message)
-    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    loader_options: dict[str, Any] = {
+        "batch_size": args.batch_size,
+        "num_workers": args.workers,
+        "pin_memory": True,
+        "shuffle": False,
+    }
+    if args.workers > 0:
+        loader_options["prefetch_factor"] = harness.PREFETCH_FACTOR
+        loader_options["persistent_workers"] = False
+    loader = DataLoader(dataset, **loader_options)
     inputs, targets = next(iter(loader))
     inputs = inputs.cuda().contiguous(memory_format=torch.channels_last)
     targets = targets.cuda()
@@ -175,6 +185,7 @@ def main() -> None:
         "status": "PASS",
         "variant": args.variant,
         "batch_size": args.batch_size,
+        "workers": args.workers,
         "compile_mode": args.compile_mode,
         "device": torch.cuda.get_device_name(),
         "compute_capability": list(torch.cuda.get_device_capability()),

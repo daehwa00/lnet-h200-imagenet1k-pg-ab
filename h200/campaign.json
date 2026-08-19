@@ -1,0 +1,125 @@
+{
+  "schema_version": 3,
+  "campaign_id": "h200-imagenet1k-k3-rmsmatch-pg-ab-v3",
+  "output_namespace": "lnet-h200-imagenet1k-pg-ab-v3",
+  "dataset": {
+    "name": "ImageNet-1K ILSVRC2012",
+    "train_images": 1281167,
+    "validation_images": 50000,
+    "classes": 1000,
+    "identity_algorithm": "sha256(sorted_posix_relative_path_nul_size_nul_content_newline_v2)"
+  },
+  "wandb": {
+    "sdk_version": "0.22.3",
+    "base_url": "https://lnet-h200-wandb-relay-v3.gpupulse-monitor.workers.dev",
+    "app_url": "https://wandb.ai",
+    "entity": "daehwa",
+    "project": "alphabet2d-imagenet1k-h200",
+    "group": "h200-imagenet1k-k3-rmsmatch-pg-ab-v3",
+    "console": "off"
+  },
+  "relay": {
+    "worker_name": "lnet-h200-wandb-relay-v3",
+    "url": "https://lnet-h200-wandb-relay-v3.gpupulse-monitor.workers.dev",
+    "upstream_origin": "https://api.wandb.ai",
+    "protocol_version": "wandb-0.22.3-h200-v3",
+    "permanent_canary": {
+      "id": "bfb34528d82b9920",
+      "display_name": "H200-relay-permanent-canary-v3",
+      "tags": [
+        "H200",
+        "ImageNet-1K",
+        "relay-canary",
+        "authenticated"
+      ]
+    },
+    "max_graphql_body_bytes": 1048576,
+    "max_file_stream_body_bytes": 8388608,
+    "rate_limit": {
+      "namespace_id": "31703",
+      "limit": 600,
+      "period_seconds": 60
+    }
+  },
+  "runs": {
+    "pg": {
+      "id": "56038182b4beb318",
+      "display_name": "H200-I1K-PG-s501-v3",
+      "tags": [
+        "H200",
+        "ImageNet-1K",
+        "PG-ablation",
+        "authenticated"
+      ]
+    },
+    "no_pg": {
+      "id": "bcc1f482f4fc98f4",
+      "display_name": "H200-I1K-NoPG-s501-v3",
+      "tags": [
+        "H200",
+        "ImageNet-1K",
+        "PG-ablation",
+        "authenticated"
+      ]
+    }
+  },
+  "graphql_operations": {
+    "ProbeServerCapabilities": "199320da83c03c5613aa66a759d333a32ebba1c44068a79f98be6733f249eae4",
+    "Viewer": "e5782f8ad76269e0104b45e78e82bc03efcc6783ec68299ac082de12c5475a33",
+    "ServerFeaturesQuery": "4ebf7664b24d74a90fa96ce71f8616d9838f25bc5f8b0c41e4223bc0144a2991",
+    "RunResumeStatus": "a5605080f3769fa833cde5195012079fce1f2138f52377db5861d4c1b86a6082",
+    "UpsertBucket": "a30f4b9373ef4d200d9e927fe21315320dc83fc409c70a7ed64201a2b107bf6d",
+    "RunStoppedStatus": "d951e425fa91e971528ae94226cdc06b9d6dde7f07929d8548e9a4a4f9a323cc",
+    "CreateRunFiles": "66f378732e60ffebf606025796ebd6515971be93fae2716730ef9a0fe6532997"
+  },
+  "protocol": {
+    "graphql_envelope_keys": {
+      "ProbeServerCapabilities": ["query", "variables"],
+      "Viewer": ["query", "variables"],
+      "ServerFeaturesQuery": ["operationName", "query"],
+      "RunResumeStatus": ["operationName", "query", "variables"],
+      "UpsertBucket": ["operationName", "query", "variables"],
+      "RunStoppedStatus": ["operationName", "query", "variables"],
+      "CreateRunFiles": ["operationName", "query", "variables"]
+    },
+    "no_variable_operations": [
+      "ProbeServerCapabilities",
+      "Viewer",
+      "ServerFeaturesQuery"
+    ],
+    "run_files": [
+      "config.yaml",
+      "wandb-summary.json"
+    ],
+    "stream_files": [
+      "wandb-history.jsonl",
+      "wandb-summary.json"
+    ],
+    "upsert_bucket_variable_keys": [
+      "commit",
+      "config",
+      "debug",
+      "description",
+      "displayName",
+      "entity",
+      "groupName",
+      "host",
+      "id",
+      "jobType",
+      "name",
+      "notes",
+      "program",
+      "project",
+      "repo",
+      "state",
+      "summaryMetrics",
+      "sweep",
+      "tags"
+    ],
+    "allowed_states": [
+      null,
+      "running",
+      "finished"
+    ]
+  }
+}

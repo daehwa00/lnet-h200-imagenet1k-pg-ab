@@ -1,0 +1,38 @@
+{
+  "campaign_id": "h200-imagenet1k-k3-rmsmatch-pg-ab-v3",
+  "canary_display_name": "H200-relay-permanent-canary-v3",
+  "canary_run_id": "bfb34528d82b9920",
+  "console": "off",
+  "dataset_classes": 1000,
+  "dataset_identity_algorithm": "sha256(sorted_posix_relative_path_nul_size_nul_content_newline_v2)",
+  "dataset_name": "ImageNet-1K ILSVRC2012",
+  "dataset_train_images": 1281167,
+  "dataset_validation_images": 50000,
+  "entity": "daehwa",
+  "group": "h200-imagenet1k-k3-rmsmatch-pg-ab-v3",
+  "manifest_sha256": "550e723b138fa9b1c5a575dd475f8741276f7b3b2220a105dc630aa565c3e216",
+  "no_pg_display_name": "H200-I1K-NoPG-s501-v3",
+  "no_pg_run_id": "bcc1f482f4fc98f4",
+  "no_pg_tags": [
+    "H200",
+    "ImageNet-1K",
+    "PG-ablation",
+    "authenticated"
+  ],
+  "output_namespace": "lnet-h200-imagenet1k-pg-ab-v3",
+  "pg_display_name": "H200-I1K-PG-s501-v3",
+  "pg_run_id": "56038182b4beb318",
+  "pg_tags": [
+    "H200",
+    "ImageNet-1K",
+    "PG-ablation",
+    "authenticated"
+  ],
+  "project": "alphabet2d-imagenet1k-h200",
+  "relay_protocol_version": "wandb-0.22.3-h200-v3",
+  "relay_url": "https://lnet-h200-wandb-relay-v3.gpupulse-monitor.workers.dev",
+  "schema_version": 3,
+  "wandb_app_url": "https://wandb.ai",
+  "wandb_base_url": "https://lnet-h200-wandb-relay-v3.gpupulse-monitor.workers.dev",
+  "wandb_sdk_version": "0.22.3"
+}
