@@ -235,7 +235,7 @@ def _initialize_required_wandb_run(
     seed: int,
     parameters: int,
 ) -> WandbRun:
-    """Always create an online W&B run; use anonymous auth when no secret is mounted."""
+    """Create an online W&B run through the IP- and run-scoped secret relay."""
     try:
         import wandb  # noqa: PLC0415
     except ModuleNotFoundError as error:
@@ -262,7 +262,18 @@ def _initialize_required_wandb_run(
         anonymous=anonymous,
         force=True,
         settings=wandb.Settings(
+            disable_code=True,
+            disable_git=True,
+            disable_job_creation=True,
             init_timeout=float(os.environ.get("WANDB_INIT_TIMEOUT", "300")),
+            save_code=False,
+            x_disable_meta=True,
+            x_disable_stats=True,
+            x_disable_viewer=True,
+            x_extra_http_headers={
+                "User-Agent": "Mozilla/5.0 lnet-h200-wandb-client/1"
+            },
+            x_save_requirements=False,
         ),
         tags=(
             "H200",

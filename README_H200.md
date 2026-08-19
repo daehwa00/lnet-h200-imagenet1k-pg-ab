@@ -21,7 +21,9 @@ finite gradients, and strict checkpoint reload before training. Checkpoints,
 compiler caches, W&B files, and final JSON results are under
 `/app/output/daehwa00/lnet-h200-imagenet1k-pg-ab-v1`.
 
-W&B is mandatory and online. If the provider securely mounts `WANDB_API_KEY`,
-the runs go to that account. Otherwise W&B anonymous online mode is used and
-the claimable run URLs are printed as `WANDB_RUN_URL=...`; anonymous runs must
-be claimed within W&B's retention window.
+W&B is mandatory and online. The H200 job sends a non-secret dummy credential
+to the IP- and run-scoped Cloudflare relay configured in `h200/run.sh`. The
+relay replaces it with the real `WANDB_API_KEY`, which exists only as an
+encrypted Worker secret. The public repository, issue body, job command, and
+H200 environment never contain the account credential. Run URLs are printed as
+`WANDB_RUN_URL=https://wandb.ai/...`.

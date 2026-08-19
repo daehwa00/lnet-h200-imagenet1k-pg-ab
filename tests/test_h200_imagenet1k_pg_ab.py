@@ -2,12 +2,18 @@ from __future__ import annotations
 
 # ruff: noqa: S108, SLF001
 import json
+import sys
 from argparse import Namespace
 from pathlib import Path
+from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import run_h200_imagenet1k_pg_ab as runner
 
 from lnet.pac_phase_gated_cffn import PhaseGatedComplexFFN
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _args(data_root: Path) -> Namespace:
@@ -71,3 +77,65 @@ def test_summary_reports_paired_percentage_points(tmp_path: Path) -> None:
     assert payload is not None
     assert abs(payload["pg_minus_no_pg_percentage_points"] - 1.5) < 1.0e-12
     assert (result_root / "summary.json").exists()
+
+
+def test_wandb_initialization_uses_scoped_relay(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    expected_url = (
+        "https://wandb.ai/daehwa/alphabet2d-imagenet1k-h200/runs/"
+        "fb393834f69d59a2"
+    )
+    captured: dict[str, object] = {}
+
+    def settings(**kwargs: object) -> dict[str, object]:
+        captured["settings"] = kwargs
+        return kwargs
+
+    def initialize(**kwargs: object) -> SimpleNamespace:
+        captured["init"] = kwargs
+        return SimpleNamespace(url=expected_url)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "wandb",
+        SimpleNamespace(Settings=settings, init=initialize),
+    )
+    monkeypatch.setenv("WANDB_API_KEY", "0" * 40)
+    monkeypatch.setenv("WANDB_ENTITY", "daehwa")
+    monkeypatch.setenv("WANDB_PROJECT", "alphabet2d-imagenet1k-h200")
+    monkeypatch.setenv("WANDB_GROUP", "h200-imagenet1k-k3-rmsmatch-pg-ab-v1")
+    contract = {
+        "model": {},
+        "recipe": {},
+        "schema": "test",
+        "variant_configs": {runner.PG_VARIANT: {}},
+    }
+
+    run = runner._initialize_required_wandb_run(
+        tmp_path,
+        contract,
+        variant=runner.PG_VARIANT,
+        seed=runner.SEEDS[0],
+        parameters=1,
+    )
+
+    assert run.url == expected_url
+    init = captured["init"]
+    assert isinstance(init, dict)
+    assert init["anonymous"] == "never"
+    assert init["entity"] == "daehwa"
+    assert init["id"] == "fb393834f69d59a2"
+    settings_payload = captured["settings"]
+    assert isinstance(settings_payload, dict)
+    assert settings_payload["disable_code"] is True
+    assert settings_payload["disable_git"] is True
+    assert settings_payload["disable_job_creation"] is True
+    assert settings_payload["x_disable_meta"] is True
+    assert settings_payload["x_disable_stats"] is True
+    assert settings_payload["x_disable_viewer"] is True
+    assert settings_payload["x_save_requirements"] is False
+    assert settings_payload["x_extra_http_headers"] == {
+        "User-Agent": "Mozilla/5.0 lnet-h200-wandb-client/1"
+    }
