@@ -85,7 +85,7 @@ def test_wandb_initialization_uses_scoped_relay(
 ) -> None:
     expected_url = (
         "https://wandb.ai/daehwa/alphabet2d-imagenet1k-h200/runs/"
-        "fb393834f69d59a2"
+        "f2b03074b05b7017"
     )
     captured: dict[str, object] = {}
 
@@ -105,7 +105,7 @@ def test_wandb_initialization_uses_scoped_relay(
     monkeypatch.setenv("WANDB_API_KEY", "0" * 40)
     monkeypatch.setenv("WANDB_ENTITY", "daehwa")
     monkeypatch.setenv("WANDB_PROJECT", "alphabet2d-imagenet1k-h200")
-    monkeypatch.setenv("WANDB_GROUP", "h200-imagenet1k-k3-rmsmatch-pg-ab-v1")
+    monkeypatch.setenv("WANDB_GROUP", "h200-imagenet1k-k3-rmsmatch-pg-ab-v2")
     contract = {
         "model": {},
         "recipe": {},
@@ -126,7 +126,7 @@ def test_wandb_initialization_uses_scoped_relay(
     assert isinstance(init, dict)
     assert init["anonymous"] == "never"
     assert init["entity"] == "daehwa"
-    assert init["id"] == "fb393834f69d59a2"
+    assert init["id"] == "f2b03074b05b7017"
     settings_payload = captured["settings"]
     assert isinstance(settings_payload, dict)
     assert settings_payload["disable_code"] is True

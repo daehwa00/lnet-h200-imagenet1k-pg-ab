@@ -31,7 +31,7 @@ NO_PG_VARIANT = base.NO_PG_ALL_VARIANT
 VARIANTS = (PG_VARIANT, NO_PG_VARIANT)
 SEEDS = (501,)
 NUM_CLASSES = 1000
-EXPERIMENT = "h200-imagenet1k-k3-rmsmatch-pg-ab-v1"
+EXPERIMENT = "h200-imagenet1k-k3-rmsmatch-pg-ab-v2"
 
 
 def _configure() -> None:
