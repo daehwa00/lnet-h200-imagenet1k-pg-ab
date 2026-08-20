@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# ruff: noqa: S607
+# ruff: noqa: S607, SLF001
 # pyright: reportOptionalMemberAccess=false, reportPrivateUsage=false
 # pyright: reportUnknownLambdaType=false
 import importlib.util
@@ -145,6 +145,7 @@ def test_wandb_run_uses_variant_scoped_relay_identity(
         parameters=1,
     )
 
+    assert run is not None
     assert run.url.endswith(record["id"])
     init = cast("dict[str, object]", captured["init"])
     assert init["id"] == record["id"]

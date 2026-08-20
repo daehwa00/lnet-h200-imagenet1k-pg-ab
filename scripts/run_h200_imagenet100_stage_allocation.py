@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: BLE001, EM101, EM102, PLC0415, SLF001, T201, TRY003
 """Run the stage-allocation screen with relay-bound H200 W&B identities."""
 
 from __future__ import annotations
@@ -53,54 +54,59 @@ def _initialize_required_wandb_run(
     variant: str,
     seed: int,
     parameters: int,
-) -> WandbRun:
+) -> WandbRun | None:
     import wandb
 
     metadata = _metadata(variant, seed)
     tracking_root = root / "wandb"
     tracking_root.mkdir(parents=True, exist_ok=True)
     variant_config = contract.get("variant_configs", {}).get(variant)
-    run = wandb.init(
-        project=os.environ["WANDB_PROJECT"],
-        entity=os.environ["WANDB_ENTITY"],
-        group=os.environ["WANDB_GROUP"],
-        name=metadata["display_name"],
-        id=metadata["id"],
-        tags=metadata["tags"],
-        resume="allow",
-        dir=str(tracking_root),
-        mode="online",
-        anonymous="never",
-        force=True,
-        settings=wandb.Settings(
-            disable_code=True,
-            console="off",
-            disable_git=True,
-            disable_job_creation=True,
-            init_timeout=float(os.environ.get("WANDB_INIT_TIMEOUT", "30")),
-            save_code=False,
-            x_disable_meta=True,
-            x_disable_stats=True,
-            x_disable_viewer=True,
-            x_extra_http_headers={
-                "User-Agent": "Mozilla/5.0 lnet-h200-wandb-client/1"
+    try:
+        run = wandb.init(
+            project=os.environ["WANDB_PROJECT"],
+            entity=os.environ["WANDB_ENTITY"],
+            group=os.environ["WANDB_GROUP"],
+            name=metadata["display_name"],
+            id=metadata["id"],
+            tags=metadata["tags"],
+            resume="allow",
+            dir=str(tracking_root),
+            mode="online",
+            anonymous="never",
+            force=True,
+            settings=wandb.Settings(
+                disable_code=True,
+                console="off",
+                disable_git=True,
+                disable_job_creation=True,
+                init_timeout=float(os.environ.get("WANDB_INIT_TIMEOUT", "30")),
+                save_code=False,
+                x_disable_meta=True,
+                x_disable_stats=True,
+                x_disable_viewer=True,
+                x_extra_http_headers={
+                    "User-Agent": "Mozilla/5.0 lnet-h200-wandb-client/1"
+                },
+                x_save_requirements=False,
+            ),
+            config={
+                "variant": variant,
+                "seed": seed,
+                "parameters": parameters,
+                "model": variant_config or contract["model"],
+                "model_template": contract["model"],
+                "variant_config": variant_config,
+                "recipe": contract["recipe"],
+                "schema": contract["schema"],
+                "h200_campaign": _runtime()["campaign_id"],
             },
-            x_save_requirements=False,
-        ),
-        config={
-            "variant": variant,
-            "seed": seed,
-            "parameters": parameters,
-            "model": variant_config or contract["model"],
-            "model_template": contract["model"],
-            "variant_config": variant_config,
-            "recipe": contract["recipe"],
-            "schema": contract["schema"],
-            "h200_campaign": _runtime()["campaign_id"],
-        },
-    )
+        )
+    except Exception as error:  # W&B is a non-authoritative mirror.
+        print(f"H200_STAGE_WANDB_DEGRADED={type(error).__name__}", flush=True)
+        return None
     if run is None or not run.url:
-        raise RuntimeError("W&B did not create an H200 stage-allocation mirror URL")
+        print("H200_STAGE_WANDB_DEGRADED=missing_run_url", flush=True)
+        return None
     print(f"WANDB_RUN_URL={run.url}", flush=True)
     return run
 
