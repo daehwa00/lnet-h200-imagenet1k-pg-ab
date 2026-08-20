@@ -78,13 +78,10 @@ def test_first100_view_is_zero_copy_and_stable(
     prepare = _prepare_module()
     source = tmp_path / "imagenet"
     output = tmp_path / "view"
-    names = (
-        "n01440764",
-        *(f"n0150{index:04d}" for index in range(98)),
-        "n02077923",
-    )
+    names = prepare._desired_classes()
+    source_names = (*names, *(f"unused-{index:04d}" for index in range(900)))
     for split in ("train", "val"):
-        for name in names:
+        for name in source_names:
             directory = source / split / name
             directory.mkdir(parents=True)
             (directory / "sample.jpg").write_bytes(b"image")
@@ -101,6 +98,33 @@ def test_first100_view_is_zero_copy_and_stable(
     assert first["classes"] == list(names)
     assert (output / "train" / names[0]).is_symlink()
     assert (output / "val" / names[-1]).resolve() == (source / "val" / names[-1]).resolve()
+
+
+def test_first100_view_maps_numeric_h200_class_directories(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    prepare = _prepare_module()
+    source = tmp_path / "imagenet"
+    output = tmp_path / "view"
+    for split in ("train", "val"):
+        for index in range(1000):
+            directory = source / split / str(index)
+            directory.mkdir(parents=True)
+            (directory / "sample.jpg").write_bytes(b"image")
+    monkeypatch.setattr(
+        prepare,
+        "_count",
+        lambda _source, split, _classes: 130000 if split == "train" else 5000,
+    )
+
+    payload = prepare.prepare(source, output)
+    names = prepare._desired_classes()
+
+    assert payload["source_class_by_synset"][names[0]] == "0"
+    assert payload["source_class_by_synset"][names[-1]] == "99"
+    assert (output / "train" / names[0]).resolve() == (source / "train/0").resolve()
+    assert (output / "val" / names[-1]).resolve() == (source / "val/99").resolve()
 
 
 def test_wandb_run_uses_variant_scoped_relay_identity(
