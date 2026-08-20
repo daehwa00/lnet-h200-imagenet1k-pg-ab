@@ -1,0 +1,4 @@
+# Placeholders used only for generated Env types and local tests.
+# Production values are Worker secrets and must never be committed.
+WANDB_API_KEY=replace-with-a-scoped-wandb-key
+ALLOWED_EGRESS_IPS=replace-with-the-h200-egress-ip-list

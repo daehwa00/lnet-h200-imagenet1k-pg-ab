@@ -11,7 +11,6 @@ from __future__ import annotations
 # pyright: reportArgumentType=false, reportAssignmentType=false, reportCallIssue=false
 # pyright: reportGeneralTypeIssues=false, reportMissingParameterType=false
 # pyright: reportPrivateUsage=false, reportUnknownLambdaType=false
-# ruff: noqa: ANN001, ANN202, EM101, N803, PLR0915, TRY003
 from typing import Protocol, cast
 
 import torch
@@ -50,13 +49,43 @@ from .pac_product_scan_reference import (
     product_scan_full16_reference,
     raw_product_descriptor_reference,
 )
+from .pac_triton_grouped_path_cffn import (
+    d4_grouped_cell_path_collapse_reference,
+    d4_grouped_cell_path_swiglu_reference,
+)
 
 FORWARD_LAUNCH_NAME = "product_scan_coarse4_forward"
 FULL16_FORWARD_LAUNCH_NAME = "product_scan_full16_forward"
+PATH_COLLAPSE_FORWARD_LAUNCH_NAME = "product_scan_path_collapse_forward"
 DESCRIPTOR_FORWARD_LAUNCH_NAME = "product_scan_descriptor4_forward"
 FINALIZE_LAUNCH_NAME = "product_scan_coarse4_descriptor_finalize"
 BACKWARD_LAUNCH_NAME = "product_scan_coarse4_backward"
 FULL16_BACKWARD_LAUNCH_NAME = "product_scan_full16_backward"
+PATH_COLLAPSE_BACKWARD_LAUNCH_NAME = "product_scan_path_collapse_backward"
+_PATH_COUNT = 4
+_PACKED_PATH_INPUTS = 8
+_PACKED_PATH_OUTPUTS = 2
+_PATH_DOT_INPUTS = 16
+_PATH_DOT_OUTPUTS = 16
+_PATHS_TL = tl.constexpr(_PATH_COUNT)
+_PACKED_PATH_INPUTS_TL = tl.constexpr(_PACKED_PATH_INPUTS)
+_PACKED_PATH_OUTPUTS_TL = tl.constexpr(_PACKED_PATH_OUTPUTS)
+_PATH_DOT_INPUTS_TL = tl.constexpr(_PATH_DOT_INPUTS)
+_PATH_DOT_OUTPUTS_TL = tl.constexpr(_PATH_DOT_OUTPUTS)
+PathCollapseGradients = tuple[
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+]
 DESCRIPTOR_BACKWARD_LAUNCH_NAME = "product_scan_descriptor4_backward"
 
 _SCAN_LAUNCH_CANDIDATES = tuple(
@@ -73,6 +102,13 @@ _SCAN_LAUNCH_CANDIDATES = tuple(
         (4, 4, 4),
         (4, 4, 8),
     )
+)
+_PATH_SCAN_LAUNCH_CANDIDATES = tuple(
+    LaunchGeometry.build(
+        num_warps=warps,
+        blocks={"BLOCK_LINES": 1, "BLOCK_MODES": modes},
+    )
+    for modes, warps in ((4, 4), (4, 8), (8, 4), (8, 8))
 )
 _FINALIZE_LAUNCH_CANDIDATES = tuple(
     LaunchGeometry.build(num_warps=warps, blocks={"BLOCK_MODES": modes})
@@ -96,6 +132,11 @@ register_default(
     candidates=_SCAN_LAUNCH_CANDIDATES,
 )
 register_default(
+    PATH_COLLAPSE_FORWARD_LAUNCH_NAME,
+    _PATH_SCAN_LAUNCH_CANDIDATES[0],
+    candidates=_PATH_SCAN_LAUNCH_CANDIDATES,
+)
+register_default(
     DESCRIPTOR_FORWARD_LAUNCH_NAME,
     _SCAN_DEFAULT,
     candidates=_SCAN_LAUNCH_CANDIDATES,
@@ -109,6 +150,11 @@ register_default(
     FULL16_BACKWARD_LAUNCH_NAME,
     _SCAN_DEFAULT,
     candidates=_SCAN_LAUNCH_CANDIDATES,
+)
+register_default(
+    PATH_COLLAPSE_BACKWARD_LAUNCH_NAME,
+    _PATH_SCAN_LAUNCH_CANDIDATES[0],
+    candidates=_PATH_SCAN_LAUNCH_CANDIDATES,
 )
 register_default(
     DESCRIPTOR_BACKWARD_LAUNCH_NAME,
@@ -136,6 +182,7 @@ def _scan_launch_scope(
     *,
     gain_kind: int,
     full_coarse: bool = False,
+    path_collapse: bool = False,
 ) -> LaunchScope:
     batch, height, width, modes = source.shape
     return make_launch_scope(
@@ -148,6 +195,7 @@ def _scan_launch_scope(
             "modes": modes,
             "gain_kind": gain_kind,
             "full_coarse": full_coarse,
+            "path_collapse": path_collapse,
         },
     )
 
@@ -198,18 +246,31 @@ def _product_scan_coarse4_associative_forward_kernel(
     global_inverse_gain,
     coarse_real,
     coarse_imag,
+    path_input_weight,
+    path_input_bias,
+    path_output_weight,
+    path_output_bias,
+    collapsed_real,
+    collapsed_imag,
     descriptor_energy,
     height: tl.constexpr,
     width: int,
     line_count: int,
     modes: int,
+    packed_path_hidden: int,
     epsilon: tl.constexpr,
     gain_kind: tl.constexpr,
     EMIT_COARSE: tl.constexpr,
     FULL_COARSE: tl.constexpr,
+    COLLAPSE_PATHS: tl.constexpr,
+    PATH_SWIGLU: tl.constexpr,
+    SWIGLU_HIDDEN: tl.constexpr,
+    EMIT_DESCRIPTOR: tl.constexpr,
     BLOCK_HEIGHT: tl.constexpr,
     BLOCK_LINES: tl.constexpr,
     BLOCK_MODES: tl.constexpr,
+    BLOCK_PATH_HIDDEN: tl.constexpr,
+    BLOCK_SWIGLU_VALUE: tl.constexpr,
 ) -> None:
     batch_size = line_count // width
     line_group = tl.program_id(0)
@@ -299,6 +360,185 @@ def _product_scan_coarse4_associative_forward_kernel(
     r2, i2 = tl.where(active, nar * inverse_na, 0.0), tl.where(active, nai * inverse_na, 0.0)
     r3, i3 = tl.where(active, nbr * inverse_nb, 0.0), tl.where(active, nbi * inverse_nb, 0.0)
 
+    if COLLAPSE_PATHS:
+        r0_flat = tl.reshape(
+            tl.permute(r0, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        r1_flat = tl.reshape(
+            tl.permute(r1, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        r2_flat = tl.reshape(
+            tl.permute(r2, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        r3_flat = tl.reshape(
+            tl.permute(r3, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        i0_flat = tl.reshape(
+            tl.permute(i0, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        i1_flat = tl.reshape(
+            tl.permute(i1, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        i2_flat = tl.reshape(
+            tl.permute(i2, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        i3_flat = tl.reshape(
+            tl.permute(i3, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        path_coordinate = tl.arange(0, _PATH_DOT_INPUTS_TL)
+        path = path_coordinate % _PATHS_TL
+        active_path = tl.where(
+            path[None, None, :] == 0,
+            r0_flat[:, :, None],
+            tl.where(
+                path[None, None, :] == 1,
+                r1_flat[:, :, None],
+                tl.where(
+                    path[None, None, :] == 2,
+                    r2_flat[:, :, None],
+                    r3_flat[:, :, None],
+                ),
+            ),
+        )
+        active_path_imag = tl.where(
+            path[None, None, :] == 0,
+            i0_flat[:, :, None],
+            tl.where(
+                path[None, None, :] == 1,
+                i1_flat[:, :, None],
+                tl.where(
+                    path[None, None, :] == 2,
+                    i2_flat[:, :, None],
+                    i3_flat[:, :, None],
+                ),
+            ),
+        )
+        packed_path = tl.where(
+            path_coordinate[None, None, :] < _PATHS_TL,
+            active_path,
+            active_path_imag,
+        ).to(tl.bfloat16)
+        hidden_coordinate = tl.arange(0, BLOCK_PATH_HIDDEN)
+        input_weight_offset = (
+            mode_vector[:, None, None] * packed_path_hidden + hidden_coordinate[None, None, :]
+        ) * _PACKED_PATH_INPUTS_TL + path_coordinate[None, :, None]
+        active_input_weight = tl.load(
+            path_input_weight + input_weight_offset,
+            mask=(mode_vector[:, None, None] < modes)
+            & (hidden_coordinate[None, None, :] < packed_path_hidden)
+            & (path_coordinate[None, :, None] < _PACKED_PATH_INPUTS_TL),
+            other=0.0,
+        ).to(tl.bfloat16)
+        preactivation = tl.dot(packed_path, active_input_weight)
+        active_input_bias = tl.load(
+            path_input_bias
+            + mode_vector[:, None] * packed_path_hidden
+            + hidden_coordinate[None, :],
+            mask=(mode_vector[:, None] < modes) & (hidden_coordinate[None, :] < packed_path_hidden),
+            other=0.0,
+        ).to(tl.bfloat16)
+        preactivation = (preactivation + active_input_bias[:, None, :]).to(tl.bfloat16)
+        output_coordinate = tl.arange(0, _PATH_DOT_OUTPUTS_TL)
+        active_output_bias = tl.load(
+            path_output_bias
+            + mode_vector[:, None] * _PACKED_PATH_OUTPUTS_TL
+            + output_coordinate[None, :],
+            mask=(mode_vector[:, None] < modes)
+            & (output_coordinate[None, :] < _PACKED_PATH_OUTPUTS_TL),
+            other=0.0,
+        ).to(tl.bfloat16)
+        if PATH_SWIGLU:
+            value_coordinate = tl.arange(0, BLOCK_SWIGLU_VALUE)
+            value_indices = tl.broadcast_to(
+                value_coordinate[None, None, :],
+                (
+                    BLOCK_MODES,
+                    BLOCK_HEIGHT * BLOCK_LINES,
+                    BLOCK_SWIGLU_VALUE,
+                ),
+            )
+            gate_indices = tl.broadcast_to(
+                (
+                    2 * SWIGLU_HIDDEN + value_coordinate % SWIGLU_HIDDEN
+                )[None, None, :],
+                (
+                    BLOCK_MODES,
+                    BLOCK_HEIGHT * BLOCK_LINES,
+                    BLOCK_SWIGLU_VALUE,
+                ),
+            )
+            value = tl.gather(preactivation, value_indices, axis=2).to(tl.bfloat16)
+            gate_logits = tl.gather(preactivation, gate_indices, axis=2).to(tl.float32)
+            gate = (gate_logits * tl.sigmoid(gate_logits)).to(tl.bfloat16)
+            gated_value = tl.where(
+                value_coordinate[None, None, :] < 2 * SWIGLU_HIDDEN,
+                value * gate,
+                0.0,
+            ).to(tl.bfloat16)
+            output_weight_offset = (
+                mode_vector[:, None, None] * _PACKED_PATH_OUTPUTS_TL
+                + output_coordinate[None, None, :]
+            ) * (2 * SWIGLU_HIDDEN) + value_coordinate[None, :, None]
+            active_output_weight = tl.load(
+                path_output_weight + output_weight_offset,
+                mask=(mode_vector[:, None, None] < modes)
+                & (value_coordinate[None, :, None] < 2 * SWIGLU_HIDDEN)
+                & (output_coordinate[None, None, :] < _PACKED_PATH_OUTPUTS_TL),
+                other=0.0,
+            ).to(tl.bfloat16)
+            correction = tl.dot(gated_value, active_output_weight)
+            path_output = (correction + active_output_bias[:, None, :]).to(tl.bfloat16)
+        else:
+            hidden_float = preactivation.to(tl.float32)
+            hidden = (hidden_float * tl.sigmoid(hidden_float)).to(tl.bfloat16)
+            output_weight_offset = (
+                mode_vector[:, None, None] * _PACKED_PATH_OUTPUTS_TL
+                + output_coordinate[None, None, :]
+            ) * packed_path_hidden + hidden_coordinate[None, :, None]
+            active_output_weight = tl.load(
+                path_output_weight + output_weight_offset,
+                mask=(mode_vector[:, None, None] < modes)
+                & (hidden_coordinate[None, :, None] < packed_path_hidden)
+                & (output_coordinate[None, None, :] < _PACKED_PATH_OUTPUTS_TL),
+                other=0.0,
+            ).to(tl.bfloat16)
+            path_output = tl.dot(hidden, active_output_weight)
+            path_output = (path_output + active_output_bias[:, None, :]).to(tl.bfloat16)
+        physical_offset = tl.reshape(
+            tl.permute(offset, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        physical_active = tl.reshape(
+            tl.permute(active, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        collapsed_real_value = tl.sum(
+            tl.where(output_coordinate[None, None, :] == 0, path_output, 0.0),
+            axis=2,
+        )
+        collapsed_imag_value = tl.sum(
+            tl.where(output_coordinate[None, None, :] == 1, path_output, 0.0),
+            axis=2,
+        )
+        tl.store(
+            collapsed_real + physical_offset,
+            collapsed_real_value,
+            mask=physical_active,
+        )
+        tl.store(
+            collapsed_imag + physical_offset,
+            collapsed_imag_value,
+            mask=physical_active,
+        )
+
     if EMIT_COARSE:
         cell = (batch * (height // 2) + y // 2) * (width // 2) + x // 2
         if FULL_COARSE:
@@ -371,21 +611,25 @@ def _product_scan_coarse4_associative_forward_kernel(
     raw3 = tl.sum(tl.sum(r3 * r3 + i3 * i3, axis=0), axis=0)
     descriptor_mode = batch * (4 * modes) + mode_vector
     valid_descriptor_mode = mode_vector < modes
-    tl.atomic_add(descriptor_energy + descriptor_mode, raw0, mask=valid_descriptor_mode)
+    tl.atomic_add(
+        descriptor_energy + descriptor_mode,
+        raw0,
+        mask=valid_descriptor_mode & EMIT_DESCRIPTOR,
+    )
     tl.atomic_add(
         descriptor_energy + descriptor_mode + modes,
         raw1,
-        mask=valid_descriptor_mode,
+        mask=valid_descriptor_mode & EMIT_DESCRIPTOR,
     )
     tl.atomic_add(
         descriptor_energy + descriptor_mode + 2 * modes,
         raw2,
-        mask=valid_descriptor_mode,
+        mask=valid_descriptor_mode & EMIT_DESCRIPTOR,
     )
     tl.atomic_add(
         descriptor_energy + descriptor_mode + 3 * modes,
         raw3,
-        mask=valid_descriptor_mode,
+        mask=valid_descriptor_mode & EMIT_DESCRIPTOR,
     )
 
 
@@ -413,7 +657,26 @@ def _finalize_descriptor_kernel(
 
 
 @triton.jit
-def _product_scan_coarse4_associative_backward_kernel(
+def _unpack_path_gradient(
+    gradient,
+    coordinate,
+    index: tl.constexpr,
+    BLOCK_HEIGHT: tl.constexpr,
+    BLOCK_LINES: tl.constexpr,
+    BLOCK_MODES: tl.constexpr,
+):
+    values = tl.sum(
+        tl.where(coordinate[None, None, :] == index, gradient, 0.0),
+        axis=2,
+    )
+    return tl.permute(
+        tl.reshape(values, (BLOCK_MODES, BLOCK_HEIGHT, BLOCK_LINES)),
+        (1, 2, 0),
+    )
+
+
+@triton.jit
+def _product_scan_coarse4_associative_backward_kernel(  # noqa: PLR0912
     decay_real,
     decay_imag,
     gamma_real,
@@ -427,6 +690,16 @@ def _product_scan_coarse4_associative_backward_kernel(
     global_inverse_gain,
     grad_coarse_real,
     grad_coarse_imag,
+    grad_collapsed_real,
+    grad_collapsed_imag,
+    path_input_weight,
+    path_input_bias,
+    path_output_weight,
+    _path_output_bias,
+    grad_path_input_weight,
+    grad_path_input_bias,
+    grad_path_output_weight,
+    grad_path_output_bias,
     descriptor_gradient_factor,
     grad_decay_real,
     grad_decay_imag,
@@ -440,13 +713,20 @@ def _product_scan_coarse4_associative_backward_kernel(
     width: int,
     line_count: int,
     modes: int,
+    packed_path_hidden: int,
     epsilon: tl.constexpr,
     gain_kind: tl.constexpr,
     HAS_COARSE_GRAD: tl.constexpr,
     FULL_COARSE_GRAD: tl.constexpr,
+    COLLAPSE_PATHS_GRAD: tl.constexpr,
+    PATH_SWIGLU: tl.constexpr,
+    SWIGLU_HIDDEN: tl.constexpr,
+    HAS_DESCRIPTOR_GRAD: tl.constexpr,
     BLOCK_HEIGHT: tl.constexpr,
     BLOCK_LINES: tl.constexpr,
     BLOCK_MODES: tl.constexpr,
+    BLOCK_PATH_HIDDEN: tl.constexpr,
+    BLOCK_SWIGLU_VALUE: tl.constexpr,
 ) -> None:
     batch_size = line_count // width
     line_group = tl.program_id(0)
@@ -535,22 +815,22 @@ def _product_scan_coarse4_associative_backward_kernel(
     descriptor_base = batch * (4 * modes) + mode
     raw_factor0 = tl.load(
         descriptor_gradient_factor + descriptor_base,
-        mask=valid_mode,
+        mask=valid_mode & HAS_DESCRIPTOR_GRAD,
         other=0.0,
     )
     raw_factor1 = tl.load(
         descriptor_gradient_factor + descriptor_base + modes,
-        mask=valid_mode,
+        mask=valid_mode & HAS_DESCRIPTOR_GRAD,
         other=0.0,
     )
     raw_factor2 = tl.load(
         descriptor_gradient_factor + descriptor_base + 2 * modes,
-        mask=valid_mode,
+        mask=valid_mode & HAS_DESCRIPTOR_GRAD,
         other=0.0,
     )
     raw_factor3 = tl.load(
         descriptor_gradient_factor + descriptor_base + 3 * modes,
-        mask=valid_mode,
+        mask=valid_mode & HAS_DESCRIPTOR_GRAD,
         other=0.0,
     )
     grad_r0 = 2.0 * raw_factor0 * r0 * inverse_pa
@@ -561,6 +841,378 @@ def _product_scan_coarse4_associative_backward_kernel(
     grad_i2 = 2.0 * raw_factor2 * i2 * inverse_na
     grad_r3 = 2.0 * raw_factor3 * r3 * inverse_nb
     grad_i3 = 2.0 * raw_factor3 * i3 * inverse_nb
+
+    if COLLAPSE_PATHS_GRAD:
+        r0_flat = tl.reshape(
+            tl.permute(r0, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        r1_flat = tl.reshape(
+            tl.permute(r1, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        r2_flat = tl.reshape(
+            tl.permute(r2, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        r3_flat = tl.reshape(
+            tl.permute(r3, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        i0_flat = tl.reshape(
+            tl.permute(i0, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        i1_flat = tl.reshape(
+            tl.permute(i1, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        i2_flat = tl.reshape(
+            tl.permute(i2, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        i3_flat = tl.reshape(
+            tl.permute(i3, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        path_coordinate = tl.arange(0, _PATH_DOT_INPUTS_TL)
+        path = path_coordinate % _PATHS_TL
+        active_path_real = tl.where(
+            path[None, None, :] == 0,
+            r0_flat[:, :, None],
+            tl.where(
+                path[None, None, :] == 1,
+                r1_flat[:, :, None],
+                tl.where(
+                    path[None, None, :] == 2,
+                    r2_flat[:, :, None],
+                    r3_flat[:, :, None],
+                ),
+            ),
+        )
+        active_path_imag = tl.where(
+            path[None, None, :] == 0,
+            i0_flat[:, :, None],
+            tl.where(
+                path[None, None, :] == 1,
+                i1_flat[:, :, None],
+                tl.where(
+                    path[None, None, :] == 2,
+                    i2_flat[:, :, None],
+                    i3_flat[:, :, None],
+                ),
+            ),
+        )
+        packed_path = tl.where(
+            path_coordinate[None, None, :] < _PATHS_TL,
+            active_path_real,
+            active_path_imag,
+        ).to(tl.bfloat16)
+        hidden_coordinate = tl.arange(0, BLOCK_PATH_HIDDEN)
+        input_weight_offset = (
+            mode_vector[:, None, None] * packed_path_hidden + hidden_coordinate[None, None, :]
+        ) * _PACKED_PATH_INPUTS_TL + path_coordinate[None, :, None]
+        active_input_weight = tl.load(
+            path_input_weight + input_weight_offset,
+            mask=(mode_vector[:, None, None] < modes)
+            & (hidden_coordinate[None, None, :] < packed_path_hidden)
+            & (path_coordinate[None, :, None] < _PACKED_PATH_INPUTS_TL),
+            other=0.0,
+        ).to(tl.bfloat16)
+        preactivation = tl.dot(packed_path, active_input_weight)
+        active_input_bias = tl.load(
+            path_input_bias
+            + mode_vector[:, None] * packed_path_hidden
+            + hidden_coordinate[None, :],
+            mask=(mode_vector[:, None] < modes) & (hidden_coordinate[None, :] < packed_path_hidden),
+            other=0.0,
+        ).to(tl.bfloat16)
+        preactivation = (preactivation + active_input_bias[:, None, :]).to(tl.bfloat16)
+        output_coordinate = tl.arange(0, _PATH_DOT_OUTPUTS_TL)
+        physical_offset = tl.reshape(
+            tl.permute(offset, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        physical_active = tl.reshape(
+            tl.permute(active, (2, 0, 1)),
+            (BLOCK_MODES, BLOCK_HEIGHT * BLOCK_LINES),
+        )
+        active_grad_real = tl.load(
+            grad_collapsed_real + physical_offset,
+            mask=physical_active,
+            other=0.0,
+        ).to(tl.bfloat16)
+        active_grad_imag = tl.load(
+            grad_collapsed_imag + physical_offset,
+            mask=physical_active,
+            other=0.0,
+        ).to(tl.bfloat16)
+        active_grad_output = tl.where(
+            output_coordinate[None, None, :] == 0,
+            active_grad_real[:, :, None],
+            tl.where(
+                output_coordinate[None, None, :] == 1,
+                active_grad_imag[:, :, None],
+                0.0,
+            ),
+        ).to(tl.bfloat16)
+        if PATH_SWIGLU:
+            value_coordinate = tl.arange(0, BLOCK_SWIGLU_VALUE)
+            value_indices = tl.broadcast_to(
+                value_coordinate[None, None, :],
+                (
+                    BLOCK_MODES,
+                    BLOCK_HEIGHT * BLOCK_LINES,
+                    BLOCK_SWIGLU_VALUE,
+                ),
+            )
+            gate_indices = tl.broadcast_to(
+                (
+                    2 * SWIGLU_HIDDEN + value_coordinate % SWIGLU_HIDDEN
+                )[None, None, :],
+                (
+                    BLOCK_MODES,
+                    BLOCK_HEIGHT * BLOCK_LINES,
+                    BLOCK_SWIGLU_VALUE,
+                ),
+            )
+            value = tl.gather(preactivation, value_indices, axis=2).to(tl.bfloat16)
+            gate_logits = tl.gather(preactivation, gate_indices, axis=2).to(tl.float32)
+            gate_sigmoid = tl.sigmoid(gate_logits)
+            gate = (gate_logits * gate_sigmoid).to(tl.bfloat16)
+            gated_value = tl.where(
+                value_coordinate[None, None, :] < 2 * SWIGLU_HIDDEN,
+                value * gate,
+                0.0,
+            ).to(tl.bfloat16)
+            output_weight_offset = (
+                mode_vector[:, None, None] * _PACKED_PATH_OUTPUTS_TL
+                + output_coordinate[None, :, None]
+            ) * (2 * SWIGLU_HIDDEN) + value_coordinate[None, None, :]
+            active_output_weight = tl.load(
+                path_output_weight + output_weight_offset,
+                mask=(mode_vector[:, None, None] < modes)
+                & (output_coordinate[None, :, None] < _PACKED_PATH_OUTPUTS_TL)
+                & (value_coordinate[None, None, :] < 2 * SWIGLU_HIDDEN),
+                other=0.0,
+            ).to(tl.bfloat16)
+            grad_gated_value = tl.dot(active_grad_output, active_output_weight).to(
+                tl.float32
+            )
+            active_value = value.to(tl.float32)
+            active_gate = gate.to(tl.float32)
+            grad_value = grad_gated_value * active_gate
+            gate_derivative = gate_sigmoid * (
+                1.0 + gate_logits * (1.0 - gate_sigmoid)
+            )
+            grad_gate_contribution = grad_gated_value * active_value * gate_derivative
+            value_match = (
+                hidden_coordinate[None, None, None, :]
+                == value_coordinate[None, None, :, None]
+            )
+            value_joint_gradient = tl.sum(
+                tl.where(value_match, grad_value[:, :, :, None], 0.0),
+                axis=2,
+            )
+            gate_match = (
+                hidden_coordinate[None, None, None, :]
+                == (
+                    2 * SWIGLU_HIDDEN + value_coordinate % SWIGLU_HIDDEN
+                )[None, None, :, None]
+            )
+            gate_joint_gradient = tl.sum(
+                tl.where(gate_match, grad_gate_contribution[:, :, :, None], 0.0),
+                axis=2,
+            )
+            grad_preactivation = (value_joint_gradient + gate_joint_gradient).to(
+                tl.bfloat16
+            )
+            if BLOCK_HEIGHT * BLOCK_LINES >= 16:
+                path_output_weight_gradient = tl.dot(
+                    tl.permute(active_grad_output, (0, 2, 1)),
+                    gated_value,
+                )
+            else:
+                path_output_weight_gradient = tl.sum(
+                    active_grad_output[:, :, :, None]
+                    * gated_value[:, :, None, :],
+                    axis=1,
+                )
+            output_weight_mask = (
+                (mode_vector[:, None, None] < modes)
+                & (output_coordinate[None, :, None] < _PACKED_PATH_OUTPUTS_TL)
+                & (value_coordinate[None, None, :] < 2 * SWIGLU_HIDDEN)
+            )
+        else:
+            preactivation_float = preactivation.to(tl.float32)
+            sigmoid = tl.sigmoid(preactivation_float)
+            hidden = (preactivation_float * sigmoid).to(tl.bfloat16)
+            output_weight_offset = (
+                mode_vector[:, None, None] * _PACKED_PATH_OUTPUTS_TL
+                + output_coordinate[None, :, None]
+            ) * packed_path_hidden + hidden_coordinate[None, None, :]
+            active_output_weight = tl.load(
+                path_output_weight + output_weight_offset,
+                mask=(mode_vector[:, None, None] < modes)
+                & (output_coordinate[None, :, None] < _PACKED_PATH_OUTPUTS_TL)
+                & (hidden_coordinate[None, None, :] < packed_path_hidden),
+                other=0.0,
+            ).to(tl.bfloat16)
+            grad_hidden = tl.dot(active_grad_output, active_output_weight).to(
+                tl.float32
+            )
+            grad_preactivation = (
+                grad_hidden * sigmoid * (1.0 + preactivation_float * (1.0 - sigmoid))
+            ).to(tl.bfloat16)
+            if BLOCK_HEIGHT * BLOCK_LINES >= 16:
+                path_output_weight_gradient = tl.dot(
+                    tl.permute(active_grad_output, (0, 2, 1)),
+                    hidden,
+                )
+            else:
+                path_output_weight_gradient = tl.sum(
+                    active_grad_output[:, :, :, None] * hidden[:, :, None, :],
+                    axis=1,
+                )
+            output_weight_mask = (
+                (mode_vector[:, None, None] < modes)
+                & (output_coordinate[None, :, None] < _PACKED_PATH_OUTPUTS_TL)
+                & (hidden_coordinate[None, None, :] < packed_path_hidden)
+            )
+        tl.atomic_add(
+            grad_path_output_weight + output_weight_offset,
+            path_output_weight_gradient,
+            mask=output_weight_mask,
+        )
+        tl.atomic_add(
+            grad_path_output_bias
+            + mode_vector[:, None] * _PACKED_PATH_OUTPUTS_TL
+            + output_coordinate[None, :],
+            tl.sum(active_grad_output.to(tl.float32), axis=1),
+            mask=(mode_vector[:, None] < modes)
+            & (output_coordinate[None, :] < _PACKED_PATH_OUTPUTS_TL),
+        )
+        if BLOCK_HEIGHT * BLOCK_LINES >= 16:
+            path_input_weight_gradient = tl.dot(
+                tl.permute(grad_preactivation, (0, 2, 1)),
+                packed_path,
+            )
+        else:
+            path_input_weight_gradient = tl.sum(
+                grad_preactivation[:, :, :, None] * packed_path[:, :, None, :],
+                axis=1,
+            )
+        path_input_weight_gradient_offset = (
+            mode_vector[:, None, None] * packed_path_hidden
+            + hidden_coordinate[None, :, None]
+        ) * _PACKED_PATH_INPUTS_TL + path_coordinate[None, None, :]
+        tl.atomic_add(
+            grad_path_input_weight + path_input_weight_gradient_offset,
+            path_input_weight_gradient,
+            mask=(mode_vector[:, None, None] < modes)
+            & (hidden_coordinate[None, :, None] < packed_path_hidden)
+            & (path_coordinate[None, None, :] < _PACKED_PATH_INPUTS_TL),
+        )
+        tl.atomic_add(
+            grad_path_input_bias
+            + mode_vector[:, None] * packed_path_hidden
+            + hidden_coordinate[None, :],
+            tl.sum(grad_preactivation.to(tl.float32), axis=1),
+            mask=(mode_vector[:, None] < modes) & (hidden_coordinate[None, :] < packed_path_hidden),
+        )
+        grad_packed_path = tl.dot(
+            grad_preactivation,
+            tl.permute(active_input_weight, (0, 2, 1)),
+        ).to(tl.float32)
+
+        grad_r0 += (
+            _unpack_path_gradient(
+                grad_packed_path,
+                path_coordinate,
+                0,
+                BLOCK_HEIGHT,
+                BLOCK_LINES,
+                BLOCK_MODES,
+            )
+            * inverse_pa
+        )
+        grad_r1 += (
+            _unpack_path_gradient(
+                grad_packed_path,
+                path_coordinate,
+                1,
+                BLOCK_HEIGHT,
+                BLOCK_LINES,
+                BLOCK_MODES,
+            )
+            * inverse_pb
+        )
+        grad_r2 += (
+            _unpack_path_gradient(
+                grad_packed_path,
+                path_coordinate,
+                2,
+                BLOCK_HEIGHT,
+                BLOCK_LINES,
+                BLOCK_MODES,
+            )
+            * inverse_na
+        )
+        grad_r3 += (
+            _unpack_path_gradient(
+                grad_packed_path,
+                path_coordinate,
+                3,
+                BLOCK_HEIGHT,
+                BLOCK_LINES,
+                BLOCK_MODES,
+            )
+            * inverse_nb
+        )
+        grad_i0 += (
+            _unpack_path_gradient(
+                grad_packed_path,
+                path_coordinate,
+                4,
+                BLOCK_HEIGHT,
+                BLOCK_LINES,
+                BLOCK_MODES,
+            )
+            * inverse_pa
+        )
+        grad_i1 += (
+            _unpack_path_gradient(
+                grad_packed_path,
+                path_coordinate,
+                5,
+                BLOCK_HEIGHT,
+                BLOCK_LINES,
+                BLOCK_MODES,
+            )
+            * inverse_pb
+        )
+        grad_i2 += (
+            _unpack_path_gradient(
+                grad_packed_path,
+                path_coordinate,
+                6,
+                BLOCK_HEIGHT,
+                BLOCK_LINES,
+                BLOCK_MODES,
+            )
+            * inverse_na
+        )
+        grad_i3 += (
+            _unpack_path_gradient(
+                grad_packed_path,
+                path_coordinate,
+                7,
+                BLOCK_HEIGHT,
+                BLOCK_LINES,
+                BLOCK_MODES,
+            )
+            * inverse_nb
+        )
 
     if HAS_COARSE_GRAD:
         cell = (batch * (height // 2) + y // 2) * (width // 2) + x // 2
@@ -591,19 +1243,13 @@ def _product_scan_coarse4_associative_backward_kernel(
             mask1 = positive_endpoint & ((x & 1) == 0)
             mask2 = negative_endpoint & ((x & 1) == 1)
             mask3 = negative_endpoint & ((x & 1) == 0)
-            grad_r0 += (
-                tl.load(grad_coarse_real + coarse_base, mask=mask0, other=0.0) * inverse_pa
-            )
-            grad_i0 += (
-                tl.load(grad_coarse_imag + coarse_base, mask=mask0, other=0.0) * inverse_pa
-            )
+            grad_r0 += tl.load(grad_coarse_real + coarse_base, mask=mask0, other=0.0) * inverse_pa
+            grad_i0 += tl.load(grad_coarse_imag + coarse_base, mask=mask0, other=0.0) * inverse_pa
             grad_r1 += (
-                tl.load(grad_coarse_real + coarse_base + modes, mask=mask1, other=0.0)
-                * inverse_pb
+                tl.load(grad_coarse_real + coarse_base + modes, mask=mask1, other=0.0) * inverse_pb
             )
             grad_i1 += (
-                tl.load(grad_coarse_imag + coarse_base + modes, mask=mask1, other=0.0)
-                * inverse_pb
+                tl.load(grad_coarse_imag + coarse_base + modes, mask=mask1, other=0.0) * inverse_pb
             )
             grad_r2 += (
                 tl.load(grad_coarse_real + coarse_base + 2 * modes, mask=mask2, other=0.0)
@@ -780,7 +1426,7 @@ def _product_scan_coarse4_associative_backward_kernel(
     )
 
 
-def _launch_product_scan4_backward(
+def _launch_product_scan4_backward(  # noqa: C901, PLR0912
     decay_real: Tensor,
     decay_imag: Tensor,
     gamma_real: Tensor,
@@ -800,9 +1446,12 @@ def _launch_product_scan4_backward(
     *,
     emit_coarse: bool,
     full_coarse: bool = False,
+    path_collapse: tuple[Tensor, Tensor, Tensor, Tensor] | None = None,
+    path_swiglu: bool = False,
+    has_descriptor_grad: bool = True,
     launch_name: str,
     source_gradient_buffers: tuple[Tensor, Tensor, Tensor, Tensor] | None = None,
-) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+) -> tuple[Tensor, ...]:
     pole = (decay_real, decay_imag, gamma_real, gamma_imag)
     source_a = (source_real_a, source_imag_a)
     source_b = (source_real_b, source_imag_b)
@@ -835,8 +1484,34 @@ def _launch_product_scan4_backward(
             raise ValueError("fused product adjoint received an invalid coarse gradient")
         if grad_coarse_imag.shape != grad_coarse_real.shape:
             raise ValueError("fused product adjoint coarse gradients must match")
-    if descriptor_gradient_factor.shape != (batch, 4 * modes):
-        raise ValueError("fused product adjoint received an invalid descriptor-gradient factor")
+    if path_collapse is None:
+        empty = source_real_a.new_empty((0,))
+        grad_collapsed_real = empty
+        grad_collapsed_imag = empty
+        path_tensors = (empty, empty, empty, empty)
+        path_gradients = tuple(torch.empty_like(value) for value in path_tensors)
+        packed_path_hidden = 1
+        swiglu_hidden = 0
+        swiglu_hidden = 0
+    else:
+        expected_collapsed_shape = (batch, height, width, 1, modes)
+        if grad_coarse_real.shape != expected_collapsed_shape:
+            raise ValueError("fused scan-path adjoint received an invalid output gradient")
+        if grad_coarse_imag.shape != grad_coarse_real.shape:
+            raise ValueError("fused scan-path output gradients must match")
+        grad_collapsed_real = grad_coarse_real.contiguous()
+        grad_collapsed_imag = grad_coarse_imag.contiguous()
+        path_tensors = tuple(value.contiguous() for value in path_collapse)
+        path_gradients = tuple(
+            torch.zeros_like(value, memory_format=torch.contiguous_format) for value in path_tensors
+        )
+        packed_path_hidden = path_tensors[0].shape[1]
+        swiglu_hidden = packed_path_hidden // 3 if path_swiglu else 0
+    if has_descriptor_grad:
+        if descriptor_gradient_factor.shape != (batch, 4 * modes):
+            raise ValueError("fused product adjoint received an invalid descriptor-gradient factor")
+    elif descriptor_gradient_factor.numel() != 0:
+        raise ValueError("descriptor-free product adjoint requires an empty gradient factor")
     coefficients = tuple(value.contiguous() for value in pole)
     sources = tuple(value.contiguous() for value in (*source_a, *source_b))
     coefficient_gradients = tuple(
@@ -867,17 +1542,33 @@ def _launch_product_scan4_backward(
             "modes",
             "gain_kind",
         ),
-        restore_value=(
+        reset_to_zero=(
             "grad_decay_real",
             "grad_decay_imag",
             "grad_gamma_real",
             "grad_gamma_imag",
+            *(
+                (
+                    "grad_path_input_weight",
+                    "grad_path_input_bias",
+                    "grad_path_output_weight",
+                    "grad_path_output_bias",
+                )
+                if path_collapse is not None
+                else ()
+            ),
+        ),
+        geometry=(
+            _PATH_SCAN_LAUNCH_CANDIDATES[0]
+            if path_collapse is not None
+            else None
         ),
         scope=_scan_launch_scope(
             _product_scan_coarse4_associative_backward_kernel,
             source_real_a,
             gain_kind=gain_kind,
             full_coarse=full_coarse,
+            path_collapse=path_collapse is not None,
         ),
     )
     wrap_triton(backward_kernel)[
@@ -893,6 +1584,10 @@ def _launch_product_scan4_backward(
         global_inverse_gain.contiguous(),
         grad_coarse_real.contiguous(),
         grad_coarse_imag.contiguous(),
+        grad_collapsed_real,
+        grad_collapsed_imag,
+        *path_tensors,
+        *path_gradients,
         descriptor_gradient_factor.contiguous(),
         *coefficient_gradients,
         *source_gradients,
@@ -900,16 +1595,27 @@ def _launch_product_scan4_backward(
         width,
         line_count,
         modes,
+        packed_path_hidden,
         epsilon=epsilon,
         gain_kind=gain_kind,
         HAS_COARSE_GRAD=emit_coarse,
         FULL_COARSE_GRAD=full_coarse,
+        COLLAPSE_PATHS_GRAD=path_collapse is not None,
+        PATH_SWIGLU=path_swiglu,
+        SWIGLU_HIDDEN=swiglu_hidden,
+        HAS_DESCRIPTOR_GRAD=has_descriptor_grad,
         BLOCK_HEIGHT=triton.next_power_of_2(height),
+        BLOCK_PATH_HIDDEN=max(16, triton.next_power_of_2(packed_path_hidden)),
+        BLOCK_SWIGLU_VALUE=(
+            max(16, triton.next_power_of_2(2 * swiglu_hidden))
+            if path_swiglu
+            else 16
+        ),
     )
-    return cast(
-        "tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]",
-        (*coefficient_gradients, *source_gradients),
-    )
+    base_gradients = (*coefficient_gradients, *source_gradients)
+    if path_collapse is None:
+        return base_gradients
+    return *base_gradients, *path_gradients
 
 
 @triton_op("lnet::pac_product_scan_coarse4_backward", mutates_args={})
@@ -931,26 +1637,29 @@ def _product_scan_coarse4_backward_op(
     epsilon: float,
     gain_kind: int,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
-    return _launch_product_scan4_backward(
-        decay_real,
-        decay_imag,
-        gamma_real,
-        gamma_imag,
-        source_real_a,
-        source_imag_a,
-        source_real_b,
-        source_imag_b,
-        variance_x,
-        variance_y,
-        global_inverse_gain,
-        grad_coarse_real,
-        grad_coarse_imag,
-        descriptor_gradient_factor,
-        epsilon,
-        gain_kind,
-        emit_coarse=True,
-        full_coarse=False,
-        launch_name=BACKWARD_LAUNCH_NAME,
+    return cast(
+        "tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]",
+        _launch_product_scan4_backward(
+            decay_real,
+            decay_imag,
+            gamma_real,
+            gamma_imag,
+            source_real_a,
+            source_imag_a,
+            source_real_b,
+            source_imag_b,
+            variance_x,
+            variance_y,
+            global_inverse_gain,
+            grad_coarse_real,
+            grad_coarse_imag,
+            descriptor_gradient_factor,
+            epsilon,
+            gain_kind,
+            emit_coarse=True,
+            full_coarse=False,
+            launch_name=BACKWARD_LAUNCH_NAME,
+        ),
     )
 
 
@@ -973,26 +1682,99 @@ def _product_scan_full16_backward_op(
     epsilon: float,
     gain_kind: int,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
-    return _launch_product_scan4_backward(
-        decay_real,
-        decay_imag,
-        gamma_real,
-        gamma_imag,
-        source_real_a,
-        source_imag_a,
-        source_real_b,
-        source_imag_b,
-        variance_x,
-        variance_y,
-        global_inverse_gain,
-        grad_full_real,
-        grad_full_imag,
-        descriptor_gradient_factor,
-        epsilon,
-        gain_kind,
-        emit_coarse=True,
-        full_coarse=True,
-        launch_name=FULL16_BACKWARD_LAUNCH_NAME,
+    return cast(
+        "tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]",
+        _launch_product_scan4_backward(
+            decay_real,
+            decay_imag,
+            gamma_real,
+            gamma_imag,
+            source_real_a,
+            source_imag_a,
+            source_real_b,
+            source_imag_b,
+            variance_x,
+            variance_y,
+            global_inverse_gain,
+            grad_full_real,
+            grad_full_imag,
+            descriptor_gradient_factor,
+            epsilon,
+            gain_kind,
+            emit_coarse=True,
+            full_coarse=True,
+            launch_name=FULL16_BACKWARD_LAUNCH_NAME,
+        ),
+    )
+
+
+@triton_op("lnet::pac_product_scan_path_collapse_backward", mutates_args={})
+def _product_scan_path_collapse_backward_op(  # pyright: ignore[reportUnusedFunction]
+    decay_real: Tensor,
+    decay_imag: Tensor,
+    gamma_real: Tensor,
+    gamma_imag: Tensor,
+    source_real_a: Tensor,
+    source_imag_a: Tensor,
+    source_real_b: Tensor,
+    source_imag_b: Tensor,
+    variance_x: Tensor,
+    variance_y: Tensor,
+    global_inverse_gain: Tensor,
+    path_input_weight: Tensor,
+    path_input_bias: Tensor,
+    path_output_weight: Tensor,
+    path_output_bias: Tensor,
+    grad_collapsed_real: Tensor,
+    grad_collapsed_imag: Tensor,
+    descriptor_gradient_factor: Tensor,
+    epsilon: float,
+    gain_kind: int,
+    path_swiglu: bool,
+) -> tuple[
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
+]:
+    return cast(
+        "PathCollapseGradients",
+        _launch_product_scan4_backward(
+            decay_real,
+            decay_imag,
+            gamma_real,
+            gamma_imag,
+            source_real_a,
+            source_imag_a,
+            source_real_b,
+            source_imag_b,
+            variance_x,
+            variance_y,
+            global_inverse_gain,
+            grad_collapsed_real,
+            grad_collapsed_imag,
+            descriptor_gradient_factor,
+            epsilon,
+            gain_kind,
+            emit_coarse=False,
+            path_collapse=(
+                path_input_weight,
+                path_input_bias,
+                path_output_weight,
+                path_output_bias,
+            ),
+            path_swiglu=path_swiglu,
+            has_descriptor_grad=False,
+            launch_name=PATH_COLLAPSE_BACKWARD_LAUNCH_NAME,
+        ),
     )
 
 
@@ -1014,26 +1796,29 @@ def _product_scan_descriptor4_backward_op(
     gain_kind: int,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
     empty = source_real_a.new_empty((0,))
-    return _launch_product_scan4_backward(
-        decay_real,
-        decay_imag,
-        gamma_real,
-        gamma_imag,
-        source_real_a,
-        source_imag_a,
-        source_real_b,
-        source_imag_b,
-        variance_x,
-        variance_y,
-        global_inverse_gain,
-        empty,
-        empty,
-        descriptor_gradient_factor,
-        epsilon,
-        gain_kind,
-        emit_coarse=False,
-        full_coarse=False,
-        launch_name=DESCRIPTOR_BACKWARD_LAUNCH_NAME,
+    return cast(
+        "tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]",
+        _launch_product_scan4_backward(
+            decay_real,
+            decay_imag,
+            gamma_real,
+            gamma_imag,
+            source_real_a,
+            source_imag_a,
+            source_real_b,
+            source_imag_b,
+            variance_x,
+            variance_y,
+            global_inverse_gain,
+            empty,
+            empty,
+            descriptor_gradient_factor,
+            epsilon,
+            gain_kind,
+            emit_coarse=False,
+            full_coarse=False,
+            launch_name=DESCRIPTOR_BACKWARD_LAUNCH_NAME,
+        ),
     )
 
 
@@ -1054,6 +1839,9 @@ def _launch_product_scan4_forward(
     *,
     emit_coarse: bool,
     full_coarse: bool = False,
+    path_collapse: tuple[Tensor, Tensor, Tensor, Tensor] | None = None,
+    path_swiglu: bool = False,
+    emit_descriptor: bool = True,
     launch_name: str,
 ) -> FusedOutputs:
     pole = (decay_real, decay_imag, gamma_real, gamma_imag)
@@ -1089,12 +1877,71 @@ def _launch_product_scan4_forward(
     )
     coarse_real = torch.empty(coarse_shape, dtype=source_real_a.dtype, device=source_real_a.device)
     coarse_imag = torch.empty_like(coarse_real)
-    descriptor_energy = torch.zeros(
-        (batch, 4 * modes),
-        dtype=torch.float32,
-        device=source_real_a.device,
-    )
-    descriptor = torch.empty_like(descriptor_energy)
+    if path_collapse is None:
+        empty = torch.empty((0,), dtype=torch.float32, device=source_real_a.device)
+        path_tensors = (empty, empty, empty, empty)
+        collapsed_real = torch.empty((0,), dtype=source_real_a.dtype, device=source_real_a.device)
+        collapsed_imag = torch.empty_like(collapsed_real)
+        packed_path_hidden = 1
+        swiglu_hidden = 0
+    else:
+        path_input_weight, path_input_bias, path_output_weight, path_output_bias = (
+            value.contiguous() for value in path_collapse
+        )
+        swiglu_hidden = (
+            path_input_weight.shape[1] // 3 if path_swiglu else 0
+        )
+        expected_output_hidden = (
+            2 * swiglu_hidden if path_swiglu else path_input_weight.shape[1]
+        )
+        if (
+            path_input_weight.ndim != 3
+            or path_input_weight.shape[0] != modes
+            or path_input_weight.shape[2] != _PACKED_PATH_INPUTS
+            or path_input_bias.shape != path_input_weight.shape[:2]
+            or (
+                path_swiglu
+                and (
+                    path_input_weight.shape[1] < 3
+                    or path_input_weight.shape[1] % 3
+                )
+            )
+            or path_output_weight.shape
+            != (modes, _PACKED_PATH_OUTPUTS, expected_output_hidden)
+            or path_output_bias.shape != (modes, _PACKED_PATH_OUTPUTS)
+        ):
+            raise ValueError("scan-path collapse parameters have incompatible shapes")
+        path_tensors = (
+            path_input_weight,
+            path_input_bias,
+            path_output_weight,
+            path_output_bias,
+        )
+        if any(
+            value.device != source_real_a.device
+            or value.dtype != torch.float32
+            or not value.is_contiguous()
+            for value in path_tensors
+        ):
+            raise TypeError("scan-path collapse parameters must be contiguous FP32 CUDA tensors")
+        collapsed_shape = (batch, height, width, 1, modes)
+        collapsed_real = torch.empty(
+            collapsed_shape,
+            dtype=source_real_a.dtype,
+            device=source_real_a.device,
+        )
+        collapsed_imag = torch.empty_like(collapsed_real)
+        packed_path_hidden = path_input_weight.shape[1]
+    if emit_descriptor:
+        descriptor_energy = torch.zeros(
+            (batch, 4 * modes),
+            dtype=torch.float32,
+            device=source_real_a.device,
+        )
+        descriptor = torch.empty_like(descriptor_energy)
+    else:
+        descriptor_energy = torch.empty((0,), dtype=torch.float32, device=source_real_a.device)
+        descriptor = torch.empty_like(descriptor_energy)
     forward_kernel = autotuned(
         _product_scan_coarse4_associative_forward_kernel,
         launch_name,
@@ -1105,12 +1952,13 @@ def _launch_product_scan4_forward(
             "modes",
             "gain_kind",
         ),
-        restore_value=("descriptor_energy",),
+        reset_to_zero=("descriptor_energy",),
         scope=_scan_launch_scope(
             _product_scan_coarse4_associative_forward_kernel,
             source_real_a,
             gain_kind=gain_kind,
             full_coarse=full_coarse,
+            path_collapse=path_collapse is not None,
         ),
     )
     line_count = batch * width
@@ -1127,40 +1975,57 @@ def _launch_product_scan4_forward(
         global_inverse_gain.contiguous(),
         coarse_real,
         coarse_imag,
+        *path_tensors,
+        collapsed_real,
+        collapsed_imag,
         descriptor_energy,
         height,
         width,
         line_count,
         modes,
+        packed_path_hidden,
         epsilon=epsilon,
         gain_kind=gain_kind,
         EMIT_COARSE=emit_coarse,
         FULL_COARSE=full_coarse,
+        COLLAPSE_PATHS=path_collapse is not None,
+        PATH_SWIGLU=path_swiglu,
+        SWIGLU_HIDDEN=swiglu_hidden,
+        EMIT_DESCRIPTOR=emit_descriptor,
         BLOCK_HEIGHT=triton.next_power_of_2(height),
-    )
-    finalize_kernel = autotuned(
-        _finalize_descriptor_kernel,
-        FINALIZE_LAUNCH_NAME,
-        key=("spatial_size", "modes"),
-        scope=make_launch_scope(
-            _finalize_descriptor_kernel,
-            descriptor_energy,
-            shape={
-                "batch": batch,
-                "height": height,
-                "width": width,
-                "modes": modes,
-            },
+        BLOCK_PATH_HIDDEN=max(16, triton.next_power_of_2(packed_path_hidden)),
+        BLOCK_SWIGLU_VALUE=(
+            max(16, triton.next_power_of_2(2 * swiglu_hidden))
+            if path_swiglu
+            else 16
         ),
     )
-    wrap_triton(finalize_kernel)[
-        lambda metadata: (batch, triton.cdiv(modes, metadata["BLOCK_MODES"]))
-    ](
-        descriptor_energy,
-        descriptor,
-        height * width,
-        modes,
-    )
+    if emit_descriptor:
+        finalize_kernel = autotuned(
+            _finalize_descriptor_kernel,
+            FINALIZE_LAUNCH_NAME,
+            key=("spatial_size", "modes"),
+            scope=make_launch_scope(
+                _finalize_descriptor_kernel,
+                descriptor_energy,
+                shape={
+                    "batch": batch,
+                    "height": height,
+                    "width": width,
+                    "modes": modes,
+                },
+            ),
+        )
+        wrap_triton(finalize_kernel)[
+            lambda metadata: (batch, triton.cdiv(modes, metadata["BLOCK_MODES"]))
+        ](
+            descriptor_energy,
+            descriptor,
+            height * width,
+            modes,
+        )
+    if path_collapse is not None:
+        return collapsed_real, collapsed_imag, descriptor
     return coarse_real, coarse_imag, descriptor
 
 
@@ -1249,6 +2114,65 @@ def _product_scan_full16_op(
         emit_coarse=True,
         full_coarse=True,
         launch_name=FULL16_FORWARD_LAUNCH_NAME,
+    )
+
+
+@triton_op("lnet::pac_product_scan_path_collapse", mutates_args={})
+def _product_scan_path_collapse_op(  # pyright: ignore[reportUnusedFunction]
+    decay_real: Tensor,
+    decay_imag: Tensor,
+    gamma_real: Tensor,
+    gamma_imag: Tensor,
+    source_real_a: Tensor,
+    source_imag_a: Tensor,
+    source_real_b: Tensor,
+    source_imag_b: Tensor,
+    variance_x: Tensor,
+    variance_y: Tensor,
+    global_inverse_gain: Tensor,
+    path_input_weight: Tensor,
+    path_input_bias: Tensor,
+    path_output_weight: Tensor,
+    path_output_bias: Tensor,
+    epsilon: float,
+    gain_kind: int,
+    path_swiglu: bool,
+) -> FusedOutputs:
+    pole = (decay_real, decay_imag, gamma_real, gamma_imag)
+    source_a = (source_real_a, source_imag_a)
+    source_b = (source_real_b, source_imag_b)
+    path = (path_input_weight, path_input_bias, path_output_weight, path_output_bias)
+    if not source_real_a.is_cuda:
+        full_real, full_imag, descriptor = _product_scan_full16_from_tables_reference(
+            pole,
+            source_a,
+            source_b,
+            variance_x,
+            variance_y,
+            epsilon=epsilon,
+            gain_normalization=gain_normalization(gain_kind),
+        )
+        collapse_reference = (
+            d4_grouped_cell_path_swiglu_reference
+            if path_swiglu
+            else d4_grouped_cell_path_collapse_reference
+        )
+        collapsed = collapse_reference(full_real, full_imag, *path)
+        return collapsed[0], collapsed[1], descriptor
+    return _launch_product_scan4_forward(
+        *pole,
+        *source_a,
+        *source_b,
+        variance_x,
+        variance_y,
+        global_inverse_gain,
+        epsilon,
+        gain_kind,
+        emit_coarse=False,
+        path_collapse=path,
+        path_swiglu=path_swiglu,
+        emit_descriptor=False,
+        launch_name=PATH_COLLAPSE_FORWARD_LAUNCH_NAME,
     )
 
 

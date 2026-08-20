@@ -66,7 +66,7 @@ def compiled_discrete_pole_real2d(
     """
     if not damping.is_cuda:
         return discrete_pole_real2d(damping, frequency, dt, threshold)
-    global _compiled_discrete_pole  # noqa: PLW0603
+    global _compiled_discrete_pole
     if _compiled_discrete_pole is None:
         _compiled_discrete_pole = torch.compile(
             discrete_pole_real2d,
@@ -97,7 +97,7 @@ def compiled_pole_gamma_from_control_real2d(
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     if not control.is_cuda:
         return pole_gamma_from_control_real2d(raw_decay, frequency, control, min_decay, dt)
-    global _compiled_pole_gamma  # noqa: PLW0603
+    global _compiled_pole_gamma
     if _compiled_pole_gamma is None:
         _compiled_pole_gamma = torch.compile(pole_gamma_from_control_real2d)
     return _compiled_pole_gamma(raw_decay, frequency, control, min_decay, dt)

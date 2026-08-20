@@ -4,7 +4,6 @@
 # pyright: reportArgumentType=false
 # pyright: reportExplicitAny=false, reportImplicitRelativeImport=false
 # pyright: reportPrivateLocalImportUsage=false, reportPrivateUsage=false
-# ruff: noqa: SLF001
 
 from __future__ import annotations
 
@@ -146,8 +145,8 @@ def _contract(args: Namespace) -> dict[str, Any]:
             "and post-fusion residual; the terminal descriptor is unchanged."
         )
     }
-    payload["source_sha256"]["a2d_u96_mpm8_runner"] = (
-        stemres.uniform.base.heads.harness._digest(Path(__file__))
+    payload["source_sha256"]["a2d_u96_mpm8_runner"] = stemres.uniform.base.heads.harness._digest(
+        Path(__file__)
     )
     return payload
 

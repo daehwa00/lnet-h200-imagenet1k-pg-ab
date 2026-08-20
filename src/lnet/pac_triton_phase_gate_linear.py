@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 # pyright: reportArgumentType=false, reportCallIssue=false, reportIncompatibleMethodOverride=false, reportMissingParameterType=false
-# ruff: noqa: ANN001, EM101, N803, PLR0915, TRY003
 from typing import Protocol
 
 import torch
@@ -245,7 +244,7 @@ def _backward_op(
     alpha: Tensor,
     grad_hidden: Tensor,
     redistribution: float,
-    self_gated: bool,  # noqa: FBT001
+    self_gated: bool,
 ) -> tuple[Tensor, Tensor]:
     hidden = alpha.numel()
     rows = projected.numel() // projected.shape[-1]
@@ -294,11 +293,11 @@ def _backward_op(
     )
 
     reduce_kernel = autotuned(
-        triton_phase_gate._phase_gate_backward_reduce_kernel,  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        triton_phase_gate._phase_gate_backward_reduce_kernel,  # pyright: ignore[reportPrivateUsage]
         triton_phase_gate.BACKWARD_REDUCE_LAUNCH_NAME,
         key=("partial_count", "hidden"),
         scope=make_launch_scope(
-            triton_phase_gate._phase_gate_backward_reduce_kernel,  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+            triton_phase_gate._phase_gate_backward_reduce_kernel,  # pyright: ignore[reportPrivateUsage]
             partial_grad_alpha,
             shape={"partial_count": partial_count, "hidden": hidden},
         ),
@@ -324,9 +323,9 @@ class _PhaseGateOutputLinear(torch.autograd.Function):
         alpha: Tensor,
         output_weight: Tensor,
         redistribution: float,
-        self_gated: bool,  # noqa: FBT001
+        self_gated: bool,
     ) -> Tensor:
-        hidden_output = triton_phase_gate._forward_op(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        hidden_output = triton_phase_gate._forward_op(  # pyright: ignore[reportPrivateUsage]
             projected,
             alpha,
             redistribution,
@@ -353,7 +352,7 @@ class _PhaseGateOutputLinear(torch.autograd.Function):
                 dtype=projected.dtype,
             )
         flat_grad_output = grad_output.contiguous().reshape(rows, output_width)
-        hidden_output = triton_phase_gate._forward_op(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        hidden_output = triton_phase_gate._forward_op(  # pyright: ignore[reportPrivateUsage]
             projected,
             alpha,
             ctx.redistribution,

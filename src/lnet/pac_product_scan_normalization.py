@@ -5,7 +5,6 @@ from __future__ import annotations
 # pyright: reportArgumentType=false, reportCallIssue=false, reportMissingParameterType=false
 # pyright: reportOptionalSubscript=false
 # pyright: reportUnknownLambdaType=false
-# ruff: noqa: ANN001, ANN202, EM101, N803, TRY003
 import torch
 import triton
 import triton.language as tl
@@ -278,12 +277,8 @@ def static_variance_tables(
             torch.stack((positive_x, positive_x.flip(0))),
             torch.stack((positive_y, positive_y.flip(0))),
         )
-    variance_x = torch.empty(
-        (2, length_x, modes), dtype=torch.float32, device=decay_x_real.device
-    )
-    variance_y = torch.empty(
-        (2, length_y, modes), dtype=torch.float32, device=decay_x_real.device
-    )
+    variance_x = torch.empty((2, length_x, modes), dtype=torch.float32, device=decay_x_real.device)
+    variance_y = torch.empty((2, length_y, modes), dtype=torch.float32, device=decay_x_real.device)
     max_length = max(length_x, length_y)
     scope = make_launch_scope(
         _static_separable_variance_kernel,

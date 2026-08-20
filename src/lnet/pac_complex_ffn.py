@@ -46,18 +46,6 @@ class ComplexAffine(Protocol):
     @property
     def weight_imag(self) -> Tensor: ...
 
-    @property
-    def conjugate_real(self) -> Tensor: ...
-
-    @property
-    def conjugate_imag(self) -> Tensor: ...
-
-    @property
-    def bias_real(self) -> Tensor | None: ...
-
-    @property
-    def bias_imag(self) -> Tensor | None: ...
-
     def __call__(self, real: Tensor, imag: Tensor) -> ComplexField: ...
 
 
@@ -224,9 +212,7 @@ def _packed_cartesian_cffn(
         input_projection=input_projection,
         output_projection=output_projection,
         residual_scale=residual_scale,
-        residual_source=(
-            None if residual_source is None else torch.cat(residual_source, dim=-1)
-        ),
+        residual_source=(None if residual_source is None else torch.cat(residual_source, dim=-1)),
         synthesis_real=synthesis_real,
         synthesis_imag=synthesis_imag,
     )

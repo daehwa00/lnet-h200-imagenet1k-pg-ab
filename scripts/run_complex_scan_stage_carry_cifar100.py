@@ -1,4 +1,3 @@
-# ruff: noqa: SLF001
 # pyright: reportAny=false, reportExplicitAny=false, reportMissingImports=false
 # pyright: reportImplicitRelativeImport=false, reportPrivateLocalImportUsage=false
 # pyright: reportPrivateUsage=false

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 # pyright: reportArgumentType=false, reportCallIssue=false, reportMissingParameterType=false
-# ruff: noqa: ANN001, ANN202, EM101, N803, PLR0915, TRY003
 from typing import Protocol, cast
 
 import torch

@@ -171,9 +171,7 @@ _SCOPE_CAPTURE: ContextVar[tuple[str, set[LaunchScope]] | None] = ContextVar(
     "lnet_launch_scope_capture",
     default=None,
 )
-_SCOPE_GEOMETRY_OVERRIDE: ContextVar[
-    tuple[str, LaunchScope, LaunchGeometry] | None
-] = ContextVar(
+_SCOPE_GEOMETRY_OVERRIDE: ContextVar[tuple[str, LaunchScope, LaunchGeometry] | None] = ContextVar(
     "lnet_launch_scope_geometry_override",
     default=None,
 )
@@ -465,10 +463,7 @@ def resolve(
     _record_launch_scope(name, scope)
     scope_override = _scope_geometry_override(name, scope) if geometry is None else None
     base = (
-        geometry
-        or scope_override
-        or stored_geometry(name, scope=scope)
-        or registered_default(name)
+        geometry or scope_override or stored_geometry(name, scope=scope) or registered_default(name)
     )
     if scope_override is None:
         base = _environment_overrides(name, base)

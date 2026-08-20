@@ -317,9 +317,7 @@ class _ProductPoleBlock(nn.Module):
         normalized = self.norm(functional.silu(local))
         states_real, states_imag = self.field(normalized)
         pole_update = self.field.synthesize(states_real, states_imag)
-        updated = inputs + self.pole_scale * (
-            pole_update + self.direct_scale * normalized
-        )
+        updated = inputs + self.pole_scale * (pole_update + self.direct_scale * normalized)
         output = updated + self.mlp_scale * self.mlp(self.mlp_norm(updated))
         return output, states_real, states_imag
 
@@ -378,19 +376,15 @@ def _window_moments(
     for delta_x, delta_y in lags:
         current_real, previous_real = _lagged_pair(states_real, delta_x, delta_y)
         current_imag, previous_imag = _lagged_pair(states_imag, delta_x, delta_y)
-        correlation_real = (
-            current_real * previous_real + current_imag * previous_imag
-        ).mean(dim=(2, 3))
-        correlation_imag = (
-            current_imag * previous_real - current_real * previous_imag
-        ).mean(dim=(2, 3))
+        correlation_real = (current_real * previous_real + current_imag * previous_imag).mean(
+            dim=(2, 3)
+        )
+        correlation_imag = (current_imag * previous_real - current_real * previous_imag).mean(
+            dim=(2, 3)
+        )
         if normalize:
-            current_energy = (current_real.square() + current_imag.square()).mean(
-                dim=(2, 3)
-            )
-            previous_energy = (previous_real.square() + previous_imag.square()).mean(
-                dim=(2, 3)
-            )
+            current_energy = (current_real.square() + current_imag.square()).mean(dim=(2, 3))
+            previous_energy = (previous_real.square() + previous_imag.square()).mean(dim=(2, 3))
             denominator = torch.sqrt(
                 (current_energy * previous_energy).clamp_min(epsilon * epsilon)
             )
@@ -493,18 +487,16 @@ class Alphabet2D(nn.Module):
 
     def forward_features(self, inputs: Tensor) -> tuple[Tensor, Tensor]:
         if inputs.ndim != 4 or inputs.shape[1] != self.config.input_channels:
-            message = (
-                f"ALPHABET-2D requires [B,{self.config.input_channels},H,W] inputs"
-            )
+            message = f"ALPHABET-2D requires [B,{self.config.input_channels},H,W] inputs"
             raise ValueError(message)
         features = self.patch_embed(inputs).permute(0, 2, 3, 1)
         maximum_lag_x = max((abs(lag[0]) for lag in self.config.lags), default=0)
         maximum_lag_y = max((abs(lag[1]) for lag in self.config.lags), default=0)
-        minimum_window_width = features.shape[2] if self.config.windows == "global" else (
-            features.shape[2] // 2
+        minimum_window_width = (
+            features.shape[2] if self.config.windows == "global" else (features.shape[2] // 2)
         )
-        minimum_window_height = features.shape[1] if self.config.windows == "global" else (
-            features.shape[1] // 2
+        minimum_window_height = (
+            features.shape[1] if self.config.windows == "global" else (features.shape[1] // 2)
         )
         if minimum_window_width <= maximum_lag_x or minimum_window_height <= maximum_lag_y:
             message = "patch grid is too small for the configured spatial windows and lags"

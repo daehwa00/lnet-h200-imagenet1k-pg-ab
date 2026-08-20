@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Train matched Deep4 A2D pole-budget and coarse-CFFN variants."""
 
-# ruff: noqa: SLF001
-
 from __future__ import annotations
 
 import json

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # pyright: reportMissingParameterType=false
-# ruff: noqa: ANN001
 from typing import Protocol
 
 import torch

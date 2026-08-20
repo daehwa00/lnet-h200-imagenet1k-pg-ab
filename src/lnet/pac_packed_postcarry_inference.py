@@ -23,7 +23,6 @@ from __future__ import annotations
 # low-level runtime never imports the high-level multiscale backbone module.
 # pyright: reportArgumentType=false, reportPrivateUsage=false
 # The cache key reads ``Tensor._version``, the documented mutation counter.
-# ruff: noqa: SLF001
 import os
 from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Protocol
@@ -608,10 +607,13 @@ def packed_pole_update(
         )
         + weights.ffn_input_bias,
     )
-    update = torch.nn.functional.linear(
-        activated,
-        weights.ffn_output_weight,
-    ) + weights.ffn_output_bias
+    update = (
+        torch.nn.functional.linear(
+            activated,
+            weights.ffn_output_weight,
+        )
+        + weights.ffn_output_bias
+    )
     normalized = _packed_rms_norm(
         hidden + weights.layer_scale * update,
         weights.output_norm_scale,
@@ -707,10 +709,13 @@ def packed_postfusion_inference(
         )
         + post_input_bias,
     )
-    update = torch.nn.functional.linear(
-        activated,
-        weights.post_output_weight,
-    ) + post_output_bias
+    update = (
+        torch.nn.functional.linear(
+            activated,
+            weights.post_output_weight,
+        )
+        + post_output_bias
+    )
     fused_real, fused_imag = (outer + weights.post_scale * update).split(
         spec.output_modes,
         dim=-1,

@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """End-to-end A2D Q-prototype screening on ImageNet-100."""
 
-# ruff: noqa: ANN401, PLR0915, SLF001
-
 from __future__ import annotations
 
 import json
@@ -226,9 +224,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
         "source_sha256": {
             "runner": harness._digest(Path(__file__)),
             "harness": harness._digest(Path("scripts/run_alphabet2d_imagenet100_nano.py")),
-            "backbone_runner": harness._digest(
-                Path("scripts/run_a2d_d4_pathmix_imagenet100.py")
-            ),
+            "backbone_runner": harness._digest(Path("scripts/run_a2d_d4_pathmix_imagenet100.py")),
             "model": harness._digest(Path("src/lnet/complex_scan.py")),
             "q_heads": harness._digest(Path("src/lnet/a2d_q_heads.py")),
         },
@@ -423,7 +419,7 @@ def _flat_metrics(logits: Tensor, labels: Tensor, prefix: str) -> dict[str, floa
     }
 
 
-def _evaluate(  # noqa: C901
+def _evaluate(
     model: nn.Module,
     runtime: nn.Module,
     loader: DataLoader[Any],

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 # pyright: reportArgumentType=false, reportCallIssue=false, reportGeneralTypeIssues=false, reportIncompatibleMethodOverride=false, reportMissingParameterType=false
-# ruff: noqa: ANN001, ANN202, EM101, N803, TRY003
 from typing import Protocol
 
 import torch
@@ -372,7 +371,7 @@ def _forward_op(
     alpha: Tensor,
     output_weight: Tensor,
     redistribution: float,
-    self_gated: bool,  # noqa: FBT001
+    self_gated: bool,
 ) -> Tensor:
     if not supports_fused_phase_gate_output_linear(
         projected,
@@ -423,7 +422,7 @@ def _backward_op(
     output_weight: Tensor,
     grad_output: Tensor,
     redistribution: float,
-    self_gated: bool,  # noqa: FBT001
+    self_gated: bool,
 ) -> tuple[Tensor, Tensor, Tensor]:
     rows = projected.numel() // projected.shape[-1]
     hidden = alpha.numel()
@@ -467,11 +466,11 @@ def _backward_op(
     )
     grad_alpha = torch.empty_like(alpha)
     reduce_kernel = autotuned(
-        triton_phase_gate._phase_gate_backward_reduce_kernel,  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        triton_phase_gate._phase_gate_backward_reduce_kernel,  # pyright: ignore[reportPrivateUsage]
         triton_phase_gate.BACKWARD_REDUCE_LAUNCH_NAME,
         key=("partial_count", "hidden"),
         scope=make_launch_scope(
-            triton_phase_gate._phase_gate_backward_reduce_kernel,  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+            triton_phase_gate._phase_gate_backward_reduce_kernel,  # pyright: ignore[reportPrivateUsage]
             partial_grad_alpha,
             shape={"partial_count": partial_count, "hidden": hidden},
         ),

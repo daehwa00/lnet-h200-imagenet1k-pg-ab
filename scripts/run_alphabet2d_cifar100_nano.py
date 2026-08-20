@@ -318,7 +318,7 @@ def _initialize_wandb_run(
     if not project or os.environ.get("WANDB_MODE") == "disabled":
         return None
     try:
-        import wandb  # noqa: PLC0415
+        import wandb
     except ModuleNotFoundError as error:
         message = "WANDB_PROJECT is set but the wandb package is not installed"
         raise RuntimeError(message) from error
@@ -451,7 +451,7 @@ def _run_job(
                 },
                 step=epoch + 1,
             )
-        print(  # noqa: T201
+        print(
             json.dumps(
                 {
                     "variant": variant,
@@ -586,7 +586,7 @@ def main() -> None:
             )
     summary = _summarize(args.root, contract)
     if summary is not None:
-        print(json.dumps(summary, indent=2, sort_keys=True))  # noqa: T201
+        print(json.dumps(summary, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

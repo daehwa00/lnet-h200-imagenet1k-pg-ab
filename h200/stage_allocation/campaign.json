@@ -1,0 +1,52 @@
+{
+  "schema": "lnet.h200.imagenet100.stage_allocation.v1",
+  "campaign_id": "h200-imagenet100-stage-allocation-s501-v1",
+  "output_namespace": "lnet-h200-imagenet100-stage-allocation-v1",
+  "dataset": {
+    "source": "ImageNet-1K ILSVRC2012 train/val",
+    "selection": "lexicographically first 100 synset directories",
+    "first_synset": "n01440764",
+    "last_synset": "n02077923",
+    "train_images": 130000,
+    "validation_images": 5000,
+    "classes": 100
+  },
+  "training": {
+    "seed": 501,
+    "epochs": 100,
+    "batch_size": 128,
+    "precision": "bfloat16",
+    "variants": [
+      "K128-P128-128-160-128-D2222",
+      "K128-P128-160-160-128-D2222",
+      "K128-P160-160-160-128-D2222",
+      "K128-P160-160-160-96-D2222",
+      "K128-P128-128-160-96-D2222",
+      "K128-P96-128-160-96-D2222",
+      "K128-P96x4-D2222",
+      "K96-P128x4-D2222",
+      "K128-P128x4-D2232-FullSR14x1",
+      "K128-P128x4-D2223-FullSR7x1",
+      "K128-P128x4-D2242-FullSR14x2",
+      "K128-P128x4-D2262-FullSR14x4"
+    ]
+  },
+  "wandb": {
+    "sdk_version": "0.22.3",
+    "base_url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+    "app_url": "https://wandb.ai",
+    "entity": "daehwa",
+    "project": "alphabet2d-imagenet100-h200",
+    "group": "h200-imagenet100-stage-allocation-s501-v1",
+    "console": "off"
+  },
+  "relay": {
+    "worker_name": "lnet-h200-imagenet100-stage-relay-v1",
+    "url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+    "upstream_origin": "https://api.wandb.ai",
+    "protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v1",
+    "rate_limit_namespace_id": "31705",
+    "max_graphql_body_bytes": 1048576,
+    "max_file_stream_body_bytes": 8388608
+  }
+}

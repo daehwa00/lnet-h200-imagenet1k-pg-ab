@@ -7,7 +7,9 @@ from torch import Tensor, nn
 
 from .complex_scan_transitions import ComplexRMSNorm
 from .pac_complex_ffn import ComplexFFN
-from .pac_complex_layers import WidelyLinear
+from .pac_complex_layers import (
+    WidelyLinear,
+)
 from .pac_grouped_path_cffn import GroupedWidelyLinear, grouped_cartesian_cffn
 from .pac_path_cffn import D4PathModeCombiner
 

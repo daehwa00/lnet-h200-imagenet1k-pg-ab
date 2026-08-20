@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Train the residual A2D backbone with Fusion384 and affine auxiliary CE."""
 
-# ruff: noqa: SLF001
-
 from __future__ import annotations
 
 import json

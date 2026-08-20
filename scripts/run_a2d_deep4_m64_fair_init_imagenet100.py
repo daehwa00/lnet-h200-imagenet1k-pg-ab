@@ -1,7 +1,5 @@
 """Train D4-M64 with orientation-matched radial-group damping initialization."""
 
-# ruff: noqa: SLF001
-
 from __future__ import annotations
 
 import json

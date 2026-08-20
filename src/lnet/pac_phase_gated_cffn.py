@@ -111,7 +111,7 @@ def phase_gated_complex_ffn_reference(
     output_real = real + residual_scale * delta_real
     output_imag = imag + residual_scale * delta_imag
     if update_diagnostics:
-        module._update_diagnostics(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        module._update_diagnostics(  # pyright: ignore[reportPrivateUsage]
             gate,
             real,
             imag,
@@ -188,9 +188,7 @@ class PhaseGatedComplexFFN(nn.Module):
         self.unit_row_projections = bool(unit_row_projections)
         self.projected_direction_rows = False
         self.learnable_residual_scale = bool(learnable_residual_scale)
-        self.residual_scale_max = (
-            None if residual_scale_max is None else float(residual_scale_max)
-        )
+        self.residual_scale_max = None if residual_scale_max is None else float(residual_scale_max)
         self.output_gain_max: float | None = None
         self.norm = ComplexRMSNorm(modes)
         self.input_projection = ComplexLinear(
@@ -203,9 +201,7 @@ class PhaseGatedComplexFFN(nn.Module):
         self.alpha = nn.Parameter(torch.full((hidden_modes,), alpha_init))
         gamma_parameter_init = float(residual_scale_init)
         if self.residual_scale_max is not None:
-            gamma_parameter_init = math.atanh(
-                gamma_parameter_init / self.residual_scale_max
-            )
+            gamma_parameter_init = math.atanh(gamma_parameter_init / self.residual_scale_max)
         if self.learnable_residual_scale:
             self.gamma = nn.Parameter(torch.tensor(gamma_parameter_init))
         else:
@@ -264,9 +260,7 @@ class PhaseGatedComplexFFN(nn.Module):
             message = "phase-gated residual scale maximum must exceed the current scale"
             raise ValueError(message)
         self._normalize_raw_projection_rows_()
-        gamma.copy_(
-            gamma.new_tensor(math.atanh(effective_gamma / residual_scale_max))
-        )
+        gamma.copy_(gamma.new_tensor(math.atanh(effective_gamma / residual_scale_max)))
         self.unit_row_projections = True
         self.residual_scale_max = float(residual_scale_max)
         return self
@@ -295,9 +289,7 @@ class PhaseGatedComplexFFN(nn.Module):
             raise ValueError(message)
         self._normalize_raw_projection_rows_()
         initial_logit = math.atanh(initial_gain / output_gain_max)
-        self.output_gain_logits = nn.Parameter(
-            self.alpha.new_full((self.modes,), initial_logit)
-        )
+        self.output_gain_logits = nn.Parameter(self.alpha.new_full((self.modes,), initial_logit))
         self.gamma = None
         self.projected_direction_rows = True
         self.output_gain_max = float(output_gain_max)
@@ -385,12 +377,8 @@ class PhaseGatedComplexFFN(nn.Module):
         collect_diagnostics: bool = True,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         input_coordinates, output_coordinates = self.effective_projection_weights()
-        input_weight = packed_complex_linear_weight(*input_coordinates).to(
-            dtype=torch.bfloat16
-        )
-        output_weight = packed_complex_linear_weight(*output_coordinates).to(
-            dtype=torch.bfloat16
-        )
+        input_weight = packed_complex_linear_weight(*input_coordinates).to(dtype=torch.bfloat16)
+        output_weight = packed_complex_linear_weight(*output_coordinates).to(dtype=torch.bfloat16)
         residual_scale = self.effective_residual_scale()
         if supports_fused_phase_gated_cffn(
             real,
@@ -574,9 +562,7 @@ class PhaseGatedComplexFFN(nn.Module):
         sampled_source_imag = source_imag.detach().reshape(-1, self.modes)[:sample_rows].float()
         sampled_delta_real = delta_real.detach().reshape(-1, self.modes)[:sample_rows]
         sampled_delta_imag = delta_imag.detach().reshape(-1, self.modes)[:sample_rows]
-        residual_scale = self.effective_residual_scale().detach().to(
-            dtype=sampled_delta_real.dtype
-        )
+        residual_scale = self.effective_residual_scale().detach().to(dtype=sampled_delta_real.dtype)
         sampled_update_real = (sampled_delta_real * residual_scale).float()
         sampled_update_imag = (sampled_delta_imag * residual_scale).float()
         sampled_output_real = output_real.detach().reshape(-1, self.modes)[:sample_rows].float()

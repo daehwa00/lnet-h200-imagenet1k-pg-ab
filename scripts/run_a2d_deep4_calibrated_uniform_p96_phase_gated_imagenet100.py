@@ -5,7 +5,6 @@
 # pyright: reportImplicitRelativeImport=false, reportPrivateLocalImportUsage=false
 # pyright: reportPrivateUsage=false
 # pyright: reportUnnecessaryIsInstance=false
-# ruff: noqa: SLF001
 
 from __future__ import annotations
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # pyright: reportAttributeAccessIssue=false, reportMissingParameterType=false
-# ruff: noqa: ANN001, FBT001, N803
 import os
 from typing import Final, Protocol
 
@@ -36,7 +35,7 @@ def _select_block_modes(modes: int, *, batch: int | None = None, n_steps: int | 
     # The six-shape FP32 training screen has two occupancy regimes.  Short and
     # mid-length single-batch work benefits from keeping all 16 canonical
     # modes together, whereas long B64 adjoints need more independent programs.
-    if n_steps <= 512:  # noqa: SIM108
+    if n_steps <= 512:
         selected = 16 if batch == 1 else 8
     else:
         selected = 8 if batch == 1 else 2
@@ -75,7 +74,7 @@ def _select_recurrence_num_warps(
     return 4
 
 
-def _is_mode_static_expanded(decay: Tensor, reference: Tensor) -> bool:
+def is_mode_static_expanded(decay: Tensor, reference: Tensor) -> bool:
     """Return whether ``decay`` is a broadcast view of one value per mode.
 
     Fixed-damping training creates the pole once as ``[1, 1, M]`` and expands
@@ -440,8 +439,8 @@ def _pac_real2d_recurrence_backward_op(
             grad_states_imag,
             reverse,
         )
-    static_decay = _is_mode_static_expanded(decay_real, grad_states_real) and (
-        _is_mode_static_expanded(decay_imag, grad_states_imag)
+    static_decay = is_mode_static_expanded(decay_real, grad_states_real) and (
+        is_mode_static_expanded(decay_imag, grad_states_imag)
     )
     real = decay_real if static_decay else decay_real.contiguous()
     imag = decay_imag if static_decay else decay_imag.contiguous()
@@ -516,10 +515,10 @@ def _pac_real2d_state_variance_recurrence_op(
             reverse,
         )
         return states_real, states_imag, variance_states
-    static_decay = _is_mode_static_expanded(decay_real, input_real) and (
-        _is_mode_static_expanded(decay_imag, input_imag)
+    static_decay = is_mode_static_expanded(decay_real, input_real) and (
+        is_mode_static_expanded(decay_imag, input_imag)
     )
-    static_variance_decay = _is_mode_static_expanded(variance_decay, variance_input)
+    static_variance_decay = is_mode_static_expanded(variance_decay, variance_input)
     real = decay_real if static_decay else decay_real.contiguous()
     imag = decay_imag if static_decay else decay_imag.contiguous()
     variance_real = variance_decay if static_variance_decay else variance_decay.contiguous()
@@ -610,8 +609,8 @@ def _pac_real2d_recurrence_op(
     _validate_inputs(decay_real, decay_imag, input_real, input_imag)
     if not decay_real.is_cuda:
         return _reference_recurrence(decay_real, decay_imag, input_real, input_imag, reverse)
-    static_decay = _is_mode_static_expanded(decay_real, input_real) and (
-        _is_mode_static_expanded(decay_imag, input_imag)
+    static_decay = is_mode_static_expanded(decay_real, input_real) and (
+        is_mode_static_expanded(decay_imag, input_imag)
     )
     real = decay_real if static_decay else decay_real.contiguous()
     imag = decay_imag if static_decay else decay_imag.contiguous()

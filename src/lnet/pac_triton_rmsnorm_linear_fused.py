@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 # pyright: reportArgumentType=false, reportCallIssue=false, reportGeneralTypeIssues=false, reportMissingParameterType=false
-# ruff: noqa: ANN001, ANN202, EM101, N803, PLR0915, TRY003
 from typing import Protocol
 
 import torch
@@ -171,12 +170,10 @@ def _normalized_coordinates(
         active_inverse_rms = inverse_rms.to(tl.bfloat16)
         scale = active_weight.to(tl.bfloat16)
         normalized_real = (
-            (active_real.to(tl.bfloat16) * active_inverse_rms[:, None]).to(tl.bfloat16)
-            * scale
+            (active_real.to(tl.bfloat16) * active_inverse_rms[:, None]).to(tl.bfloat16) * scale
         ).to(tl.bfloat16)
         normalized_imag = (
-            (active_imag.to(tl.bfloat16) * active_inverse_rms[:, None]).to(tl.bfloat16)
-            * scale
+            (active_imag.to(tl.bfloat16) * active_inverse_rms[:, None]).to(tl.bfloat16) * scale
         ).to(tl.bfloat16)
     else:
         normalized_real = (active_real * inverse_rms[:, None] * active_weight).to(tl.bfloat16)
@@ -310,9 +307,7 @@ def _fused_backward_kernel(
     )
     active_real = tl.load(real + source_offset, mask=mask, other=0.0).to(tl.float32)
     active_imag = tl.load(imag + source_offset, mask=mask, other=0.0).to(tl.float32)
-    inverse_rms = tl.load(row_inverse_rms + row_id, mask=row_id < rows, other=0.0).to(
-        tl.float32
-    )
+    inverse_rms = tl.load(row_inverse_rms + row_id, mask=row_id < rows, other=0.0).to(tl.float32)
     active_weight = tl.load(norm_weight + mode, mask=mode < MODES, other=0.0)
     if SOURCE_IS_BF16:
         active_inverse_rms = inverse_rms.to(tl.bfloat16).to(tl.float32)
@@ -545,11 +540,11 @@ def _backward_op(
     )
     grad_norm_weight = torch.empty_like(norm_weight)
     reduce_kernel = autotuned(
-        triton_rmsnorm._packed_complex_rmsnorm_backward_reduce_kernel,  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        triton_rmsnorm._packed_complex_rmsnorm_backward_reduce_kernel,  # pyright: ignore[reportPrivateUsage]
         triton_rmsnorm.BACKWARD_REDUCE_LAUNCH_NAME,
         key=("partial_count", "modes"),
         scope=make_launch_scope(
-            triton_rmsnorm._packed_complex_rmsnorm_backward_reduce_kernel,  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+            triton_rmsnorm._packed_complex_rmsnorm_backward_reduce_kernel,  # pyright: ignore[reportPrivateUsage]
             partial_grad_norm_weight,
             shape={"partial_count": partial_count, "modes": modes},
         ),

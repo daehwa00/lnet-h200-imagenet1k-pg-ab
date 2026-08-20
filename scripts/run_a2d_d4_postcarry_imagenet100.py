@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Train A2D-D4-PathMix with a post-CFFN 48-mode S2D carry-main merge."""
 
-# ruff: noqa: SLF001
-
 from __future__ import annotations
 
 import json
@@ -137,9 +135,7 @@ def _contract(args: Namespace) -> dict[str, object]:
         "carry is then the main state, and a trainable stage scalar initialized "
         "to one multiplies the completed 48-mode pole update."
     )
-    payload["source_sha256"]["a2d_d4_postcarry_runner"] = residuals.harness._digest(
-        Path(__file__)
-    )
+    payload["source_sha256"]["a2d_d4_postcarry_runner"] = residuals.harness._digest(Path(__file__))
     return json.loads(json.dumps(payload))
 
 

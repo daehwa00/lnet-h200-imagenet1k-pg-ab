@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Train A2D-ResAux1 with a 384-then-256 deep fusion head."""
 
-# ruff: noqa: SLF001
-
 from __future__ import annotations
 
 import json
@@ -61,9 +59,7 @@ class DeepModalFusionHead(ModalFusionHead):
     def forward(self, descriptor: Tensor) -> Tensor:
         standardized = self.standardizer(descriptor)
         first = self.norm(self.activation(self.fusion(standardized)))
-        second = self.refinement_norm(
-            self.refinement_activation(self.refinement(first))
-        )
+        second = self.refinement_norm(self.refinement_activation(self.refinement(first)))
         return self.classifier(second)
 
 
@@ -133,9 +129,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
             "Q auxiliary head keeps weight 1.0; no LRQ."
         )
     }
-    payload["source_sha256"]["a2d_deephead_runner"] = (
-        baseline.heads.harness._digest(Path(__file__))
-    )
+    payload["source_sha256"]["a2d_deephead_runner"] = baseline.heads.harness._digest(Path(__file__))
     return json.loads(json.dumps(payload))
 
 

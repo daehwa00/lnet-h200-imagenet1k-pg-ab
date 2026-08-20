@@ -1,6 +1,5 @@
 """Shared ImageNet-100 runtime helpers for associative complex-scan models."""
 
-# ruff: noqa: SLF001
 # pyright: reportExplicitAny=false, reportImplicitRelativeImport=false
 # pyright: reportPrivateUsage=false, reportUnusedFunction=false
 

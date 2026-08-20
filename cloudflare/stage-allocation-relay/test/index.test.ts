@@ -1,0 +1,176 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { CAMPAIGN } from "../src/campaign.generated";
+import worker from "../src/index";
+
+const PROBE_QUERY = `query ProbeServerCapabilities {
+  QueryType: __type(name: "Query") {
+    ...fieldData
+  }
+  MutationType: __type(name: "Mutation") {
+    ...fieldData
+  }
+  ServerInfoType: __type(name: "ServerInfo") {
+    ...fieldData
+  }
+}
+
+fragment fieldData on __Type {
+  fields {
+    name
+  }
+}
+`;
+
+const UPSERT_QUERY = `
+mutation UpsertBucket ($id: String, $name: String, $project: String, $entity: String, $groupName: String, $description: String, $displayName: String, $notes: String, $commit: String, $config: JSONString, $host: String, $debug: Boolean, $program: String, $repo: String, $jobType: String, $state: String, $sweep: String, $tags: [String!], $summaryMetrics: JSONString) {
+\tupsertBucket(input: {id:$id,name:$name,groupName:$groupName,modelName:$project,entityName:$entity,description:$description,displayName:$displayName,notes:$notes,config:$config,commit:$commit,host:$host,debug:$debug,jobProgram:$program,jobRepo:$repo,jobType:$jobType,state:$state,sweep:$sweep,tags:$tags,summaryMetrics:$summaryMetrics}) {
+\t\tbucket {
+\t\t\tid
+\t\t\tname
+\t\t\tdisplayName
+\t\t\tdescription
+\t\t\tconfig
+\t\t\tsweepName
+\t\t\tproject {
+\t\t\t\tid
+\t\t\t\tname
+\t\t\t\tentity {
+\t\t\t\t\tid
+\t\t\t\t\tname
+\t\t\t\t}
+\t\t\t}
+\t\t\thistoryLineCount
+\t\t}
+\t\tinserted
+\t}
+}
+`;
+
+function testEnv(rateAllowed = true): Env {
+  return {
+    ALLOWED_EGRESS_IPS: "test-egress",
+    RELAY_RATE_LIMITER: {
+      limit: async () => ({ success: rateAllowed }),
+    },
+    WANDB_API_KEY: "test-only-not-a-real-key",
+  };
+}
+
+function post(path: string, body: unknown, ip = "test-egress"): Request {
+  return new Request(`https://relay.invalid${path}`, {
+    body: JSON.stringify(body),
+    headers: {
+      "CF-Connecting-IP": ip,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+}
+
+describe("H200 W&B relay", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: {} })));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("publishes a versioned, non-secret health contract", async () => {
+    const response = await worker.fetch(new Request("https://relay.invalid/healthz"), testEnv());
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      campaign_id: CAMPAIGN.campaignId,
+      manifest_sha256: CAMPAIGN.manifestSha256,
+      ok: true,
+      protocol_version: CAMPAIGN.protocolVersion,
+    });
+  });
+
+  it("forwards an exact traced GraphQL operation", async () => {
+    const response = await worker.fetch(post("/graphql", {
+      query: PROBE_QUERY,
+      variables: {},
+    }), testEnv());
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Relay-Protocol")).toBe(CAMPAIGN.protocolVersion);
+  });
+
+  it("accepts the exact traced UpsertBucket shape for a frozen run", async () => {
+    const [runId, run] = Object.entries(CAMPAIGN.runsById)[0];
+    const response = await worker.fetch(post("/graphql", {
+      operationName: "UpsertBucket",
+      query: UPSERT_QUERY,
+      variables: {
+        commit: null,
+        config: "{}",
+        debug: false,
+        description: null,
+        displayName: run.displayName,
+        entity: CAMPAIGN.entity,
+        groupName: CAMPAIGN.group,
+        host: "untrusted-host-is-overwritten",
+        id: null,
+        jobType: null,
+        name: runId,
+        notes: null,
+        program: "untrusted-program-is-overwritten",
+        project: CAMPAIGN.project,
+        repo: null,
+        state: "running",
+        summaryMetrics: null,
+        sweep: null,
+        tags: [...run.tags],
+      },
+    }), testEnv());
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects a request outside the secret egress allowlist", async () => {
+    const response = await worker.fetch(post("/graphql", {}, "other-egress"), testEnv());
+    expect(response.status).toBe(403);
+  });
+
+  it("rejects untraced GraphQL text", async () => {
+    const response = await worker.fetch(post("/graphql", {
+      operationName: "ProbeServerCapabilities",
+      query: "query ProbeServerCapabilities { __typename }",
+      variables: {},
+    }), testEnv());
+    expect(response.status).toBe(403);
+  });
+
+  it("rejects console output from file_stream", async () => {
+    const runId = Object.keys(CAMPAIGN.runsById)[0];
+    const response = await worker.fetch(post(
+      `/files/${CAMPAIGN.entity}/${CAMPAIGN.project}/${runId}/file_stream`,
+      { files: { "output.log": { content: ["must not pass"], offset: 0 } } },
+    ), testEnv());
+    expect(response.status).toBe(403);
+  });
+
+  it("forwards bounded wandb-history file_stream data", async () => {
+    const runId = Object.keys(CAMPAIGN.runsById)[0];
+    const path = `/files/${CAMPAIGN.entity}/${CAMPAIGN.project}/${runId}/file_stream`;
+    const response = await worker.fetch(post(path, {
+      files: { "wandb-history.jsonl": { content: ["{\"epoch\":1}"], offset: 0 } },
+    }), testEnv());
+    expect(response.status).toBe(200);
+  });
+
+  it("enforces the per-run rate limiter", async () => {
+    const response = await worker.fetch(post("/graphql", {
+      query: PROBE_QUERY,
+      variables: {},
+    }), testEnv(false));
+    expect(response.status).toBe(429);
+  });
+
+  it("fails closed when Worker secrets are missing", async () => {
+    const env = testEnv();
+    env.WANDB_API_KEY = "";
+    const response = await worker.fetch(post("/graphql", {}), env);
+    expect(response.status).toBe(503);
+  });
+});

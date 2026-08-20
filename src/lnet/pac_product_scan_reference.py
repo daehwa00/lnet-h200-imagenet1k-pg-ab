@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 # pyright: reportCallIssue=false
-# ruff: noqa: EM101, TRY003
 import torch
 from torch import Tensor
 
@@ -137,9 +136,7 @@ def _product_full16_reference(
         strict=True,
     ):
         active_variance = (
-            variance.mean((1, 2), keepdim=True)
-            if gain_normalization == "global"
-            else variance
+            variance.mean((1, 2), keepdim=True) if gain_normalization == "global" else variance
         )
         inverse = torch.rsqrt(active_variance.detach().clamp_min(epsilon))
         cells = direction_aligned_cells(

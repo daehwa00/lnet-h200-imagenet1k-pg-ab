@@ -38,9 +38,14 @@ def unit_row_complex_linear_weight(
     if epsilon <= 0.0:
         message = "complex-linear row-energy epsilon must be positive"
         raise ValueError(message)
-    row_energy = weight_real.float().square().add(weight_imag.float().square()).sum(
-        dim=-1,
-        keepdim=True,
+    row_energy = (
+        weight_real.float()
+        .square()
+        .add(weight_imag.float().square())
+        .sum(
+            dim=-1,
+            keepdim=True,
+        )
     )
     inverse_norm = torch.rsqrt(row_energy.clamp_min(epsilon)).to(dtype=weight_real.dtype)
     return weight_real * inverse_norm, weight_imag * inverse_norm

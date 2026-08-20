@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 # pyright: reportArgumentType=false, reportCallIssue=false, reportGeneralTypeIssues=false, reportIncompatibleMethodOverride=false, reportMissingParameterType=false, reportPrivateUsage=false
-# ruff: noqa: ANN001, ANN202, EM101, N803, PLR0915, TRY003
 from typing import Protocol
 
 import torch
@@ -395,10 +394,9 @@ def _phase_gate_output_residual_backward_kernel(
         mask=output_mask[:, None] & (mode < HIDDEN),
     )
 
-    gamma_contribution = (
-        unscaled_grad_value_real.to(tl.float32) * hidden_real.to(tl.float32)
-        + unscaled_grad_value_imag.to(tl.float32) * hidden_imag.to(tl.float32)
-    )
+    gamma_contribution = unscaled_grad_value_real.to(tl.float32) * hidden_real.to(
+        tl.float32
+    ) + unscaled_grad_value_imag.to(tl.float32) * hidden_imag.to(tl.float32)
     partial_gamma = tl.sum(
         tl.sum(tl.where(mask, gamma_contribution, 0.0), axis=1),
         axis=0,
@@ -457,7 +455,7 @@ def _forward_op(
     imag: Tensor,
     gamma: Tensor,
     redistribution: float,
-    self_gated: bool,  # noqa: FBT001
+    self_gated: bool,
 ) -> tuple[Tensor, Tensor, Tensor]:
     if not supports_fused_phase_gate_output_residual(
         projected,
@@ -541,7 +539,7 @@ def _backward_op(
     grad_imag: Tensor,
     gamma: Tensor,
     redistribution: float,
-    self_gated: bool,  # noqa: FBT001
+    self_gated: bool,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     if (
         grad_real.shape != grad_imag.shape
@@ -632,11 +630,11 @@ def _backward_op(
     )
     grad_alpha = torch.empty_like(alpha)
     alpha_reduce_kernel = autotuned(
-        triton_phase_gate._phase_gate_backward_reduce_kernel,  # noqa: SLF001
+        triton_phase_gate._phase_gate_backward_reduce_kernel,
         triton_phase_gate.BACKWARD_REDUCE_LAUNCH_NAME,
         key=("partial_count", "hidden"),
         scope=make_launch_scope(
-            triton_phase_gate._phase_gate_backward_reduce_kernel,  # noqa: SLF001
+            triton_phase_gate._phase_gate_backward_reduce_kernel,
             partial_grad_alpha,
             shape={"partial_count": partial_count, "hidden": hidden},
         ),

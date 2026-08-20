@@ -8,9 +8,6 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional
 
-from .complex_scan_transitions import FixedComplexRMSNorm
-from .pac_mean_one_magnitude_gate import MeanOneMagnitudeGate
-
 ComplexField = tuple[Tensor, Tensor]
 
 
@@ -74,9 +71,12 @@ class PackedComplexConv2dReader(nn.Module):
     def normalized_weight(self) -> ComplexField:
         """Return a strict-complex kernel with unit energy per output mode."""
         effective_real = self.weight_real + self._identity_kernel
-        row_energy = effective_real.float().square().add(
-            self.weight_imag.float().square()
-        ).sum(dim=(1, 2, 3), keepdim=True)
+        row_energy = (
+            effective_real.float()
+            .square()
+            .add(self.weight_imag.float().square())
+            .sum(dim=(1, 2, 3), keepdim=True)
+        )
         inverse_rms = torch.rsqrt(row_energy.clamp_min(self.variance_epsilon)).to(
             dtype=effective_real.dtype
         )
@@ -100,15 +100,10 @@ class PackedComplexConv2dReader(nn.Module):
         )
         output = functional.conv2d(packed, kernel, padding=self.padding)
         if self.match_input_rms:
-            input_energy = packed.float().square().sum(dim=1, keepdim=True).div(
-                self.input_modes
-            )
-            output_energy = output.float().square().sum(dim=1, keepdim=True).div(
-                self.output_modes
-            )
+            input_energy = packed.float().square().sum(dim=1, keepdim=True).div(self.input_modes)
+            output_energy = output.float().square().sum(dim=1, keepdim=True).div(self.output_modes)
             token_scale = torch.sqrt(
-                (input_energy + self.variance_epsilon)
-                / (output_energy + self.variance_epsilon)
+                (input_energy + self.variance_epsilon) / (output_energy + self.variance_epsilon)
             ).to(dtype=output.dtype)
             output = output * token_scale
         output_real, output_imag = output.split(self.output_modes, dim=1)
@@ -120,76 +115,4 @@ class PackedComplexConv2dReader(nn.Module):
         )
 
 
-class ResidualGatedComplexConv2dReader(nn.Module):
-    """Add bounded, magnitude-gated local evidence to the original excitation."""
-
-    def __init__(
-        self,
-        modes: int,
-        *,
-        kernel_size: int = 3,
-        residual_scale_init: float = 0.01,
-        residual_scale_max: float = 0.5,
-        variance_epsilon: float = 1.0e-12,
-        gate_alpha_init: float = 0.075,
-        gate_redistribution: float = 0.5,
-    ) -> None:
-        super().__init__()
-        if modes <= 0:
-            message = "residual gated reader requires positive modes"
-            raise ValueError(message)
-        if residual_scale_max <= 0.0:
-            message = "residual gated reader scale bound must be positive"
-            raise ValueError(message)
-        if not 0.0 <= residual_scale_init < residual_scale_max:
-            message = "residual gated reader initial scale must lie inside its bound"
-            raise ValueError(message)
-        self.modes = modes
-        self.kernel_size = kernel_size
-        self.residual_scale_max = float(residual_scale_max)
-        self.candidate = PackedComplexConv2dReader(
-            modes,
-            modes,
-            kernel_size=kernel_size,
-            variance_epsilon=variance_epsilon,
-            match_input_rms=True,
-        )
-        self.gate_norm = FixedComplexRMSNorm(modes)
-        self.gate = MeanOneMagnitudeGate(
-            modes,
-            alpha_init=gate_alpha_init,
-            redistribution=gate_redistribution,
-        )
-        initial_logit = math.atanh(residual_scale_init / residual_scale_max)
-        self.gamma = nn.Parameter(torch.tensor(initial_logit))
-
-    def initialize_identity_(self) -> None:
-        """Start as the exact identity while keeping the local branch trainable."""
-        self.candidate.initialize_identity_()
-
-    def effective_residual_scale(self) -> Tensor:
-        """Return the bounded real strength of the local evidence branch."""
-        return self.residual_scale_max * torch.tanh(self.gamma)
-
-    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
-        if real.shape != imag.shape or real.ndim != 4:
-            message = "residual gated reader requires matching NHWM fields"
-            raise ValueError(message)
-        if real.shape[-1] != self.modes:
-            message = "residual gated reader input has an incompatible mode dimension"
-            raise ValueError(message)
-
-        candidate_real, candidate_imag = self.candidate(real, imag)
-        normalized_real, normalized_imag = self.gate_norm(
-            candidate_real,
-            candidate_imag,
-        )
-        gain = self.gate(normalized_real, normalized_imag)
-        scale = self.effective_residual_scale().to(dtype=real.dtype)
-        return (
-            real + scale * gain * (candidate_real - real),
-            imag + scale * gain * (candidate_imag - imag),
-        )
-
-
-__all__ = ["PackedComplexConv2dReader", "ResidualGatedComplexConv2dReader"]
+__all__ = ["PackedComplexConv2dReader"]

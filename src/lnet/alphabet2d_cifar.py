@@ -122,9 +122,7 @@ class _PoleFreeBlock(nn.Module):
         normalized = self.norm(functional.silu(local))
         real, imag = self.field(normalized)
         update = self.field.synthesize(real, imag)
-        output = inputs + self.mixer_scale * (
-            update + self.direct_scale * normalized
-        )
+        output = inputs + self.mixer_scale * (update + self.direct_scale * normalized)
         output = output + self.mlp_scale * self.mlp(self.mlp_norm(output))
         return output, real, imag
 
@@ -141,9 +139,7 @@ class PoleFreeNano(nn.Module):
             kernel_size=config.patch_size,
             stride=config.patch_size,
         )
-        self.blocks = nn.ModuleList(
-            [_PoleFreeBlock(config) for _ in range(config.depth)]
-        )
+        self.blocks = nn.ModuleList([_PoleFreeBlock(config) for _ in range(config.depth)])
         self.reader_local = nn.Conv2d(
             config.model_dim,
             config.model_dim,
@@ -199,9 +195,7 @@ class HybridReaderNano(nn.Module):
             kernel_size=config.patch_size,
             stride=config.patch_size,
         )
-        self.blocks = nn.ModuleList(
-            [_PoleFreeBlock(config) for _ in range(config.depth)]
-        )
+        self.blocks = nn.ModuleList([_PoleFreeBlock(config) for _ in range(config.depth)])
         self.reader_local = nn.Conv2d(
             config.model_dim,
             config.model_dim,

@@ -6,7 +6,6 @@ from __future__ import annotations
 # pyright: reportArgumentType=false, reportExplicitAny=false
 # pyright: reportImplicitRelativeImport=false, reportPrivateLocalImportUsage=false
 # pyright: reportPrivateUsage=false
-# ruff: noqa: SLF001
 from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -45,29 +44,19 @@ PATH_PG_VARIANT = "PGv2-H96-K3-RMSMatch-PathPG8"
 PATH_PG_NO_SILU_VARIANT = "PGv2-H96-K3-RMSMatch-PathPG8-NoSiLU"
 AVG_REEXCITE_VARIANT = "PGv2-H96-K3-RMSMatch-PathPG8-AvgRePG"
 AVG_PURE_GATE_VARIANT = "PGv2-H96-K3-RMSMatch-PathPG8-AvgPureGate"
-AVG_PURE_GATE_NO_STEM_RMS_VARIANT = (
-    "PGv2-H96-K3-RMSMatch-PathPG8-AvgPureGate-NoStemRMS"
-)
+AVG_PURE_GATE_NO_STEM_RMS_VARIANT = "PGv2-H96-K3-RMSMatch-PathPG8-AvgPureGate-NoStemRMS"
 MEMORY_ONLY_PURE_GATE_VARIANT = "PGv2-H96-K3-RMSMatch-PathPG8-PureGate-NoCarry"
 AVG_REEXCITE_NOTE_PREFIX = (
     "; the collapsed memory is added to a fixed 2x2 average of the pre-reader"
 )
-AVG_REEXCITE_NOTE_MIDDLE = (
-    "excitation, then a shared H96 PG applies an exact unit-scale residual"
-)
+AVG_REEXCITE_NOTE_MIDDLE = "excitation, then a shared H96 PG applies an exact unit-scale residual"
 AVG_REEXCITE_NOTE_SUFFIX = "refinement. Q1536, head, and recipe are unchanged."
 AVG_REEXCITE_ARCHITECTURE_NOTE = (
     f"{AVG_REEXCITE_NOTE_PREFIX} {AVG_REEXCITE_NOTE_MIDDLE} {AVG_REEXCITE_NOTE_SUFFIX}"
 )
-AVG_PURE_GATE_NOTE_PREFIX = (
-    "; fixed 2x2 average carry is merged with memory and pure mean-one"
-)
-AVG_PURE_GATE_NOTE_SUFFIX = (
-    "magnitude gating computes E_next=X*g without projections or gamma."
-)
-AVG_PURE_GATE_ARCHITECTURE_NOTE = (
-    f"{AVG_PURE_GATE_NOTE_PREFIX} {AVG_PURE_GATE_NOTE_SUFFIX}"
-)
+AVG_PURE_GATE_NOTE_PREFIX = "; fixed 2x2 average carry is merged with memory and pure mean-one"
+AVG_PURE_GATE_NOTE_SUFFIX = "magnitude gating computes E_next=X*g without projections or gamma."
+AVG_PURE_GATE_ARCHITECTURE_NOTE = f"{AVG_PURE_GATE_NOTE_PREFIX} {AVG_PURE_GATE_NOTE_SUFFIX}"
 MEMORY_ONLY_PURE_GATE_NOTE_PREFIX = (
     "; S2D carry is absent and pure mean-one magnitude gating is applied"
 )
@@ -77,13 +66,9 @@ MEMORY_ONLY_PURE_GATE_NOTE_SUFFIX = (
 MEMORY_ONLY_PURE_GATE_ARCHITECTURE_NOTE = (
     f"{MEMORY_ONLY_PURE_GATE_NOTE_PREFIX} {MEMORY_ONLY_PURE_GATE_NOTE_SUFFIX}"
 )
-NO_STEM_RMS_NOTE_PREFIX = (
-    " The RMSNorm between the residual real stem mixer and orthogonal"
-)
+NO_STEM_RMS_NOTE_PREFIX = " The RMSNorm between the residual real stem mixer and orthogonal"
 NO_STEM_RMS_NOTE_SUFFIX = "complex analysis is removed."
-NO_STEM_RMS_ARCHITECTURE_NOTE = (
-    f"{NO_STEM_RMS_NOTE_PREFIX} {NO_STEM_RMS_NOTE_SUFFIX}"
-)
+NO_STEM_RMS_ARCHITECTURE_NOTE = f"{NO_STEM_RMS_NOTE_PREFIX} {NO_STEM_RMS_NOTE_SUFFIX}"
 RMS_MATCH_VARIANTS = (
     RMS_MATCH_VARIANT,
     UNIT_ROW_VARIANT,
@@ -309,10 +294,7 @@ def _assert_pure_gate(
         if (
             transition.norm.modes != P
             or transition.gate.modes != P
-            or (
-                use_average_carry
-                and transition.carry_input_modes != 4 * P
-            )
+            or (use_average_carry and transition.carry_input_modes != 4 * P)
             or (not use_average_carry and hasattr(transition, "carry_input_modes"))
         ):
             message = f"{name} changed the pure magnitude-gate contract"
@@ -392,10 +374,8 @@ def _assert_model(
         if (
             mode.unit_row_projections is not unit_row_pg
             or mode.projected_direction_rows is not mode_gain_pg
-            or mode.residual_scale_max
-            != (PG_RESIDUAL_SCALE_MAX if unit_row_pg else None)
-            or mode.output_gain_max
-            != (PG_OUTPUT_GAIN_MAX if mode_gain_pg else None)
+            or mode.residual_scale_max != (PG_RESIDUAL_SCALE_MAX if unit_row_pg else None)
+            or mode.output_gain_max != (PG_OUTPUT_GAIN_MAX if mode_gain_pg else None)
         ):
             message = f"{name} changed the Phase-Gated scale contract"
             raise RuntimeError(message)
@@ -420,9 +400,7 @@ def _build(variant: str, config: ComplexScanConfig) -> ComplexScanBackbone:
     )
     average_reexcitation = variant == AVG_REEXCITE_VARIANT
     pure_gate_carry = (
-        variant != MEMORY_ONLY_PURE_GATE_VARIANT
-        if variant in PURE_GATE_VARIANTS
-        else None
+        variant != MEMORY_ONLY_PURE_GATE_VARIANT if variant in PURE_GATE_VARIANTS else None
     )
     no_stem_rmsnorm = variant == AVG_PURE_GATE_NO_STEM_RMS_VARIANT
     model = control._build(control.VARIANT, config)
@@ -592,9 +570,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
     payload["evidence_status"] = "controlled PGv2-H96 local-reader gain experiment"
     payload["variants"] = list(selected)
     payload["seeds"] = list(SEEDS)
-    payload["variant_configs"] = {
-        variant: _variant_config(variant) for variant in selected
-    }
+    payload["variant_configs"] = {variant: _variant_config(variant) for variant in selected}
     if selected == (MODE_GAIN_VARIANT,):
         payload["recipe"]["phase_gated_optimizer"] = {
             "direction_learning_rate": 3.0e-3,
@@ -613,8 +589,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
     full_reader_parameters = 4 * 2 * P * P * KERNEL_SIZE**2
     point_reader_parameters = 4 * 2 * P * P
     original_parameters = sum(
-        parameter.numel()
-        for parameter in control._build(control.VARIANT, config).parameters()
+        parameter.numel() for parameter in control._build(control.VARIANT, config).parameters()
     )
     payload["parameter_comparison"] = {
         "original_pgv2_h96_all3e3": original_parameters,
@@ -624,9 +599,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
         "delta_vs_original": full_reader_parameters,
         "delta_vs_strict_1x1_control": full_reader_parameters - point_reader_parameters,
     }
-    architecture_prefix = (
-        "Exact PGv2-H96-All3e-3 except that each scan branch reads a local K3"
-    )
+    architecture_prefix = "Exact PGv2-H96-All3e-3 except that each scan branch reads a local K3"
     architecture_prefix += (
         " neighborhood with one unit-row-energy strict-complex full P-to-P convolution,"
     )
@@ -634,9 +607,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
         " replacing rather than stacking with the conceptual strict 1x1 B_s reader."
     )
     architecture_prefix += " The reader begins as the exact identity"
-    unit_row_prefix = (
-        "; every PG strict-complex projection has unit output-row energy and "
-    )
+    unit_row_prefix = "; every PG strict-complex projection has unit output-row energy and "
     unit_row_note = f"{unit_row_prefix}the sole branch-strength gamma is bounded to (-0.5, 0.5)"
     mode_gain_note = (
         "; PG input/output rows are optimizer-projected directions, and signed "
@@ -650,12 +621,8 @@ def _contract(args: Namespace) -> dict[str, Any]:
                 if variant in RMS_MATCH_VARIANTS
                 else ""
             )
-            + (
-                unit_row_note if variant == UNIT_ROW_VARIANT else ""
-            )
-            + (
-                mode_gain_note if variant == MODE_GAIN_VARIANT else ""
-            )
+            + (unit_row_note if variant == UNIT_ROW_VARIANT else "")
+            + (mode_gain_note if variant == MODE_GAIN_VARIANT else "")
             + (
                 "; Stage 3 PG mode residual is removed while its Path GWL is preserved"
                 if variant == NO_PG_STAGE3_VARIANT
@@ -695,9 +662,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
     payload["source_sha256"]["complex_scan_reader"] = digest(
         Path("src/lnet/pac_complex_scan_reader.py")
     )
-    payload["source_sha256"]["phase_gated_cffn"] = digest(
-        Path("src/lnet/pac_phase_gated_cffn.py")
-    )
+    payload["source_sha256"]["phase_gated_cffn"] = digest(Path("src/lnet/pac_phase_gated_cffn.py"))
     payload["source_sha256"]["mean_one_magnitude_gate"] = digest(
         Path("src/lnet/pac_mean_one_magnitude_gate.py")
     )

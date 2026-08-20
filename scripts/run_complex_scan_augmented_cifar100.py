@@ -1,4 +1,3 @@
-# ruff: noqa: SLF001
 # pyright: reportAny=false, reportExplicitAny=false, reportMissingImports=false
 # pyright: reportImplicitRelativeImport=false, reportPrivateLocalImportUsage=false
 # pyright: reportPrivateUsage=false
@@ -72,12 +71,7 @@ def _build_optimizer(
             or "augmented.output_projection" in name
         ):
             modal_no_decay.append(parameter)
-        elif (
-            parameter.ndim < 2
-            or "norm" in name
-            or "initial_" in name
-            or name.endswith(".bias")
-        ):
+        elif parameter.ndim < 2 or "norm" in name or "initial_" in name or name.endswith(".bias"):
             no_decay.append(parameter)
         else:
             decay.append(parameter)

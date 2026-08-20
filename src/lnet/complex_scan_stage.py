@@ -245,7 +245,7 @@ class ComplexCCCNDownsample(nn.Module):
 class ComplexScanStage(nn.Module):
     """Reusable two-dimensional complex product-scan stage."""
 
-    def __init__(  # noqa: C901, PLR0912, PLR0915
+    def __init__(
         self,
         modes: int,
         *,
@@ -332,6 +332,10 @@ class ComplexScanStage(nn.Module):
         if scan_memory_policy not in {"retain", "recompute"}:
             message = f"unsupported scan memory policy: {scan_memory_policy}"
             raise ValueError(message)
+        # ``input_modes`` is the excitation width presented to the stage.  It
+        # normally equals the pole count, but a pole-input reader may map an
+        # arbitrary excitation width onto ``modes`` scan drives.
+        self.input_modes = modes
         self.modes = modes
         self.output_modes = output_modes
         self.carry_basis: ComplexCarryBasis = carry_basis
@@ -453,7 +457,7 @@ class ComplexScanStage(nn.Module):
         damping = self.damping_min + (self.damping_max - self.damping_min) * ratio
         return damping[0], damping[1]
 
-    def _pole_coefficients(
+    def pole_coefficients(
         self,
         shape: tuple[int, int, int, int],
     ) -> tuple[
@@ -502,12 +506,12 @@ class ComplexScanStage(nn.Module):
             raise RuntimeError(message)
         return self.output_norm(*self.bridge(real, imag))
 
-    def forward(  # noqa: C901, PLR0912, PLR0915
+    def forward(
         self,
         real: Tensor,
         imag: Tensor,
     ) -> tuple[ComplexField | None, Tensor]:
-        if real.shape != imag.shape or real.ndim != 4 or real.shape[-1] != self.modes:
+        if real.shape != imag.shape or real.ndim != 4 or real.shape[-1] != self.input_modes:
             message = "complex scan stage inputs must be matching NHWM tensors"
             raise ValueError(message)
         shortcut_input = (real, imag)
@@ -519,6 +523,9 @@ class ComplexScanStage(nn.Module):
         carry_input = (real, imag)
         if self.pole_input_projection is not None:
             real, imag = self.pole_input_projection(real, imag)
+        if real.shape != imag.shape or real.ndim != 4 or real.shape[-1] != self.modes:
+            message = "complex scan reader must emit matching NHWM pole drives"
+            raise ValueError(message)
 
         full_product_cells = bool(
             self.output_modes is not None
@@ -528,22 +535,21 @@ class ComplexScanStage(nn.Module):
         epilogue = (
             "full16"
             if full_product_cells
-            else "coarse" if self.output_modes is not None else "descriptor"
+            else "coarse"
+            if self.output_modes is not None
+            else "descriptor"
         )
-        backend_available = (
-            not real.is_cuda
-            or (
-                supports_pac_triton_product_scan_coarse4(real, imag)
-                if epilogue != "descriptor"
-                else supports_pac_triton_product_scan_descriptor4(real, imag)
-            )
+        backend_available = not real.is_cuda or (
+            supports_pac_triton_product_scan_coarse4(real, imag)
+            if epilogue != "descriptor"
+            else supports_pac_triton_product_scan_descriptor4(real, imag)
         )
         if not backend_available:
             message = "D4 associative product scan is unavailable for these tensors"
             raise RuntimeError(message)
 
         input_shape = cast("tuple[int, int, int, int]", tuple(real.shape))
-        positive_x, positive_y = self._pole_coefficients(input_shape)
+        positive_x, positive_y = self.pole_coefficients(input_shape)
         scan_output = run_product_scan_pipeline(
             positive_x,
             positive_y,
@@ -582,29 +588,19 @@ class ComplexScanStage(nn.Module):
                 )
             )
         if collapse_product_paths:
-            if (
-                path_real.shape != path_imag.shape
-                or tuple(path_real.shape[-2:]) != (1, self.modes)
-            ):
+            if path_real.shape != path_imag.shape or tuple(path_real.shape[-2:]) != (1, self.modes):
                 message = "collapsed D4 path combiner must emit one product path"
                 raise RuntimeError(message)
             concatenated_real = path_real.squeeze(-2)
             concatenated_imag = path_imag.squeeze(-2)
         else:
-            if (
-                path_real.shape != path_imag.shape
-                or tuple(path_real.shape[-2:]) != (4, self.modes)
-            ):
+            if path_real.shape != path_imag.shape or tuple(path_real.shape[-2:]) != (4, self.modes):
                 message = "D4 path combiner must preserve four product paths"
                 raise RuntimeError(message)
             carry_vector = torch.sigmoid(
                 self.gate_sharpness * (math.pi / 2.0 - self.phase_x.abs())
-            ) * torch.sigmoid(
-                self.gate_sharpness * (math.pi / 2.0 - self.phase_y.abs())
-            )
-            active_carry = carry_vector.view(1, 1, 1, -1, 1).to(
-                dtype=path_real.dtype
-            )
+            ) * torch.sigmoid(self.gate_sharpness * (math.pi / 2.0 - self.phase_y.abs()))
+            active_carry = carry_vector.view(1, 1, 1, -1, 1).to(dtype=path_real.dtype)
             packed_real = active_carry * path_real.transpose(-2, -1)
             packed_imag = active_carry * path_imag.transpose(-2, -1)
             concatenated_real = packed_real.permute(0, 1, 2, 4, 3).flatten(-2)

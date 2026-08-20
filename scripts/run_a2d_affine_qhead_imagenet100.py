@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """End-to-end affine/Q-head bakeoff on the matched A2D-D4-PathMix backbone."""
 
-# ruff: noqa: EM101, SLF001, TRY003
-
 from __future__ import annotations
 
 import json
@@ -19,7 +17,7 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional
 
-from lnet.a2d_q_heads import expected_calibration_error
+from lnet.a2d_q_heads import A2DAffineQClassifier, expected_calibration_error
 from lnet.complex_scan import (
     ComplexScanConfig,
     ModalFusionHead,
@@ -49,61 +47,6 @@ SEEDS = (501, 509, 521)
 _ORIGINAL_EVALUATE = harness._evaluate
 
 
-class A2DAffineQClassifier(nn.Module):
-    """Compose auditable affine, Fusion, and LRQ branches over the same Q."""
-
-    def __init__(
-        self,
-        input_dim: int,
-        output_dim: int,
-        *,
-        main: Literal["affine", "fusion"],
-        affine: StandardizedAffineModalHead | None,
-        fusion: ModalFusionHead | None,
-        lrq: LowRankQuadraticModalHead | None,
-        beta_lrq: nn.Parameter | None,
-        affine_auxiliary_weight: float,
-    ) -> None:
-        super().__init__()
-        if main == "affine" and affine is None:
-            raise ValueError("an affine-main head requires its affine branch")
-        if main == "fusion" and fusion is None:
-            raise ValueError("a fusion-main head requires its fusion branch")
-        if (lrq is None) != (beta_lrq is None):
-            raise ValueError("LRQ and its residual scale must be enabled together")
-        if affine_auxiliary_weight > 0.0 and affine is None:
-            raise ValueError("affine auxiliary loss requires an affine branch")
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.main = main
-        self.affine = affine
-        self.fusion = fusion
-        self.lrq = lrq
-        if beta_lrq is None:
-            self.register_parameter("beta_lrq", None)
-        else:
-            self.beta_lrq = beta_lrq
-        self.affine_auxiliary_weight = float(affine_auxiliary_weight)
-
-    def branch_logits(self, descriptor: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-        affine = self.affine(descriptor) if self.affine is not None else None
-        fusion = self.fusion(descriptor) if self.fusion is not None else None
-        lrq = self.lrq(descriptor) if self.lrq is not None else None
-        reference = affine if affine is not None else fusion
-        if reference is None:
-            raise RuntimeError("A2D Q classifier has no main branch")
-        zero = torch.zeros_like(reference)
-        affine_term = affine if affine is not None else zero
-        fusion_term = fusion if fusion is not None else zero
-        lrq_term = lrq if lrq is not None else zero
-        joint = affine_term if self.main == "affine" else fusion_term
-        if self.beta_lrq is not None:
-            joint = joint + self.beta_lrq * lrq_term
-        return joint, affine_term, fusion_term, lrq_term
-
-    def forward(self, descriptor: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        joint, affine, fusion, lrq = self.branch_logits(descriptor)
-        return joint, affine, fusion, lrq, descriptor
 
 
 def _protocol(variant: str) -> dict[str, Any]:
@@ -276,9 +219,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
         "source_sha256": {
             "runner": harness._digest(Path(__file__)),
             "harness": harness._digest(Path("scripts/run_alphabet2d_imagenet100_nano.py")),
-            "backbone_runner": harness._digest(
-                Path("scripts/run_a2d_d4_pathmix_imagenet100.py")
-            ),
+            "backbone_runner": harness._digest(Path("scripts/run_a2d_d4_pathmix_imagenet100.py")),
             "model": harness._digest(Path("src/lnet/complex_scan.py")),
         },
     }

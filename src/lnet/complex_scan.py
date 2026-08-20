@@ -29,10 +29,7 @@ from .complex_scan_transitions import (
 )
 from .image_layers import CifarConvStem, LayerNorm2d, LowRankQuadraticModalHead
 
-AffineQuadrantPathModeCFFNCombiner = _path_cffn.AffineQuadrantPathModeCFFNCombiner
 FactorizedQuadrantPathModeCFFNCombiner = _path_cffn.FactorizedQuadrantPathModeCFFNCombiner
-IdentityQuadrantPathModeCombiner = _path_cffn.IdentityQuadrantPathModeCombiner
-JointPathModeCFFNCombiner = _path_cffn.JointPathModeCFFNCombiner
 ComplexLinear = _complex_layers.ComplexLinear
 WidelyLinear = _complex_layers.WidelyLinear
 ComplexScanStage = _ComplexScanStage
@@ -51,24 +48,8 @@ ComplexInteractionTransition = _transitions.ComplexInteractionTransition
 ComplexModulatedTransition = _transitions.ComplexModulatedTransition
 ComplexResidualFFN = _transitions.ComplexResidualFFN
 ComplexScanConfig = _config.ComplexScanConfig
-FixedComplexRMSNorm = _transitions.FixedComplexRMSNorm
-S2DCarryMainTransition = _transitions.S2DCarryMainTransition
-S2DCleanProjectedResidualPostFusionCFFNTransition = (
-    _transitions.S2DCleanProjectedResidualPostFusionCFFNTransition
-)
-S2DDirectPostFusionCFFNTransition = _transitions.S2DDirectPostFusionCFFNTransition
-S2DJointPathResidualPostFusionCFFNTransition = (
-    _transitions.S2DJointPathResidualPostFusionCFFNTransition
-)
 S2DPostCFFNCarryMainTransition = _transitions.S2DPostCFFNCarryMainTransition
 S2DPostFusionCFFNTransition = _transitions.S2DPostFusionCFFNTransition
-S2DProjectedResidualPostFusionCFFNTransition = (
-    _transitions.S2DProjectedResidualPostFusionCFFNTransition
-)
-S2DStrictComplexPostCarryTransition = _transitions.S2DStrictComplexPostCarryTransition
-S2DUnnormalizedPolePostFusionCFFNTransition = (
-    _transitions.S2DUnnormalizedPolePostFusionCFFNTransition
-)
 
 
 class ModalFusionHead(nn.Module):
@@ -567,7 +548,7 @@ class ComplexPixelStem(nn.Module):
 class ComplexScanBackbone(nn.Module):
     """Real stem and head connected by one continuous complex modal backbone."""
 
-    def __init__(  # noqa: PLR0915
+    def __init__(
         self,
         config: ComplexScanConfig | None = None,
     ) -> None:

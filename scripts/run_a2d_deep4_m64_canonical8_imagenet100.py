@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Train the fair-damped D4-M64 control with a canonical eight-angle atlas."""
 
-# ruff: noqa: SLF001
-
 from __future__ import annotations
 
 import json

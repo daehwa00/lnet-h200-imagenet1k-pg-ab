@@ -9,14 +9,14 @@ and a fixed positive-semidefinite metric.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, cast
 
 import torch
 from torch import Tensor, nn
 
 from .a2d_spectral_prototype import prototype_logits
 from .complex_scan import ModalFusionHead
-from .image_layers import LowRankQuadraticModalHead
+from .image_layers import LowRankQuadraticModalHead, StandardizedAffineModalHead
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -30,7 +30,8 @@ def expected_calibration_error(
 ) -> float:
     """Return equal-width expected calibration error."""
     if bins <= 0:
-        raise ValueError("ECE requires at least one bin")
+        message = "ECE requires at least one bin"
+        raise ValueError(message)
     probabilities = logits.float().softmax(dim=-1)
     confidence, prediction = probabilities.max(dim=-1)
     correct = prediction.eq(labels.to(prediction.device)).float()
@@ -41,67 +42,11 @@ def expected_calibration_error(
         upper = boundaries[index + 1]
         active = (confidence > lower) & (confidence <= upper)
         if bool(active.any()):
-            error = error + active.float().mean() * (
-                correct[active].mean() - confidence[active].mean()
-            ).abs()
+            error = (
+                error
+                + active.float().mean() * (correct[active].mean() - confidence[active].mean()).abs()
+            )
     return float(error)
-
-
-def energy_kmeans_prototypes(
-    standardized_features: Tensor,
-    raw_log_features: Tensor,
-    labels: Tensor,
-    *,
-    components: int,
-    iterations: int = 12,
-) -> tuple[Tensor, Tensor]:
-    """Fit class-wise K-means, then estimate centroids in energy space."""
-    if components <= 0 or iterations <= 0:
-        raise ValueError("prototype components and iterations must be positive")
-    if standardized_features.shape != raw_log_features.shape:
-        raise ValueError("standardized and raw prototype features must align")
-    classes = torch.unique(labels.to(torch.long), sorted=True)
-    all_prototypes: list[Tensor] = []
-    all_classes: list[Tensor] = []
-    for class_value in classes:
-        active_mask = labels == class_value
-        active = standardized_features[active_mask]
-        active_raw = raw_log_features[active_mask]
-        if active.shape[0] < components:
-            raise ValueError("every class needs at least K examples")
-        # Deterministic farthest-point initialization avoids seed-dependent
-        # empty clusters while preserving the requested split-seed protocol.
-        first = (active - active.mean(dim=0, keepdim=True)).square().sum(dim=1).argmax()
-        center_indices = [int(first)]
-        minimum_distance = (active - active[first]).square().sum(dim=1)
-        for _ in range(1, components):
-            next_index = int(minimum_distance.argmax())
-            center_indices.append(next_index)
-            next_distance = (active - active[next_index]).square().sum(dim=1)
-            minimum_distance = torch.minimum(minimum_distance, next_distance)
-        centers = active[torch.tensor(center_indices, device=active.device)]
-        assignment = torch.zeros(active.shape[0], device=active.device, dtype=torch.long)
-        for _ in range(iterations):
-            assignment = torch.cdist(active, centers).argmin(dim=1)
-            counts = torch.bincount(assignment, minlength=components)
-            if bool((counts == 0).any()):
-                # Re-seed empty components with points farthest from their
-                # currently assigned center.
-                assigned_distance = (active - centers[assignment]).square().sum(dim=1)
-                for empty in torch.nonzero(counts == 0, as_tuple=False).flatten():
-                    replacement = assigned_distance.argmax()
-                    assignment[replacement] = empty
-                    assigned_distance[replacement] = -1.0
-            centers = torch.stack(
-                [active[assignment == index].mean(dim=0) for index in range(components)]
-            )
-        raw_energy = torch.expm1(active_raw.float()).clamp_min_(0.0)
-        for component in range(components):
-            all_prototypes.append(
-                torch.log1p(raw_energy[assignment == component].mean(dim=0))
-            )
-            all_classes.append(class_value)
-    return torch.stack(all_prototypes), torch.stack(all_classes)
 
 
 def grouped_logsumexp_logits(
@@ -123,140 +68,61 @@ def grouped_logsumexp_logits(
     )
 
 
-class PrototypeMetricHead(nn.Module):
-    """Fixed prototypes with a learned shared ``D + U U^T`` metric."""
+class A2DAffineQClassifier(nn.Module):
+    """Compose auditable affine, fusion, and LRQ branches over one descriptor."""
 
     def __init__(
         self,
-        prototypes: Tensor,
+        input_dim: int,
+        output_dim: int,
         *,
-        classes: int,
-        components: int = 1,
-        initial_diagonal: Tensor | None = None,
-        rank: int = 0,
-        learn_temperature: bool = False,
+        main: Literal["affine", "fusion"],
+        affine: StandardizedAffineModalHead | None,
+        fusion: ModalFusionHead | None,
+        lrq: LowRankQuadraticModalHead | None,
+        beta_lrq: nn.Parameter | None,
+        affine_auxiliary_weight: float,
     ) -> None:
         super().__init__()
-        if prototypes.ndim != 2 or prototypes.shape[0] != classes * components:
-            raise ValueError("prototype tensor does not match C x K")
-        self.classes = classes
-        self.components = components
-        self.input_dim = prototypes.shape[1]
-        self.register_buffer("prototypes", prototypes.detach().clone())
-        if initial_diagonal is None:
-            initial_diagonal = torch.ones(self.input_dim, device=prototypes.device)
-        self.log_diagonal = nn.Parameter(initial_diagonal.float().log())
-        if rank > 0:
-            self.low_rank = nn.Parameter(torch.empty(self.input_dim, rank))
-            nn.init.normal_(self.low_rank, std=1.0e-3)
+        if main == "affine" and affine is None:
+            raise ValueError("an affine-main head requires its affine branch")
+        if main == "fusion" and fusion is None:
+            raise ValueError("a fusion-main head requires its fusion branch")
+        if (lrq is None) != (beta_lrq is None):
+            raise ValueError("LRQ and its residual scale must be enabled together")
+        if affine_auxiliary_weight > 0.0 and affine is None:
+            raise ValueError("affine auxiliary loss requires an affine branch")
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.main = main
+        self.affine = affine
+        self.fusion = fusion
+        self.lrq = lrq
+        if beta_lrq is None:
+            self.register_parameter("beta_lrq", None)
         else:
-            self.register_parameter("low_rank", None)
-        self.logit_scale = nn.Parameter(torch.zeros(()))
-        if learn_temperature and components > 1:
-            self.log_temperature = nn.Parameter(torch.zeros(()))
-        else:
-            self.register_parameter("log_temperature", None)
+            self.beta_lrq = beta_lrq
+        self.affine_auxiliary_weight = float(affine_auxiliary_weight)
 
-    def diagonal(self) -> Tensor:
-        centered = self.log_diagonal - torch.logsumexp(self.log_diagonal, dim=0)
-        return centered.exp() * self.input_dim
+    def branch_logits(self, descriptor: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        affine = self.affine(descriptor) if self.affine is not None else None
+        fusion = self.fusion(descriptor) if self.fusion is not None else None
+        lrq = self.lrq(descriptor) if self.lrq is not None else None
+        reference = affine if affine is not None else fusion
+        if reference is None:
+            raise RuntimeError("A2D Q classifier has no main branch")
+        zero = torch.zeros_like(reference)
+        affine_term = affine if affine is not None else zero
+        fusion_term = fusion if fusion is not None else zero
+        lrq_term = lrq if lrq is not None else zero
+        joint = affine_term if self.main == "affine" else fusion_term
+        if self.beta_lrq is not None:
+            joint = joint + self.beta_lrq * lrq_term
+        return joint, affine_term, fusion_term, lrq_term
 
-    def component_logits(self, features: Tensor) -> Tensor:
-        return prototype_logits(
-            features,
-            self.prototypes,
-            diagonal=self.diagonal(),
-            low_rank=self.low_rank,
-            logit_scale=self.logit_scale.clamp(-4.0, 4.0).exp(),
-        )
-
-    def forward(self, features: Tensor) -> Tensor:
-        logits = self.component_logits(features)
-        if self.components == 1:
-            return logits
-        temperature: Tensor | float = 1.0
-        if self.log_temperature is not None:
-            temperature = self.log_temperature.clamp(-2.0, 2.0).exp()
-        return grouped_logsumexp_logits(
-            logits,
-            classes=self.classes,
-            components=self.components,
-            temperature=temperature,
-        )
-
-
-class StagewisePrototypeMetricHead(nn.Module):
-    """Sum independently metricized prototype logits for each A2D stage."""
-
-    def __init__(
-        self,
-        prototypes: Tensor,
-        *,
-        classes: int,
-        components: int,
-        stage_dims: Sequence[int],
-        rank: int,
-    ) -> None:
-        super().__init__()
-        if sum(stage_dims) != prototypes.shape[1]:
-            raise ValueError("stage dimensions do not span the descriptor")
-        self.classes = classes
-        self.components = components
-        self.stage_dims = tuple(int(dimension) for dimension in stage_dims)
-        self.stage_heads = nn.ModuleList()
-        offset = 0
-        for dimension in self.stage_dims:
-            self.stage_heads.append(
-                PrototypeMetricHead(
-                    prototypes[:, offset : offset + dimension],
-                    classes=classes,
-                    components=components,
-                    rank=rank,
-                    learn_temperature=False,
-                )
-            )
-            offset += dimension
-        self.stage_log_scales = nn.Parameter(torch.zeros(len(self.stage_dims)))
-        self.log_temperature = nn.Parameter(torch.zeros(())) if components > 1 else None
-
-    def stage_component_logits(self, features: Tensor) -> tuple[Tensor, ...]:
-        pieces = features.split(self.stage_dims, dim=-1)
-        scales = self.stage_log_scales.clamp(-3.0, 3.0).exp()
-        return tuple(
-            scales[index] * head.component_logits(piece)
-            for index, (head, piece) in enumerate(zip(self.stage_heads, pieces, strict=True))
-        )
-
-    def forward(self, features: Tensor) -> Tensor:
-        component_logits = torch.stack(self.stage_component_logits(features), dim=0).sum(dim=0)
-        if self.components == 1:
-            return component_logits
-        temperature = self.log_temperature.clamp(-2.0, 2.0).exp()
-        return grouped_logsumexp_logits(
-            component_logits,
-            classes=self.classes,
-            components=self.components,
-            temperature=temperature,
-        )
-
-
-class PrototypeResidualHead(nn.Module):
-    """Keep prototype logits primary and add one zero-safe residual branch."""
-
-    def __init__(
-        self,
-        prototype: nn.Module,
-        residual: nn.Module,
-        *,
-        beta_initial: float,
-    ) -> None:
-        super().__init__()
-        self.prototype = prototype
-        self.residual = residual
-        self.beta = nn.Parameter(torch.tensor(float(beta_initial)))
-
-    def forward(self, features: Tensor) -> Tensor:
-        return self.prototype(features) + self.beta * self.residual(features)
+    def forward(self, descriptor: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        joint, affine, fusion, lrq = self.branch_logits(descriptor)
+        return joint, affine, fusion, lrq, descriptor
 
 
 class EMAPrototypeHead(nn.Module):
@@ -275,23 +141,28 @@ class EMAPrototypeHead(nn.Module):
     ) -> None:
         super().__init__()
         if not 0.0 < ema_momentum <= 1.0:
-            raise ValueError("EMA momentum must lie in (0, 1]")
+            message = "EMA momentum must lie in (0, 1]"
+            raise ValueError(message)
         self.input_dim = input_dim
         self.classes = classes
         self.components = components
         self.rank = rank
         self.stage_dims = tuple(stage_dims or ())
         if self.stage_dims and sum(self.stage_dims) != input_dim:
-            raise ValueError("stage dimensions do not span the descriptor")
+            message = "stage dimensions do not span the descriptor"
+            raise ValueError(message)
         self.ema_momentum = float(ema_momentum)
         self.delta_scale = float(delta_scale)
+        self.ema_energy: Tensor
+        self.ema_initialized: Tensor
+        self.update_count: Tensor
         self.register_buffer("ema_energy", torch.zeros(classes, components, input_dim))
         self.register_buffer("ema_initialized", torch.zeros(classes, components, dtype=torch.bool))
         self.register_buffer("update_count", torch.zeros(classes, components))
         self.delta = nn.Parameter(torch.empty(classes, components, input_dim))
         nn.init.normal_(self.delta, std=1.0e-3)
         metric_count = len(self.stage_dims) if self.stage_dims else 1
-        metric_dims = self.stage_dims if self.stage_dims else (input_dim,)
+        metric_dims = self.stage_dims or (input_dim,)
         self.log_diagonals = nn.ParameterList(
             [nn.Parameter(torch.zeros(dimension)) for dimension in metric_dims]
         )
@@ -302,7 +173,9 @@ class EMAPrototypeHead(nn.Module):
             self.low_ranks.append(factor)
         self.stage_log_scales = nn.Parameter(torch.zeros(metric_count))
         self.logit_scale = nn.Parameter(torch.zeros(()))
-        self.log_temperature = nn.Parameter(torch.zeros(())) if components > 1 else None
+        self.log_temperature: nn.Parameter | None = (
+            nn.Parameter(torch.zeros(())) if components > 1 else None
+        )
 
     def physical_prototypes(self) -> Tensor:
         physical = torch.log1p(self.ema_energy)
@@ -382,9 +255,7 @@ class EMAPrototypeHead(nn.Module):
             diagonal = self._diagonal(self.log_diagonals[0])
             factor = self.low_ranks[0]
             metric_prototype = flat * diagonal + (flat @ factor) @ factor.T
-            return scale * 2.0 * metric_prototype, scale * -(
-                flat * metric_prototype
-            ).sum(dim=-1)
+            return scale * 2.0 * metric_prototype, scale * -(flat * metric_prototype).sum(dim=-1)
         prototype_stages = prototypes.split(self.stage_dims, dim=-1)
         stage_scales = self.stage_log_scales.clamp(-3.0, 3.0).exp()
         for index, prototype_stage in enumerate(prototype_stages):
@@ -430,7 +301,7 @@ class EMAPrototypeHead(nn.Module):
         logits = self.component_logits(features)
         if self.components == 1:
             return logits
-        temperature = self.log_temperature.clamp(-2.0, 2.0).exp()
+        temperature = cast("nn.Parameter", self.log_temperature).clamp(-2.0, 2.0).exp()
         return grouped_logsumexp_logits(
             logits,
             classes=self.classes,
@@ -456,9 +327,7 @@ class EMAPrototypeHead(nn.Module):
                 difference = feature_stage[:, None, :] - prototype_stage
                 diagonal = self._diagonal(self.log_diagonals[index])
                 distance = (difference.square() * diagonal).sum(dim=-1)
-                distance = distance + (
-                    difference @ self.low_ranks[index]
-                ).square().sum(dim=-1)
+                distance = distance + (difference @ self.low_ranks[index]).square().sum(dim=-1)
                 terms.append(scales[index] * distance)
             active = torch.stack(terms, dim=0).sum(dim=0)
         # Smooth minimum keeps all components trainable while approximating the
@@ -488,9 +357,8 @@ class EMAPrototypeHead(nn.Module):
         assignment = distances.argmin(dim=-1)
         cold = ~self.ema_initialized[labels].all(dim=-1)
         if bool(cold.any()):
-            assignment[cold] = torch.arange(features.shape[0], device=features.device)[cold].remainder(
-                self.components
-            )
+            cold_indices = torch.arange(features.shape[0], device=features.device)[cold]
+            assignment[cold] = cold_indices.remainder(self.components)
         group = labels * self.components + assignment
         group_count = self.classes * self.components
         raw_energy = torch.expm1(features.clamp(max=20.0)).clamp_min_(0.0)
@@ -543,13 +411,21 @@ class A2DPrototypeClassifier(nn.Module):
         prototype_auxiliary: bool = False,
     ) -> None:
         super().__init__()
-        self.prototype = prototype
-        self.fusion = ModalFusionHead(input_dim, fusion_width, output_dim) if use_fusion else None
-        self.lrq = LowRankQuadraticModalHead(input_dim, output_dim, lrq_rank) if use_lrq else None
+        self.prototype: EMAPrototypeHead | None = prototype
+        self.fusion: ModalFusionHead | None = (
+            ModalFusionHead(input_dim, fusion_width, output_dim) if use_fusion else None
+        )
+        self.lrq: LowRankQuadraticModalHead | None = (
+            LowRankQuadraticModalHead(input_dim, output_dim, lrq_rank) if use_lrq else None
+        )
         self.prototype_main = prototype_main
         self.prototype_auxiliary = prototype_auxiliary
-        self.beta_fusion = nn.Parameter(torch.tensor(float(beta_fusion))) if use_fusion else None
-        self.beta_lrq = nn.Parameter(torch.tensor(float(beta_lrq))) if use_lrq else None
+        self.beta_fusion: nn.Parameter | None = (
+            nn.Parameter(torch.tensor(float(beta_fusion))) if use_fusion else None
+        )
+        self.beta_lrq: nn.Parameter | None = (
+            nn.Parameter(torch.tensor(float(beta_lrq))) if use_lrq else None
+        )
 
     def branch_logits(self, descriptor: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         reference: Tensor | None = None
@@ -563,7 +439,8 @@ class A2DPrototypeClassifier(nn.Module):
         if reference is None and lrq_logits is not None:
             reference = lrq_logits
         if reference is None:
-            raise RuntimeError("A2D classifier has no active branch")
+            message = "A2D classifier has no active branch"
+            raise RuntimeError(message)
         zero = torch.zeros_like(reference)
         prototype_term = prototype_logits_active if prototype_logits_active is not None else zero
         fusion_term = fusion_logits if fusion_logits is not None else zero
@@ -588,12 +465,9 @@ class A2DPrototypeClassifier(nn.Module):
 
 
 __all__ = [
+    "A2DAffineQClassifier",
     "A2DPrototypeClassifier",
     "EMAPrototypeHead",
-    "PrototypeMetricHead",
-    "PrototypeResidualHead",
-    "StagewisePrototypeMetricHead",
-    "energy_kmeans_prototypes",
     "expected_calibration_error",
     "grouped_logsumexp_logits",
 ]

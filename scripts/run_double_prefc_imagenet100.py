@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# ruff: noqa: SLF001
 # pyright: reportAny=false, reportExplicitAny=false, reportImplicitRelativeImport=false
 # pyright: reportPrivateLocalImportUsage=false, reportPrivateUsage=false
 """Run the retained Double-PreFC ImageNet-100 variants."""

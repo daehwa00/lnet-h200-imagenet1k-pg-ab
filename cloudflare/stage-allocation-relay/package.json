@@ -1,0 +1,22 @@
+{
+  "name": "lnet-h200-imagenet100-stage-relay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "campaign:check": "python ../../h200/stage_allocation/generate_contract.py --check",
+    "check": "npm run campaign:check && npm run types:check && tsc --noEmit && tsc -p test/tsconfig.json --noEmit && vitest run",
+    "deploy:dry": "wrangler deploy --dry-run",
+    "test": "vitest run",
+    "types": "wrangler types --env-file .dev.vars.example --include-runtime=false",
+    "types:check": "wrangler types --env-file .dev.vars.example --include-runtime=false --check"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.22.0",
+    "@cloudflare/workers-types": "5.20260820.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11",
+    "wrangler": "4.124.0"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "moduleResolution": "Bundler",
+    "skipLibCheck": true,
+    "types": ["@cloudflare/workers-types", "vitest/globals"]
+  },
+  "include": ["./**/*.ts", "../src/**/*.ts", "../worker-configuration.d.ts"]
+}

@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Train A2D PostCarry with a joint 48-96-48 post-fusion residual CFFN."""
 
-# ruff: noqa: SLF001
-
 from __future__ import annotations
 
 import json

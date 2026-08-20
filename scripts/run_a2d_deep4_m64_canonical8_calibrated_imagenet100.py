@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Train D4-M64 with a symmetric, learned-calibrated canonical pole atlas."""
 
-# ruff: noqa: SLF001
-
 from __future__ import annotations
 
 import json

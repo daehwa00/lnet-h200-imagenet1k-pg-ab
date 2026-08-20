@@ -1,4 +1,3 @@
-# ruff: noqa: SLF001
 # pyright: reportAny=false, reportExplicitAny=false, reportMissingImports=false
 # pyright: reportImplicitRelativeImport=false, reportPrivateLocalImportUsage=false
 # pyright: reportPrivateUsage=false
@@ -149,9 +148,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
         "source_sha256": {
             "runner": harness._digest(Path(__file__)),
             "harness": harness._digest(Path("scripts/run_alphabet2d_imagenet100_nano.py")),
-            "optimizer": harness._digest(
-                Path("scripts/run_complex_scan_augmented_cifar100.py")
-            ),
+            "optimizer": harness._digest(Path("scripts/run_complex_scan_augmented_cifar100.py")),
             "architecture": harness._digest(
                 Path("scripts/run_complex_scan_stage_carry_cifar100.py")
             ),

@@ -174,9 +174,7 @@ class ComplexScanConfig:
             or len(self.quadrant_path_cffn_widths) != 2
             or any(width <= 0 for width in self.quadrant_path_cffn_widths)
         ):
-            message = (
-                "quadrant path/mode CFFN requires two positive width tuples"
-            )
+            message = "quadrant path/mode CFFN requires two positive width tuples"
             raise ValueError(message)
         if self.post_transition_widths is not None and (
             len(self.post_transition_widths) != 2

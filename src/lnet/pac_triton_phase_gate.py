@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 # pyright: reportArgumentType=false, reportCallIssue=false, reportMissingParameterType=false
-# ruff: noqa: ANN001, EM101, N803, TRY003
 import torch
 import triton
 import triton.language as tl
@@ -208,7 +207,7 @@ def _forward_op(  # pyright: ignore[reportUnusedFunction]
     projected: Tensor,
     alpha: Tensor,
     redistribution: float,
-    self_gated: bool,  # noqa: FBT001
+    self_gated: bool,
 ) -> Tensor:
     _validate(
         projected,

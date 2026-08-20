@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # pyright: reportArgumentType=false, reportMissingParameterType=false
-# ruff: noqa: ANN001
 from typing import Protocol
 
 import torch
@@ -9,7 +8,7 @@ import triton
 import triton.language as tl
 from torch import Tensor
 
-from .pac_triton_recurrence_op import _is_mode_static_expanded
+from .pac_triton_recurrence_op import is_mode_static_expanded
 
 
 class _AutogradContext(Protocol):
@@ -133,8 +132,8 @@ class _TritonFusedRecurrence(torch.autograd.Function):
         input_imag: Tensor,
         reverse: int,
     ) -> tuple[Tensor, Tensor]:
-        static_decay = _is_mode_static_expanded(decay_real, input_real) and (
-            _is_mode_static_expanded(decay_imag, input_imag)
+        static_decay = is_mode_static_expanded(decay_real, input_real) and (
+            is_mode_static_expanded(decay_imag, input_imag)
         )
         real = decay_real if static_decay else decay_real.contiguous()
         imag = decay_imag if static_decay else decay_imag.contiguous()
@@ -222,8 +221,8 @@ def triton_recurrence_backward_from_states(
     *,
     reverse: bool = False,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-    static_decay = _is_mode_static_expanded(decay_real, states_real) and (
-        _is_mode_static_expanded(decay_imag, states_imag)
+    static_decay = is_mode_static_expanded(decay_real, states_real) and (
+        is_mode_static_expanded(decay_imag, states_imag)
     )
     grad_decay_real = torch.empty_like(states_real)
     grad_decay_imag = torch.empty_like(states_imag)

@@ -60,8 +60,8 @@ def direction_aligned_cells(
     batch, height, width, modes = real.shape
     physical_real = real.reshape(batch, height // 2, 2, width // 2, 2, modes)
     physical_imag = imag.reshape(batch, height // 2, 2, width // 2, 2, modes)
-    predecessor_x, endpoint_x = ((0, 1) if direction_x == 1 else (1, 0))
-    predecessor_y, endpoint_y = ((0, 1) if direction_y == 1 else (1, 0))
+    predecessor_x, endpoint_x = (0, 1) if direction_x == 1 else (1, 0)
+    predecessor_y, endpoint_y = (0, 1) if direction_y == 1 else (1, 0)
 
     def gather(values: Tensor) -> Tensor:
         return torch.stack(

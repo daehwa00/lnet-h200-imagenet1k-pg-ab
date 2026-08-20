@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-# ruff: noqa: C901, EM101, EM102, TRY003
 from typing import Final, Literal
 
 import torch

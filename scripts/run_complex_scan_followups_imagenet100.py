@@ -1,4 +1,3 @@
-# ruff: noqa: SLF001
 # pyright: reportAny=false, reportExplicitAny=false, reportImplicitRelativeImport=false
 # pyright: reportPrivateLocalImportUsage=false, reportPrivateUsage=false
 """Run the prioritized complex scan ImageNet-100 follow-ups."""

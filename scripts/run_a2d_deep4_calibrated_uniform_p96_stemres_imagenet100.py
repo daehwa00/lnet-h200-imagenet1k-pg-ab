@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Train calibrated uniform-P96 Deep4 with the mode-scaled residual stem."""
 
-# ruff: noqa: SLF001
-
 from __future__ import annotations
 
 from copy import deepcopy
@@ -11,10 +9,10 @@ from typing import TYPE_CHECKING, Any
 
 import run_a2d_deep4_calibrated_uniform_p96_imagenet100 as uniform
 import torch
-from torch import Tensor, nn
+from torch import nn
 from torch.nn.utils import parametrize
 
-from lnet.image_layers import LayerNorm2d
+from lnet.image_layers import LayerNorm2d, ModeScaledTwoConvStem, ResidualPreComplexMixer
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -26,111 +24,6 @@ SEEDS = uniform.SEEDS
 P = uniform.MODES
 STEM_HIDDEN_WIDTH = 32
 _RAMP_BUILD = uniform.base._build
-
-
-class ModeScaledTwoConvStem(nn.Module):
-    """Apply 3->H->2P Conv-LN-GELU blocks and return NHWC features."""
-
-    def __init__(
-        self,
-        modes: int,
-        strides: tuple[int, int] = (2, 2),
-        *,
-        input_channels: int = 3,
-        hidden_width: int = STEM_HIDDEN_WIDTH,
-    ) -> None:
-        super().__init__()
-        if modes <= 0 or hidden_width <= 0 or input_channels <= 0:
-            message = "mode-scaled stem dimensions must be positive"
-            raise ValueError(message)
-        if len(strides) != 2 or any(stride <= 0 for stride in strides):
-            message = "mode-scaled stem requires two positive strides"
-            raise ValueError(message)
-        self.hidden_width = hidden_width
-        self.output_width = 2 * modes
-        first = nn.Conv2d(
-            input_channels,
-            hidden_width,
-            3,
-            stride=strides[0],
-            padding=1,
-            bias=True,
-        )
-        second = nn.Conv2d(
-            hidden_width,
-            self.output_width,
-            3,
-            stride=strides[1],
-            padding=1,
-            bias=True,
-        )
-        nn.init.zeros_(first.bias)
-        nn.init.zeros_(second.bias)
-        self.layers = nn.Sequential(
-            first,
-            LayerNorm2d(hidden_width),
-            nn.GELU(),
-            second,
-            LayerNorm2d(self.output_width),
-            nn.GELU(),
-        )
-
-    def forward(self, inputs: Tensor) -> Tensor:
-        first, first_norm, first_activation, second, second_norm, second_activation = self.layers
-        hidden = first_activation(first_norm(first(inputs)))
-        features = second(hidden)
-        if not isinstance(second_norm, LayerNorm2d):
-            message = "mode-scaled stem requires a terminal LayerNorm2d"
-            raise TypeError(message)
-        # The complex interface consumes NHWC features.  Apply the terminal
-        # channel norm in that final layout instead of materializing NCHW only
-        # to permute it back immediately afterward.
-        features = second_norm.norm(features.permute(0, 2, 3, 1))
-        return second_activation(features)
-
-
-class ResidualPreComplexMixer(nn.Module):
-    """Reuse square projections as a width-generic residual real mixer."""
-
-    def __init__(self, source: nn.Module) -> None:
-        super().__init__()
-        if not isinstance(source, nn.Sequential) or len(source) != 4:
-            message = "residual pre-complex mixer requires the established two-linear path"
-            raise TypeError(message)
-        input_projection, activation, output_projection, tail = tuple(source.children())
-        if not isinstance(input_projection, nn.Linear) or not isinstance(
-            output_projection,
-            nn.Linear,
-        ):
-            message = "residual pre-complex mixer requires two linear projections"
-            raise TypeError(message)
-        width = input_projection.in_features
-        if (
-            not isinstance(activation, nn.GELU)
-            or not isinstance(tail, nn.Identity)
-            or input_projection.out_features != width
-            or output_projection.in_features != width
-            or output_projection.out_features != width
-        ):
-            message = "residual pre-complex mixer requires equal input and output widths"
-            raise TypeError(message)
-        self.width = width
-        self.input_projection = input_projection
-        self.activation = activation
-        self.output_projection = output_projection
-
-    def forward(self, inputs: Tensor) -> Tensor:
-        update = self.activation(self.input_projection(inputs))
-        flat_inputs = inputs.reshape(-1, self.width)
-        flat_update = update.reshape(-1, self.width)
-        mixed = torch.addmm(
-            flat_inputs,
-            flat_update,
-            self.output_projection.weight.T,
-        )
-        if self.output_projection.bias is not None:
-            mixed = mixed + self.output_projection.bias
-        return mixed.reshape_as(inputs)
 
 
 def _configure_ramp() -> None:

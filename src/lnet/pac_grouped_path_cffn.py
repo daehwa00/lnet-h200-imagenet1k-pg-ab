@@ -10,7 +10,10 @@ from torch.nn import functional
 
 from .pac_complex_ffn import module_calls_are_transparent
 from .pac_d4_path_cffn import (
+    d4_grouped_cell_path_collapse,
+    d4_grouped_cell_path_collapse_reference,
     d4_grouped_path_collapse,
+    supports_d4_grouped_cell_path_collapse,
     supports_d4_grouped_path_collapse,
 )
 
@@ -84,11 +87,7 @@ class GroupedWidelyLinear(nn.Module):
 
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         expected = (self.input_paths, self.modes)
-        if (
-            real.shape != imag.shape
-            or real.ndim != 5
-            or tuple(real.shape[-2:]) != expected
-        ):
+        if real.shape != imag.shape or real.ndim != 5 or tuple(real.shape[-2:]) != expected:
             message = "grouped widely-linear inputs must be NHW-path-mode tensors"
             raise ValueError(message)
         batch, height, width, _, _ = real.shape
@@ -123,8 +122,7 @@ def grouped_cartesian_cffn(
     if (
         real.shape != imag.shape
         or real.ndim != 5
-        or tuple(real.shape[-2:])
-        != (input_projection.input_paths, input_projection.modes)
+        or tuple(real.shape[-2:]) != (input_projection.input_paths, input_projection.modes)
     ):
         message = "grouped CFFN inputs must be NHW-path-mode tensors"
         raise ValueError(message)
@@ -134,9 +132,7 @@ def grouped_cartesian_cffn(
     ):
         message = "grouped CFFN projection dimensions are incompatible"
         raise ValueError(message)
-    is_d4_collapse = (
-        input_projection.input_paths == 4 and output_projection.output_paths == 1
-    )
+    is_d4_collapse = input_projection.input_paths == 4 and output_projection.output_paths == 1
     projections_are_transparent = module_calls_are_transparent(
         input_projection,
         output_projection,
@@ -210,6 +206,83 @@ def grouped_cartesian_cffn(
     )
 
 
+def grouped_cartesian_cell_cffn(
+    real: Tensor,
+    imag: Tensor,
+    *,
+    input_projection: GroupedWidelyLinear,
+    output_projection: GroupedWidelyLinear,
+) -> ComplexField:
+    """Collapse direction-relative D4 cells without materializing full states."""
+    expected = (4, 4, input_projection.modes)
+    if real.shape != imag.shape or real.ndim != 6 or tuple(real.shape[-3:]) != expected:
+        message = "grouped cell CFFN inputs must be BHW-direction-local-mode tensors"
+        raise ValueError(message)
+    if (
+        input_projection.input_paths != 4
+        or output_projection.output_paths != 1
+        or input_projection.modes != output_projection.modes
+        or input_projection.output_paths != output_projection.input_paths
+    ):
+        message = "grouped cell CFFN projection dimensions are incompatible"
+        raise ValueError(message)
+    if not (
+        type(input_projection) is GroupedWidelyLinear
+        and type(output_projection) is GroupedWidelyLinear
+        and module_calls_are_transparent(input_projection, output_projection)
+    ):
+        message = "grouped cell CFFN requires transparent exact grouped projections"
+        raise RuntimeError(message)
+    active_real = real.contiguous()
+    active_imag = imag.contiguous()
+    modes = input_projection.modes
+    packed_hidden = 2 * input_projection.output_paths
+    input_weight = input_projection.packed_weight().reshape(
+        modes,
+        packed_hidden,
+        2 * input_projection.input_paths,
+    )
+    output_weight = output_projection.packed_weight().reshape(
+        modes,
+        2 * output_projection.output_paths,
+        packed_hidden,
+    )
+    input_bias = input_projection.packed_bias()
+    output_bias = output_projection.packed_bias()
+    if input_bias is None or output_bias is None:
+        message = "grouped cell CFFN requires both projection biases"
+        raise RuntimeError(message)
+    input_bias = input_bias.reshape(modes, packed_hidden)
+    output_bias = output_bias.reshape(modes, 2 * output_projection.output_paths)
+    if active_real.is_cuda:
+        if not supports_d4_grouped_cell_path_collapse(
+            active_real,
+            active_imag,
+            input_weight,
+            input_bias,
+            output_weight,
+            output_bias,
+        ):
+            message = "CUDA grouped cell CFFN requires the fused BF16-autocast contract"
+            raise RuntimeError(message)
+        return d4_grouped_cell_path_collapse(
+            active_real,
+            active_imag,
+            input_weight,
+            input_bias,
+            output_weight,
+            output_bias,
+        )
+    return d4_grouped_cell_path_collapse_reference(
+        active_real,
+        active_imag,
+        input_weight,
+        input_bias,
+        output_weight,
+        output_bias,
+    )
+
+
 def grouped_cartesian_cffn_reference(
     real: Tensor,
     imag: Tensor,
@@ -221,8 +294,7 @@ def grouped_cartesian_cffn_reference(
     if (
         real.shape != imag.shape
         or real.ndim != 5
-        or tuple(real.shape[-2:])
-        != (input_projection.input_paths, input_projection.modes)
+        or tuple(real.shape[-2:]) != (input_projection.input_paths, input_projection.modes)
     ):
         message = "grouped CFFN inputs must be NHW-path-mode tensors"
         raise ValueError(message)
@@ -263,6 +335,7 @@ def grouped_cartesian_cffn_reference(
 
 __all__ = [
     "GroupedWidelyLinear",
+    "grouped_cartesian_cell_cffn",
     "grouped_cartesian_cffn",
     "grouped_cartesian_cffn_reference",
 ]

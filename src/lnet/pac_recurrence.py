@@ -218,7 +218,7 @@ def compiled_real2d_recurrence(
     input_real: Tensor,
     input_imag: Tensor,
 ) -> tuple[Tensor, Tensor]:
-    global _compiled_real2d  # noqa: PLW0603
+    global _compiled_real2d
     if _compiled_real2d is None:
         _compiled_real2d = torch.compile(real2d_loop_recurrence)
     return _compiled_real2d(decay_real, decay_imag, input_real, input_imag)

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# ruff: noqa: SLF001
 # pyright: reportAny=false, reportExplicitAny=false, reportImplicitRelativeImport=false
 # pyright: reportPrivateLocalImportUsage=false, reportPrivateUsage=false
 """Train A2D-D4 with a learned four-product-path combiner."""

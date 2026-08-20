@@ -150,7 +150,7 @@ def replace_matrix_exp_orthogonal_(
         orthogonal_map = getattr(candidate, "orthogonal_map", None)
         if getattr(orthogonal_map, "name", None) != "matrix_exp":
             continue
-        base = candidate._buffers.get("base")  # noqa: SLF001
+        base = candidate._buffers.get("base")
         shape = getattr(candidate, "shape", None)
         if not isinstance(base, Tensor) or shape is None:
             message = "matrix-exp orthogonal parametrization must use dynamic trivialization"

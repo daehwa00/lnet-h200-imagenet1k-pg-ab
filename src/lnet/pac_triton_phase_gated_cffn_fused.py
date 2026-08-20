@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 # pyright: reportArgumentType=false, reportCallIssue=false, reportGeneralTypeIssues=false, reportIncompatibleMethodOverride=false, reportMissingParameterType=false, reportPrivateUsage=false
-# ruff: noqa: ANN001, ANN202, EM101, N803, PLR0915, SLF001, TRY003
 from typing import Protocol
 
 import torch
@@ -885,8 +884,8 @@ def _forward_op(
     gamma: Tensor,
     epsilon: float,
     redistribution: float,
-    self_gated: bool,  # noqa: FBT001
-    collect_diagnostics: bool,  # noqa: FBT001
+    self_gated: bool,
+    collect_diagnostics: bool,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     if not supports_fused_phase_gated_cffn(
         real,
@@ -1001,7 +1000,7 @@ def _backward_op(
     output_grad_imag: Tensor,
     epsilon: float,
     redistribution: float,
-    self_gated: bool,  # noqa: FBT001
+    self_gated: bool,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
     if (
         output_grad_real.shape != output_grad_imag.shape

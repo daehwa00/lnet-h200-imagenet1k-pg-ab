@@ -1,0 +1,211 @@
+{
+  "campaign_id": "h200-imagenet100-stage-allocation-s501-v1",
+  "campaign_manifest_sha256": "190a8cc09631a6e126515349c915da37674b93d2679f541d5ca0615444fc81e4",
+  "canary": {
+    "display_name": "H200-I100-stage-relay-permanent-canary-v1",
+    "id": "5e552b9655fab181",
+    "tags": [
+      "H200",
+      "ImageNet-100",
+      "relay-canary",
+      "authenticated"
+    ]
+  },
+  "console": "off",
+  "dataset": {
+    "classes": 100,
+    "first_synset": "n01440764",
+    "last_synset": "n02077923",
+    "selection": "lexicographically first 100 synset directories",
+    "source": "ImageNet-1K ILSVRC2012 train/val",
+    "train_images": 130000,
+    "validation_images": 5000
+  },
+  "entity": "daehwa",
+  "group": "h200-imagenet100-stage-allocation-s501-v1",
+  "output_namespace": "lnet-h200-imagenet100-stage-allocation-v1",
+  "project": "alphabet2d-imagenet100-h200",
+  "relay_protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v1",
+  "runs": {
+    "K128-P128-128-160-128-D2222": {
+      "501": {
+        "display_name": "H200-I100-S501-01-K128-P128-128-160-128-D2222",
+        "id": "3426284ea3681eb4",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "stage-allocation",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "K128-P128-128-160-96-D2222": {
+      "501": {
+        "display_name": "H200-I100-S501-05-K128-P128-128-160-96-D2222",
+        "id": "d4f16c020e52a3b8",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "stage-allocation",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "K128-P128-160-160-128-D2222": {
+      "501": {
+        "display_name": "H200-I100-S501-02-K128-P128-160-160-128-D2222",
+        "id": "881c88dad9b52570",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "stage-allocation",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "K128-P128x4-D2223-FullSR7x1": {
+      "501": {
+        "display_name": "H200-I100-S501-10-K128-P128x4-D2223-FullSR7x1",
+        "id": "01d960b0acf7c9fb",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "stage-allocation",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "K128-P128x4-D2232-FullSR14x1": {
+      "501": {
+        "display_name": "H200-I100-S501-09-K128-P128x4-D2232-FullSR14x1",
+        "id": "d9b5ae209a206d7f",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "stage-allocation",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "K128-P128x4-D2242-FullSR14x2": {
+      "501": {
+        "display_name": "H200-I100-S501-11-K128-P128x4-D2242-FullSR14x2",
+        "id": "8b3f8293a6fb2f30",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "stage-allocation",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "K128-P128x4-D2262-FullSR14x4": {
+      "501": {
+        "display_name": "H200-I100-S501-12-K128-P128x4-D2262-FullSR14x4",
+        "id": "35ad53355fb2b883",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "stage-allocation",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "K128-P160-160-160-128-D2222": {
+      "501": {
+        "display_name": "H200-I100-S501-03-K128-P160-160-160-128-D2222",
+        "id": "f07284e68c570274",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "stage-allocation",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "K128-P160-160-160-96-D2222": {
+      "501": {
+        "display_name": "H200-I100-S501-04-K128-P160-160-160-96-D2222",
+        "id": "98a4b9ffd80fb5f1",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "stage-allocation",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "K128-P96-128-160-96-D2222": {
+      "501": {
+        "display_name": "H200-I100-S501-06-K128-P96-128-160-96-D2222",
+        "id": "850c9e5a5fb8ac92",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "stage-allocation",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "K128-P96x4-D2222": {
+      "501": {
+        "display_name": "H200-I100-S501-07-K128-P96x4-D2222",
+        "id": "aa7f7462e16b3c44",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "stage-allocation",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "K96-P128x4-D2222": {
+      "501": {
+        "display_name": "H200-I100-S501-08-K96-P128x4-D2222",
+        "id": "c8c9bc578a46cf15",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "stage-allocation",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    }
+  },
+  "schema": "lnet.h200.imagenet100.stage_allocation.runtime.v1",
+  "training": {
+    "batch_size": 128,
+    "epochs": 100,
+    "precision": "bfloat16",
+    "seed": 501,
+    "variants": [
+      "K128-P128-128-160-128-D2222",
+      "K128-P128-160-160-128-D2222",
+      "K128-P160-160-160-128-D2222",
+      "K128-P160-160-160-96-D2222",
+      "K128-P128-128-160-96-D2222",
+      "K128-P96-128-160-96-D2222",
+      "K128-P96x4-D2222",
+      "K96-P128x4-D2222",
+      "K128-P128x4-D2232-FullSR14x1",
+      "K128-P128x4-D2223-FullSR7x1",
+      "K128-P128x4-D2242-FullSR14x2",
+      "K128-P128x4-D2262-FullSR14x4"
+    ]
+  },
+  "wandb_app_url": "https://wandb.ai",
+  "wandb_base_url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+  "wandb_sdk_version": "0.22.3"
+}

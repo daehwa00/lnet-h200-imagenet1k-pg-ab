@@ -109,7 +109,7 @@ def _fastest_geometry(
     return best_geometry, baseline_ms, best_ms
 
 
-def tune_kernel(  # noqa: C901
+def tune_kernel(
     name: str,
     step: Callable[[], None],
     *,

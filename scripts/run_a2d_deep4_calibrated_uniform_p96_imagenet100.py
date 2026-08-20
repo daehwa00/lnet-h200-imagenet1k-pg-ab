@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Train the calibrated product-only Deep4 model with 96 modes per stage."""
 
-# ruff: noqa: SLF001
-
 from __future__ import annotations
 
 from contextlib import contextmanager

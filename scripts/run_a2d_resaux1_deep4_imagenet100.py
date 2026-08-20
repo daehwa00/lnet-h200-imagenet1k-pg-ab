@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Train A2D-DeepHead with one additional pole transition and terminal stage."""
 
-# ruff: noqa: SLF001
-
 from __future__ import annotations
 
 import json

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Train the calibrated product-only Deep4 model with a p/2p/3p/4p pole ramp."""
 
-# ruff: noqa: I001, SLF001
+# ruff: noqa: I001
 
 from __future__ import annotations
 
