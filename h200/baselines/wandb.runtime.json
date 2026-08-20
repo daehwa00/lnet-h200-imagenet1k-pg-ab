@@ -1,0 +1,786 @@
+{
+  "campaign_id": "h200-imagenet1k-matched-baselines-v1",
+  "campaign_manifest_sha256": "8cad81c93e36aa5f153d251ff2a1b54e45df05f3caf49f226497490b1d63219d",
+  "canary": {
+    "display_name": "H200-baseline-relay-permanent-canary-v1",
+    "id": "61da1766b637c6a1",
+    "tags": [
+      "H200",
+      "ImageNet-1K",
+      "relay-canary",
+      "ip-scoped-untrusted"
+    ]
+  },
+  "console": "off",
+  "entity": "daehwa",
+  "group": "h200-imagenet1k-matched-baselines-v1",
+  "project": "alphabet2d-imagenet1k-h200-baselines",
+  "relay_protocol_version": "wandb-0.22.3-h200-baselines-v1",
+  "relay_url": "https://lnet-h200-baseline-relay-v1.gpupulse-monitor.workers.dev",
+  "runs": {
+    "convnextv2_atto": {
+      "display_name": "ConvNeXt V2 Atto",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-convnextv2_atto-s501",
+          "id": "1c7d53149f73c84c",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-convnextv2_atto-s509",
+          "id": "37e89d2aa0986d72",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-convnextv2_atto-s521",
+          "id": "ae71203862921cc6",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "efficientformerv2_s0": {
+      "display_name": "EfficientFormerV2-S0",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-efficientformerv2_s0-s501",
+          "id": "58d615cc200a0224",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-efficientformerv2_s0-s509",
+          "id": "a9da74d751ca5bd2",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-efficientformerv2_s0-s521",
+          "id": "cdd45ff7a2fd8afc",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "efficientmod_xxs": {
+      "display_name": "EfficientMod-XXS",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-efficientmod_xxs-s501",
+          "id": "585061b509962da1",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-efficientmod_xxs-s509",
+          "id": "c5a53cc9793a34b6",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-efficientmod_xxs-s521",
+          "id": "25510c6dc3bf9fad",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "emov2_1m": {
+      "display_name": "EMOv2-1M",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-emov2_1m-s501",
+          "id": "96b6f8915ba94da2",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-emov2_1m-s509",
+          "id": "cb4a7c494113566c",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-emov2_1m-s521",
+          "id": "315edca07e531099",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "emov2_2m": {
+      "display_name": "EMOv2-2M",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-emov2_2m-s501",
+          "id": "83f12fdb3e8d6f16",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-emov2_2m-s509",
+          "id": "0842717a7d3df8fc",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-emov2_2m-s521",
+          "id": "48ff133d30699316",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "fastvit_t8": {
+      "display_name": "FastViT-T8",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-fastvit_t8-s501",
+          "id": "57c2947c1acdb99f",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-fastvit_t8-s509",
+          "id": "79e7a9681a950d89",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-fastvit_t8-s521",
+          "id": "2a4b64be314f4c2b",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "mobileone_s0": {
+      "display_name": "MobileOne-S0",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-mobileone_s0-s501",
+          "id": "dcfd46f58b5f1364",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-mobileone_s0-s509",
+          "id": "50c91d239ca74ac5",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-mobileone_s0-s521",
+          "id": "bd828e5de120bf55",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "mobileone_s1": {
+      "display_name": "MobileOne-S1",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-mobileone_s1-s501",
+          "id": "3f0b3ba81388f023",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-mobileone_s1-s509",
+          "id": "d8c243db08a6f601",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-mobileone_s1-s521",
+          "id": "f9655898fcfa4491",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "mobilevitv2_050": {
+      "display_name": "MobileViTv2-0.50",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-mobilevitv2_050-s501",
+          "id": "90fb3581a7728968",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-mobilevitv2_050-s509",
+          "id": "8fabfb79b48023cc",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-mobilevitv2_050-s521",
+          "id": "24237dac125a7cd1",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "mobilevitv2_075": {
+      "display_name": "MobileViTv2-0.75",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-mobilevitv2_075-s501",
+          "id": "89e48c149606d43e",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-mobilevitv2_075-s509",
+          "id": "c1f14089bfce5091",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-mobilevitv2_075-s521",
+          "id": "febfff110048958a",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "mobilevitv2_100": {
+      "display_name": "MobileViTv2-1.00",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-mobilevitv2_100-s501",
+          "id": "a174bb1b0ec210aa",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-mobilevitv2_100-s509",
+          "id": "2877cc9c15bde948",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-mobilevitv2_100-s521",
+          "id": "318381bc5649a775",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "moganet_xt": {
+      "display_name": "MogaNet-XT",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-moganet_xt-s501",
+          "id": "c318322254262cae",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-moganet_xt-s509",
+          "id": "15fd54f57b97064d",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-moganet_xt-s521",
+          "id": "1e4da0f068d3e9f1",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "parc_net_s": {
+      "display_name": "ParC-Net S",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-parc_net_s-s501",
+          "id": "941c2e779859b62f",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-parc_net_s-s509",
+          "id": "5ac71864376d3569",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-parc_net_s-s521",
+          "id": "26b068880f351527",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "parc_net_xs": {
+      "display_name": "ParC-Net XS",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-parc_net_xs-s501",
+          "id": "853630510953612b",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-parc_net_xs-s509",
+          "id": "d3570e6e181d1c3a",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-parc_net_xs-s521",
+          "id": "f9a1bccebd428f5b",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "sret_tiny": {
+      "display_name": "SReT-Tiny",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-sret_tiny-s501",
+          "id": "4a8f7b9175f78266",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-sret_tiny-s509",
+          "id": "f60407e9f88f2eac",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-sret_tiny-s521",
+          "id": "cff0436820f49bb7",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "swiftformer_xs": {
+      "display_name": "SwiftFormer-XS",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-swiftformer_xs-s501",
+          "id": "fdc7434c9e54cfb6",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-swiftformer_xs-s509",
+          "id": "bb14e82a20f8cf00",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-swiftformer_xs-s521",
+          "id": "4e4cfc37aeba9d3f",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "tinynext_m": {
+      "display_name": "TinyNeXt-M",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-tinynext_m-s501",
+          "id": "dc8f2259d48c3f30",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-tinynext_m-s509",
+          "id": "1afb7fd1f21d2650",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-tinynext_m-s521",
+          "id": "6192c3a5c437ac24",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "tinynext_s": {
+      "display_name": "TinyNeXt-S",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-tinynext_s-s501",
+          "id": "b968a4c834f6acf6",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-tinynext_s-s509",
+          "id": "1fd7e286adeb7984",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-tinynext_s-s521",
+          "id": "bb658ffbdf6a2132",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "tinynext_t": {
+      "display_name": "TinyNeXt-T",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-tinynext_t-s501",
+          "id": "f95059c5d2658c03",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-tinynext_t-s509",
+          "id": "7b428888ab2689b4",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-tinynext_t-s521",
+          "id": "0048f54268498a5b",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "uniconvnet_a": {
+      "display_name": "UniConvNet-A",
+      "seeds": {
+        "501": {
+          "display_name": "H200-BL-uniconvnet_a-s501",
+          "id": "94083e3ec3e468b6",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "509": {
+          "display_name": "H200-BL-uniconvnet_a-s509",
+          "id": "44ed0fcb9d4bf628",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        },
+        "521": {
+          "display_name": "H200-BL-uniconvnet_a-s521",
+          "id": "ed55faa8408a90db",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "matched-baseline",
+            "three-seed",
+            "ip-scoped-untrusted"
+          ]
+        }
+      }
+    }
+  },
+  "schema_version": 1,
+  "wandb_app_url": "https://wandb.ai",
+  "wandb_base_url": "https://lnet-h200-baseline-relay-v1.gpupulse-monitor.workers.dev",
+  "wandb_sdk_version": "0.22.3"
+}

@@ -1,0 +1,64 @@
+{
+  "schema": "lnet.h200.imagenet1k.external_sources.v1",
+  "sources": {
+    "parc_net": {
+      "repository": "https://github.com/hkzhang91/ParC-Net.git",
+      "commit": "f6780d0ad795835df2181b8fd4737276deb6e211",
+      "license": "NOASSERTION",
+      "license_file": null,
+      "redistribution_allowed": false,
+      "models": ["parc_net_xs", "parc_net_s"]
+    },
+    "sret": {
+      "repository": "https://github.com/szq0214/SReT.git",
+      "commit": "af6db0ae413838d3144a6cd74f774bf670d5ddc6",
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "redistribution_allowed": true,
+      "models": ["sret_tiny"]
+    },
+    "moganet": {
+      "repository": "https://github.com/Westlake-AI/MogaNet.git",
+      "commit": "c83e328b513289fddd2921e17a9143b0f966c0a1",
+      "license": "Apache-2.0",
+      "license_file": "LICENSE",
+      "redistribution_allowed": true,
+      "models": ["moganet_xt"]
+    },
+    "uniconvnet": {
+      "repository": "https://github.com/ai-paperwithcode/UniConvNet.git",
+      "commit": "5d66e8954a9f4836856f2fb596b8e9358d87b2ad",
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "redistribution_allowed": true,
+      "models": ["uniconvnet_a"],
+      "native_extension": "ops_dcnv3",
+      "compatibility_patch": "h200/baselines/patches/uniconvnet-dcnv3-torch29.patch",
+      "compatibility_patch_sha256": "c2cb60a87c35624550f82fcc73d04fe46fd1a85f5ff2a023fbe72a445d486e6d"
+    },
+    "efficientmod": {
+      "repository": "https://github.com/ma-xu/EfficientMod.git",
+      "commit": "ec04df6da43b91414f3fd9ad0ea7a1161be6157c",
+      "license": "Apache-2.0",
+      "license_file": "LICENSE",
+      "redistribution_allowed": true,
+      "models": ["efficientmod_xxs"]
+    },
+    "emov2": {
+      "repository": "https://github.com/zhangzjn/EMOv2.git",
+      "commit": "582a96fe63f169c99fab9cef627374f0a2d1ebb6",
+      "license": "NOASSERTION",
+      "license_file": null,
+      "redistribution_allowed": false,
+      "models": ["emov2_1m", "emov2_2m"]
+    },
+    "tinynext": {
+      "repository": "https://github.com/yuffeenn/TinyNeXt.git",
+      "commit": "3eb30a847f8e5916b975f139d101a0da1f0d7e67",
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "redistribution_allowed": true,
+      "models": ["tinynext_t", "tinynext_s", "tinynext_m"]
+    }
+  }
+}

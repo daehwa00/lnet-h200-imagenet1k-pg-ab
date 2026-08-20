@@ -1,0 +1,52 @@
+{
+  "schema": "lnet.h200.imagenet1k.baselines.v1",
+  "campaign_id": "h200-imagenet1k-matched-baselines-v1",
+  "models": [
+    {"key": "parc_net_xs", "display_name": "ParC-Net XS"},
+    {"key": "parc_net_s", "display_name": "ParC-Net S"},
+    {"key": "mobilevitv2_050", "display_name": "MobileViTv2-0.50"},
+    {"key": "mobilevitv2_075", "display_name": "MobileViTv2-0.75"},
+    {"key": "mobilevitv2_100", "display_name": "MobileViTv2-1.00"},
+    {"key": "sret_tiny", "display_name": "SReT-Tiny"},
+    {"key": "moganet_xt", "display_name": "MogaNet-XT"},
+    {"key": "uniconvnet_a", "display_name": "UniConvNet-A"},
+    {"key": "convnextv2_atto", "display_name": "ConvNeXt V2 Atto"},
+    {"key": "efficientmod_xxs", "display_name": "EfficientMod-XXS"},
+    {"key": "emov2_1m", "display_name": "EMOv2-1M"},
+    {"key": "emov2_2m", "display_name": "EMOv2-2M"},
+    {"key": "mobileone_s0", "display_name": "MobileOne-S0"},
+    {"key": "mobileone_s1", "display_name": "MobileOne-S1"},
+    {"key": "efficientformerv2_s0", "display_name": "EfficientFormerV2-S0"},
+    {"key": "swiftformer_xs", "display_name": "SwiftFormer-XS"},
+    {"key": "fastvit_t8", "display_name": "FastViT-T8"},
+    {"key": "tinynext_t", "display_name": "TinyNeXt-T"},
+    {"key": "tinynext_s", "display_name": "TinyNeXt-S"},
+    {"key": "tinynext_m", "display_name": "TinyNeXt-M"}
+  ],
+  "seeds": [501, 509, 521],
+  "calibration": {
+    "seed": 501,
+    "epochs": 3,
+    "learning_rates": [0.0003, 0.001, 0.003],
+    "selection_metric": "validation_top1",
+    "wandb_mode": "disabled"
+  },
+  "full_training": {
+    "epochs": 100,
+    "wandb_mode": "online"
+  },
+  "worker": {
+    "batch_size": 256,
+    "dataloader_workers": 2,
+    "prefetch_factor": 1,
+    "gpu_memory_fraction": 0.22
+  },
+  "queue": {
+    "default_max_parallel": 4,
+    "max_attempts": 2,
+    "mps_active_thread_percentage": 50,
+    "preflight_parallelism": [1, 2, 4],
+    "preflight_steps": 100,
+    "preflight_trials": 3
+  }
+}
