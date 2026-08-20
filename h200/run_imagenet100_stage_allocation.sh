@@ -92,7 +92,7 @@ if (
     training.get("seed") != 501
     or training.get("epochs") != 100
     or training.get("batch_size") != 128
-    or len(training.get("variants", [])) != 12
+    or len(training.get("variants", [])) != 13
 ):
     raise SystemExit("stage-allocation training matrix changed")
 for key in ("wandb_base_url", "wandb_app_url"):
@@ -306,6 +306,24 @@ readonly IMAGENET100_ROOT="${OUTPUT_BASE}/imagenet100-first100-view"
 "${ENV_ROOT}/bin/python" h200/stage_allocation/prepare_imagenet100.py \
   --source "${DATA_ROOT}" \
   --output "${IMAGENET100_ROOT}"
+LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256="$(
+  "${ENV_ROOT}/bin/python" - "${IMAGENET100_ROOT}" <<'PY'
+import sys
+from pathlib import Path
+
+from imagenet100_data_runtime import dataset_digest
+
+digest, train_images, validation_images = dataset_digest(Path(sys.argv[1]))
+if (train_images, validation_images) != (130000, 5000):
+    raise SystemExit(
+        f"invalid ImageNet-100 view counts: train={train_images}, val={validation_images}"
+    )
+print(digest)
+PY
+)"
+readonly LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256
+export LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256
+echo "H200_IMAGENET100_MANIFEST=${LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256}"
 
 "${ENV_ROOT}/bin/python" scripts/smoke_r2k3_campaign.py \
   --runner a2d_r2k3_stage_allocation_screen \

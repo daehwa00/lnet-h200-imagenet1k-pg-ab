@@ -48,8 +48,8 @@ def test_generated_contract_contains_twelve_scoped_runs() -> None:
         "variants": list(stage.VARIANTS),
     }
     records = [record["501"] for record in runtime["runs"].values()]
-    assert len(records) == 12
-    assert len({record["id"] for record in records}) == 12
+    assert len(records) == 13
+    assert len({record["id"] for record in records}) == 13
     assert runtime["canary"]["id"] not in {record["id"] for record in records}
 
 

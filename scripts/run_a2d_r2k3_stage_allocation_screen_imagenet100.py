@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from lnet.pac_same_resolution_depth import SameResolutionPoleScanBlock
 
 
+CONTROL = "K128-P128x4-D2222-Control"
 P14_ONLY = "K128-P128-128-160-128-D2222"
 P28_14 = "K128-P128-160-160-128-D2222"
 P_FRONT3 = "K128-P160-160-160-128-D2222"
@@ -42,6 +43,7 @@ DEPTH_2242 = "K128-P128x4-D2242-FullSR14x2"
 DEPTH_2262 = "K128-P128x4-D2262-FullSR14x4"
 
 ALLOCATION_VARIANTS = (
+    CONTROL,
     P14_ONLY,
     P28_14,
     P_FRONT3,
@@ -109,6 +111,7 @@ class StageAllocationSpec:
 
 
 SPECS = {
+    CONTROL: StageAllocationSpec((128,) * 4, (128,) * 4, family="control"),
     P14_ONLY: StageAllocationSpec((128,) * 4, (128, 128, 160, 128)),
     P28_14: StageAllocationSpec((128,) * 4, (128, 160, 160, 128)),
     P_FRONT3: StageAllocationSpec((128,) * 4, (160, 160, 160, 128)),
@@ -296,7 +299,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
     payload = runtime.base_contract(args)
     payload["schema"] = "lnet.a2d.r2k3.stage_allocation_screen.v1"
     payload["evidence_status"] = (
-        "12-cell seed501 diagnostic screen; CPU and compiled CUDA full-batch smoke required"
+        "13-cell seed501 diagnostic screen; CPU and compiled CUDA full-batch smoke required"
     )
     payload["variants"] = list(VARIANTS)
     payload["seeds"] = list(SEEDS)

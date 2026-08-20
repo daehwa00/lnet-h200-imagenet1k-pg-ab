@@ -51,7 +51,7 @@ export const CAMPAIGN = {
     "Viewer": "e5782f8ad76269e0104b45e78e82bc03efcc6783ec68299ac082de12c5475a33"
   },
   "group": "h200-imagenet100-stage-allocation-s501-v1",
-  "manifestSha256": "190a8cc09631a6e126515349c915da37674b93d2679f541d5ca0615444fc81e4",
+  "manifestSha256": "62c3be218bf263facfebfb4529b466c8130b1753a6ed592a14b92d69f8adbfb8",
   "maxFileStreamBodyBytes": 8388608,
   "maxGraphqlBodyBytes": 1048576,
   "noVariableOperations": [
@@ -67,7 +67,7 @@ export const CAMPAIGN = {
   ],
   "runsById": {
     "01d960b0acf7c9fb": {
-      "displayName": "H200-I100-S501-10-K128-P128x4-D2223-FullSR7x1",
+      "displayName": "H200-I100-S501-11-K128-P128x4-D2223-FullSR7x1",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -77,7 +77,7 @@ export const CAMPAIGN = {
       ]
     },
     "3426284ea3681eb4": {
-      "displayName": "H200-I100-S501-01-K128-P128-128-160-128-D2222",
+      "displayName": "H200-I100-S501-02-K128-P128-128-160-128-D2222",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -87,7 +87,7 @@ export const CAMPAIGN = {
       ]
     },
     "35ad53355fb2b883": {
-      "displayName": "H200-I100-S501-12-K128-P128x4-D2262-FullSR14x4",
+      "displayName": "H200-I100-S501-13-K128-P128x4-D2262-FullSR14x4",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -105,8 +105,18 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "68db2de8e046d7c5": {
+      "displayName": "H200-I100-S501-01-K128-P128x4-D2222-Control",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
     "850c9e5a5fb8ac92": {
-      "displayName": "H200-I100-S501-06-K128-P96-128-160-96-D2222",
+      "displayName": "H200-I100-S501-07-K128-P96-128-160-96-D2222",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -116,7 +126,7 @@ export const CAMPAIGN = {
       ]
     },
     "881c88dad9b52570": {
-      "displayName": "H200-I100-S501-02-K128-P128-160-160-128-D2222",
+      "displayName": "H200-I100-S501-03-K128-P128-160-160-128-D2222",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -126,7 +136,7 @@ export const CAMPAIGN = {
       ]
     },
     "8b3f8293a6fb2f30": {
-      "displayName": "H200-I100-S501-11-K128-P128x4-D2242-FullSR14x2",
+      "displayName": "H200-I100-S501-12-K128-P128x4-D2242-FullSR14x2",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -136,7 +146,7 @@ export const CAMPAIGN = {
       ]
     },
     "98a4b9ffd80fb5f1": {
-      "displayName": "H200-I100-S501-04-K128-P160-160-160-96-D2222",
+      "displayName": "H200-I100-S501-05-K128-P160-160-160-96-D2222",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -146,7 +156,7 @@ export const CAMPAIGN = {
       ]
     },
     "aa7f7462e16b3c44": {
-      "displayName": "H200-I100-S501-07-K128-P96x4-D2222",
+      "displayName": "H200-I100-S501-08-K128-P96x4-D2222",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -156,7 +166,7 @@ export const CAMPAIGN = {
       ]
     },
     "c8c9bc578a46cf15": {
-      "displayName": "H200-I100-S501-08-K96-P128x4-D2222",
+      "displayName": "H200-I100-S501-09-K96-P128x4-D2222",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -166,7 +176,7 @@ export const CAMPAIGN = {
       ]
     },
     "d4f16c020e52a3b8": {
-      "displayName": "H200-I100-S501-05-K128-P128-128-160-96-D2222",
+      "displayName": "H200-I100-S501-06-K128-P128-128-160-96-D2222",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -176,7 +186,7 @@ export const CAMPAIGN = {
       ]
     },
     "d9b5ae209a206d7f": {
-      "displayName": "H200-I100-S501-09-K128-P128x4-D2232-FullSR14x1",
+      "displayName": "H200-I100-S501-10-K128-P128x4-D2232-FullSR14x1",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -186,7 +196,7 @@ export const CAMPAIGN = {
       ]
     },
     "f07284e68c570274": {
-      "displayName": "H200-I100-S501-03-K128-P160-160-160-128-D2222",
+      "displayName": "H200-I100-S501-04-K128-P160-160-160-128-D2222",
       "tags": [
         "H200",
         "ImageNet-100",

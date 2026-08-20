@@ -9,6 +9,8 @@ import torch
 
 from scripts import a2d_r2k3_runtime as runtime
 from scripts import run_a2d_r2k3_stage_allocation_screen_imagenet100 as runner
+from scripts import run_complex_scan_followups_imagenet100 as followups
+from scripts import run_complex_scan_zero_init_imagenet100 as zero
 from scripts import smoke_a2d_r2k3_same_resolution_factorial as smoke
 
 if TYPE_CHECKING:
@@ -18,6 +20,7 @@ if TYPE_CHECKING:
 
 
 EXPECTED_PARAMETERS = {
+    runner.CONTROL: 2_693_668,
     runner.P14_ONLY: 2_816_676,
     runner.P28_14: 2_939_684,
     runner.P_FRONT3: 3_062_692,
@@ -34,7 +37,7 @@ EXPECTED_PARAMETERS = {
 
 
 def test_screen_covers_each_declared_diagnostic_once() -> None:
-    assert len(runner.VARIANTS) == 12
+    assert len(runner.VARIANTS) == 13
     assert len(set(runner.VARIANTS)) == len(runner.VARIANTS)
     assert set(runner.ALLOCATION_VARIANTS).isdisjoint(runner.DEPTH_VARIANTS)
     assert set(runner.ALLOCATION_VARIANTS).union(runner.DEPTH_VARIANTS) == set(
@@ -49,6 +52,18 @@ def test_transition_reference_is_enforced_only_for_deterministic_fp32() -> None:
     smoke._validate_transition_error("cuda", 1.0)
     with pytest.raises(RuntimeError, match="algebra changed"):
         smoke._validate_transition_error("cpu", 1.0)
+
+
+def test_dataset_manifest_override_is_explicit_and_validated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(followups.MANIFEST_ENV, raising=False)
+    assert followups._expected_imagenet100_manifest() == zero.IMAGENET100_MANIFEST_SHA256
+    monkeypatch.setenv(followups.MANIFEST_ENV, "a" * 64)
+    assert followups._expected_imagenet100_manifest() == "a" * 64
+    monkeypatch.setenv(followups.MANIFEST_ENV, "not-a-digest")
+    with pytest.raises(ValueError, match="SHA-256"):
+        followups._expected_imagenet100_manifest()
 
 
 @pytest.mark.parametrize("variant", runner.VARIANTS)

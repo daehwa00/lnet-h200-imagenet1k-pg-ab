@@ -1,6 +1,6 @@
 {
   "campaign_id": "h200-imagenet100-stage-allocation-s501-v1",
-  "campaign_manifest_sha256": "190a8cc09631a6e126515349c915da37674b93d2679f541d5ca0615444fc81e4",
+  "campaign_manifest_sha256": "62c3be218bf263facfebfb4529b466c8130b1753a6ed592a14b92d69f8adbfb8",
   "canary": {
     "display_name": "H200-I100-stage-relay-permanent-canary-v1",
     "id": "5e552b9655fab181",
@@ -29,7 +29,7 @@
   "runs": {
     "K128-P128-128-160-128-D2222": {
       "501": {
-        "display_name": "H200-I100-S501-01-K128-P128-128-160-128-D2222",
+        "display_name": "H200-I100-S501-02-K128-P128-128-160-128-D2222",
         "id": "3426284ea3681eb4",
         "tags": [
           "H200",
@@ -42,7 +42,7 @@
     },
     "K128-P128-128-160-96-D2222": {
       "501": {
-        "display_name": "H200-I100-S501-05-K128-P128-128-160-96-D2222",
+        "display_name": "H200-I100-S501-06-K128-P128-128-160-96-D2222",
         "id": "d4f16c020e52a3b8",
         "tags": [
           "H200",
@@ -55,8 +55,21 @@
     },
     "K128-P128-160-160-128-D2222": {
       "501": {
-        "display_name": "H200-I100-S501-02-K128-P128-160-160-128-D2222",
+        "display_name": "H200-I100-S501-03-K128-P128-160-160-128-D2222",
         "id": "881c88dad9b52570",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "stage-allocation",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "K128-P128x4-D2222-Control": {
+      "501": {
+        "display_name": "H200-I100-S501-01-K128-P128x4-D2222-Control",
+        "id": "68db2de8e046d7c5",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -68,7 +81,7 @@
     },
     "K128-P128x4-D2223-FullSR7x1": {
       "501": {
-        "display_name": "H200-I100-S501-10-K128-P128x4-D2223-FullSR7x1",
+        "display_name": "H200-I100-S501-11-K128-P128x4-D2223-FullSR7x1",
         "id": "01d960b0acf7c9fb",
         "tags": [
           "H200",
@@ -81,7 +94,7 @@
     },
     "K128-P128x4-D2232-FullSR14x1": {
       "501": {
-        "display_name": "H200-I100-S501-09-K128-P128x4-D2232-FullSR14x1",
+        "display_name": "H200-I100-S501-10-K128-P128x4-D2232-FullSR14x1",
         "id": "d9b5ae209a206d7f",
         "tags": [
           "H200",
@@ -94,7 +107,7 @@
     },
     "K128-P128x4-D2242-FullSR14x2": {
       "501": {
-        "display_name": "H200-I100-S501-11-K128-P128x4-D2242-FullSR14x2",
+        "display_name": "H200-I100-S501-12-K128-P128x4-D2242-FullSR14x2",
         "id": "8b3f8293a6fb2f30",
         "tags": [
           "H200",
@@ -107,7 +120,7 @@
     },
     "K128-P128x4-D2262-FullSR14x4": {
       "501": {
-        "display_name": "H200-I100-S501-12-K128-P128x4-D2262-FullSR14x4",
+        "display_name": "H200-I100-S501-13-K128-P128x4-D2262-FullSR14x4",
         "id": "35ad53355fb2b883",
         "tags": [
           "H200",
@@ -120,7 +133,7 @@
     },
     "K128-P160-160-160-128-D2222": {
       "501": {
-        "display_name": "H200-I100-S501-03-K128-P160-160-160-128-D2222",
+        "display_name": "H200-I100-S501-04-K128-P160-160-160-128-D2222",
         "id": "f07284e68c570274",
         "tags": [
           "H200",
@@ -133,7 +146,7 @@
     },
     "K128-P160-160-160-96-D2222": {
       "501": {
-        "display_name": "H200-I100-S501-04-K128-P160-160-160-96-D2222",
+        "display_name": "H200-I100-S501-05-K128-P160-160-160-96-D2222",
         "id": "98a4b9ffd80fb5f1",
         "tags": [
           "H200",
@@ -146,7 +159,7 @@
     },
     "K128-P96-128-160-96-D2222": {
       "501": {
-        "display_name": "H200-I100-S501-06-K128-P96-128-160-96-D2222",
+        "display_name": "H200-I100-S501-07-K128-P96-128-160-96-D2222",
         "id": "850c9e5a5fb8ac92",
         "tags": [
           "H200",
@@ -159,7 +172,7 @@
     },
     "K128-P96x4-D2222": {
       "501": {
-        "display_name": "H200-I100-S501-07-K128-P96x4-D2222",
+        "display_name": "H200-I100-S501-08-K128-P96x4-D2222",
         "id": "aa7f7462e16b3c44",
         "tags": [
           "H200",
@@ -172,7 +185,7 @@
     },
     "K96-P128x4-D2222": {
       "501": {
-        "display_name": "H200-I100-S501-08-K96-P128x4-D2222",
+        "display_name": "H200-I100-S501-09-K96-P128x4-D2222",
         "id": "c8c9bc578a46cf15",
         "tags": [
           "H200",
@@ -191,6 +204,7 @@
     "precision": "bfloat16",
     "seed": 501,
     "variants": [
+      "K128-P128x4-D2222-Control",
       "K128-P128-128-160-128-D2222",
       "K128-P128-160-160-128-D2222",
       "K128-P160-160-160-128-D2222",

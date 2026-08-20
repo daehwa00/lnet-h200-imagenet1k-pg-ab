@@ -90,8 +90,8 @@ def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -
         training["seed"] != 501
         or training["epochs"] != 100
         or training["batch_size"] != 128
-        or len(variants) != 12
-        or len(set(variants)) != 12
+        or len(variants) != 13
+        or len(set(variants)) != 13
     ):
         raise ValueError("stage-allocation training matrix changed")
     wandb = manifest["wandb"]

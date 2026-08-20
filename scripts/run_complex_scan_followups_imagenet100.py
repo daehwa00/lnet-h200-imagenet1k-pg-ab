@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -26,6 +28,15 @@ VARIANTS = (
     "capacity_dual_fusion384_lrq64",
 )
 SEEDS = (501, 509, 521)
+MANIFEST_ENV = "LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256"
+
+
+def _expected_imagenet100_manifest() -> str:
+    value = os.environ.get(MANIFEST_ENV, base.IMAGENET100_MANIFEST_SHA256)
+    if re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        message = f"{MANIFEST_ENV} must be a lowercase SHA-256 digest"
+        raise ValueError(message)
+    return value
 
 
 def _variant_config(
@@ -75,7 +86,8 @@ def _contract(args: Namespace) -> dict[str, Any]:
     variants = {variant: _variant_config(variant, config) for variant in VARIANTS}
     models = {variant: ComplexScanBackbone(active) for variant, active in variants.items()}
     data_digest, train_count, validation_count = harness._dataset_digest(args.data_root)
-    if data_digest != base.IMAGENET100_MANIFEST_SHA256:
+    expected_manifest = _expected_imagenet100_manifest()
+    if data_digest != expected_manifest:
         message = "ImageNet-100 data manifest does not match the existing baselines"
         raise RuntimeError(message)
     return json.loads(
@@ -148,7 +160,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
                     "existing_baseline_schema": (
                         "lnet.imagenet100.external_tiny_baselines.shared_recipe.v1"
                     ),
-                    "existing_baseline_manifest_sha256": base.IMAGENET100_MANIFEST_SHA256,
+                    "existing_baseline_manifest_sha256": expected_manifest,
                     "existing_final_validation_means": base.EXISTING_BASELINES,
                 },
                 "source_sha256": {
