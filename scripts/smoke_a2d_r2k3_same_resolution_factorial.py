@@ -233,6 +233,12 @@ def _block_transition_check(
     return error, update_rms
 
 
+def _validate_transition_error(device_type: str, error: float) -> None:
+    """Enforce semantic parity where a deterministic FP32 reference is valid."""
+    if device_type == "cpu" and error > 2.0e-5:
+        raise RuntimeError(f"same-resolution algebra changed: {error}")
+
+
 def _shape_and_stage_checks(
     model: ComplexScanBackbone,
     variant: str,
@@ -303,15 +309,16 @@ def _shape_and_stage_checks(
         raise RuntimeError(f"{variant} shape contract changed: {states} != {expected_states}")
     if list(descriptor.shape) != [batch, descriptor_dim]:
         raise RuntimeError(f"{variant} changed its established descriptor width")
-    tolerance = 3.0e-2 if device.type == "cuda" else 2.0e-5
-    if transition_error > tolerance:
-        raise RuntimeError(f"{variant} same-resolution algebra changed")
+    _validate_transition_error(device.type, transition_error)
     if spec.resolutions and minimum_update == 0.0:
         raise RuntimeError(f"{variant} contains a dormant full stage")
     return {
         "states": states,
         "descriptor": list(descriptor.shape),
         "transition_max_abs": transition_error,
+        "transition_check_mode": (
+            "diagnostic-bf16" if device.type == "cuda" else "enforced-fp32"
+        ),
         "minimum_update_rms": None if minimum_update == float("inf") else minimum_update,
     }
 

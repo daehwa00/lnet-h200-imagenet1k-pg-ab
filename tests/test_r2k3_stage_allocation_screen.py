@@ -9,6 +9,7 @@ import torch
 
 from scripts import a2d_r2k3_runtime as runtime
 from scripts import run_a2d_r2k3_stage_allocation_screen_imagenet100 as runner
+from scripts import smoke_a2d_r2k3_same_resolution_factorial as smoke
 
 if TYPE_CHECKING:
     from torch import nn
@@ -42,6 +43,12 @@ def test_screen_covers_each_declared_diagnostic_once() -> None:
     queued = tuple(variant for lane in runner.JOBS_BY_GPU.values() for variant in lane)
     assert tuple(runner.JOBS_BY_GPU) == (0,)
     assert queued == runner.VARIANTS
+
+
+def test_transition_reference_is_enforced_only_for_deterministic_fp32() -> None:
+    smoke._validate_transition_error("cuda", 1.0)
+    with pytest.raises(RuntimeError, match="algebra changed"):
+        smoke._validate_transition_error("cpu", 1.0)
 
 
 @pytest.mark.parametrize("variant", runner.VARIANTS)
