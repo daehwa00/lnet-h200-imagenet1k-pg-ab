@@ -226,8 +226,8 @@ def load_campaign(path: Path) -> Campaign:
     )
     if result.calibration_seed != 501 or result.calibration_epochs != 3:
         raise ValueError("calibration must use seed 501 for exactly 3 epochs")
-    if result.full_epochs != 100:
-        raise ValueError("full training must run for exactly 100 epochs")
+    if result.full_epochs != 300:
+        raise ValueError("full training must run for exactly 300 epochs")
     if (
         result.batch_size != 256
         or result.dataloader_workers != 2

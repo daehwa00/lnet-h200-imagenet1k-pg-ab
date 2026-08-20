@@ -2,7 +2,7 @@
 
 This campaign trains the requested 20 compact vision models from scratch under
 one matched 224px recipe. Each model first receives the same three-learning-rate
-calibration budget, then runs 100 epochs for seeds 501, 509, and 521.
+calibration budget, then runs 300 epochs for seeds 501, 509, and 521.
 
 ```text
 ParC-Net XS / S
@@ -31,7 +31,7 @@ bash h200/run_baselines.sh
 ## Queue protocol
 
 - LR calibration: `3e-4`, `1e-3`, `3e-3`; seed 501; 3 epochs each.
-- Full training: selected LR; 100 epochs; seeds 501, 509, 521.
+- Full training: selected LR; 300 epochs; seeds 501, 509, 521.
 - AdamW, weight decay 0.05, warmup plus cosine, Mixup 0.8, label
   smoothing 0.1, RandAugment N2/M9, random erasing 0.25.
 - Effective batch size 256, two DataLoader workers per process, prefetch one.

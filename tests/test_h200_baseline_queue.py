@@ -62,7 +62,7 @@ def test_manifest_has_exact_models_recipe_and_seed_major_full_order(tmp_path: Pa
     assert campaign.seeds == (501, 509, 521)
     assert campaign.learning_rates == (3e-4, 1e-3, 3e-3)
     assert campaign.calibration_epochs == 3
-    assert campaign.full_epochs == 100
+    assert campaign.full_epochs == 300
     assert campaign.batch_size == 256
     assert campaign.dataloader_workers == 2
     assert campaign.prefetch_factor == 1
@@ -80,7 +80,7 @@ def test_manifest_has_exact_models_recipe_and_seed_major_full_order(tmp_path: Pa
         *((501, model.key) for model in campaign.models),
         (509, campaign.models[0].key),
     ]
-    assert all(task.epochs == 100 and task.wandb_mode == "online" for task in full)
+    assert all(task.epochs == 300 and task.wandb_mode == "online" for task in full)
     for parallelism in (1, 2, 4):
         preflight = queue.preflight_tasks(
             campaign,
