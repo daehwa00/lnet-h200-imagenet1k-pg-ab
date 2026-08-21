@@ -84,6 +84,7 @@ def test_entrypoint_freezes_commit_campaign_credentials_and_batch_shape() -> Non
     assert script.count("--batch-size 256") == 2
     assert script.count('--workers "${WORKERS}"') == 2
     assert "WORKERS > 8" in script
+    assert script.index('CPU_COUNT="$(nproc)"') < script.index("export OMP_NUM_THREADS=1")
     assert "${OUTPUT_NAMESPACE}-${MANIFEST_SHA256:0:16}" in script
 
 

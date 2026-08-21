@@ -208,15 +208,14 @@ export WANDB_GROUP="${CAMPAIGN_GROUP}"
 export WANDB_CONSOLE="${CAMPAIGN_CONSOLE}"
 export WANDB_INIT_TIMEOUT=30
 export WANDB_DIR="${RUN_ROOT}/wandb"
-export OMP_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-
 CPU_COUNT="$(nproc)"
 WORKERS=$((CPU_COUNT / 4))
 if (( CPU_COUNT >= 2 && WORKERS < 1 )); then WORKERS=1; fi
 if (( WORKERS > 8 )); then WORKERS=8; fi
 readonly WORKERS
 export LNET_DATALOADER_WORKERS="${WORKERS}"
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
 
 "${ENV_ROOT}/bin/python" - "${WANDB_SDK_VERSION}" <<'PY'
 import importlib.metadata

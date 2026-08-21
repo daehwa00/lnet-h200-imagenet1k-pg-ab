@@ -77,6 +77,7 @@ def test_h200_shell_runs_exactly_one_model_per_process() -> None:
     assert "--run-seeds 501" in script
     assert "--kill-after=5m 24h" in script
     assert "H200_D2262_P_RESULTS_COMPLETE" in script
+    assert script.index('CPU_COUNT="$(nproc)"') < script.index("export OMP_NUM_THREADS=1")
 
 
 def test_h200_wrapper_accepts_exactly_one_registered_variant(
