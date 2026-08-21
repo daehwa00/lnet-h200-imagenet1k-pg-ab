@@ -1,0 +1,9 @@
+{
+  "schema": "lnet.remote_run_control.v1",
+  "campaign_id": "h200-imagenet100-stage-allocation-s501-v1",
+  "target_commit": "0000000000000000000000000000000000000000",
+  "generation": 1,
+  "action": "run",
+  "updated_at": "2026-08-21T12:00:00+09:00",
+  "reason": "template; the dedicated control branch binds the deployment commit"
+}

@@ -9,6 +9,9 @@ readonly PROTOCOL_MANIFEST="${PROJECT_ROOT}/h200/campaign.json"
 readonly PYTHON_VERSION="3.13.11"
 readonly UV_VERSION="0.9.26"
 readonly DUMMY_WANDB_API_KEY="0000000000000000000000000000000000000000"
+readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab.git"
+readonly CONTROL_REF="refs/heads/control/imagenet100-stage-allocation"
+readonly CONTROL_PATH="h200/stage_allocation/control.json"
 
 cd "${PROJECT_ROOT}"
 
@@ -16,6 +19,41 @@ if [[ ! "${H200_EXPECTED_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "ERROR: H200_EXPECTED_COMMIT must be the exact 40-character deployment commit" >&2
   exit 2
 fi
+
+if [[ "${H200_OWNER_CONTROL_INNER:-0}" != "1" ]]; then
+  CONTROL_CAMPAIGN_ID="$(
+    python3 - "${CAMPAIGN_RUNTIME}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("campaign_id")
+if not isinstance(value, str) or not value:
+    raise SystemExit("invalid H200 control campaign identity")
+print(value)
+PY
+  )"
+  readonly CONTROL_CAMPAIGN_ID
+  readonly CONTROL_STATE_ROOT="/app/output/daehwa00/run-control/${CONTROL_CAMPAIGN_ID}/${H200_EXPECTED_COMMIT}"
+  readonly CONTROL_STOP_MARKER="${CONTROL_STATE_ROOT}/stopped.json"
+  export H200_RUN_CONTROL_REPO_URL="${CONTROL_REPO_URL}"
+  export H200_RUN_CONTROL_REF="${CONTROL_REF}"
+  export H200_RUN_CONTROL_PATH="${CONTROL_PATH}"
+  export H200_RUN_CONTROL_POLL_SECONDS=15
+  exec python3 scripts/run_h200_owner_controlled.py \
+    --repo-root "${PROJECT_ROOT}" \
+    --repo-url "${CONTROL_REPO_URL}" \
+    --ref "${CONTROL_REF}" \
+    --control-path "${CONTROL_PATH}" \
+    --campaign-id "${CONTROL_CAMPAIGN_ID}" \
+    --target-commit "${H200_EXPECTED_COMMIT}" \
+    --stop-marker "${CONTROL_STOP_MARKER}" \
+    --poll-seconds 15 \
+    --grace-seconds 120 \
+    --term-seconds 30 \
+    -- env H200_OWNER_CONTROL_INNER=1 bash "$0"
+fi
+
 ACTUAL_COMMIT="$(git rev-parse --verify HEAD)"
 readonly ACTUAL_COMMIT
 if [[ "${ACTUAL_COMMIT}" != "${H200_EXPECTED_COMMIT}" ]]; then
@@ -225,6 +263,10 @@ export WANDB_CONSOLE="${CAMPAIGN_CONSOLE}"
 export WANDB_INIT_TIMEOUT=30
 export WANDB_DIR="${RUN_ROOT}/wandb"
 export H200_STAGE_ALLOCATION_WANDB_RUNTIME="${CAMPAIGN_RUNTIME}"
+export H200_RUN_CONTROL_REPO_URL="${CONTROL_REPO_URL}"
+export H200_RUN_CONTROL_REF="${CONTROL_REF}"
+export H200_RUN_CONTROL_PATH="${CONTROL_PATH}"
+export H200_RUN_CONTROL_POLL_SECONDS=15
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 
@@ -325,7 +367,8 @@ readonly LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256
 export LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256
 echo "H200_IMAGENET100_MANIFEST=${LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256}"
 
-"${ENV_ROOT}/bin/python" scripts/smoke_r2k3_campaign.py \
+timeout --signal=TERM --kill-after=2m 1h \
+  "${ENV_ROOT}/bin/python" scripts/smoke_r2k3_campaign.py \
   --runner a2d_r2k3_stage_allocation_screen \
   --device cuda \
   --compile \
@@ -334,14 +377,138 @@ echo "H200_IMAGENET100_MANIFEST=${LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256}"
   --repeat-steps 2 \
   --root "${RUN_ROOT}/smoke"
 
-"${ENV_ROOT}/bin/python" scripts/run_h200_imagenet100_stage_allocation.py \
-  --root "${RUN_ROOT}" \
+if [[ -f "${H200_CONTROL_STOP_MARKER}" ]]; then
+  echo "H200_EXPERIMENT_STOPPED=${H200_CONTROL_STOP_MARKER}"
+  exit 0
+fi
+
+readonly PREFLIGHT_ROOT="${RUN_ROOT}/data-backed-preflight"
+export WANDB_MODE=disabled
+timeout --signal=TERM --kill-after=2m 2h \
+  "${ENV_ROOT}/bin/python" scripts/run_h200_imagenet100_stage_allocation.py \
+  --root "${PREFLIGHT_ROOT}" \
   --data-root "${IMAGENET100_ROOT}" \
+  --variants K128-P128x4-D2222-Control \
   --run-seeds 501 \
-  --epochs 100 \
+  --epochs 1 \
   --batch-size 128 \
   --gradient-accumulation-steps 1 \
   --workers "${WORKERS}" \
   --precision bfloat16
+"${ENV_ROOT}/bin/python" - "${PREFLIGHT_ROOT}/results/K128-P128x4-D2222-Control__seed501.json" <<'PY'
+import json
+import math
+import sys
+from pathlib import Path
 
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+history = payload.get("history")
+throughput = payload.get("complete_training_examples_per_second")
+if (
+    not isinstance(history, list)
+    or len(history) != 1
+    or history[-1].get("epoch") != 1
+    or not isinstance(throughput, (int, float))
+    or not math.isfinite(throughput)
+    or throughput <= 1.0
+):
+    raise SystemExit("data-backed preflight result is incomplete or non-finite")
+print(f"H200_DATA_BACKED_PREFLIGHT_IMAGES_PER_SECOND={throughput:.3f}")
+PY
+export WANDB_MODE=online
+
+if [[ -f "${H200_CONTROL_STOP_MARKER}" ]]; then
+  echo "H200_EXPERIMENT_STOPPED=${H200_CONTROL_STOP_MARKER}"
+  exit 0
+fi
+
+mapfile -t STAGE_VARIANTS < <(
+  "${ENV_ROOT}/bin/python" - "${CAMPAIGN_RUNTIME}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+for variant in payload["training"]["variants"]:
+    print(variant)
+PY
+)
+if (( ${#STAGE_VARIANTS[@]} != 13 )); then
+  echo "ERROR: expected exactly 13 stage-allocation variants" >&2
+  exit 2
+fi
+
+validate_variant_result() {
+  local variant="$1"
+  "${ENV_ROOT}/bin/python" - "${RUN_ROOT}/results/${variant}__seed501.json" "${variant}" <<'PY'
+import json
+import math
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+variant = sys.argv[2]
+if not path.is_file():
+    raise SystemExit(1)
+payload = json.loads(path.read_text(encoding="utf-8"))
+history = payload.get("history")
+if (
+    payload.get("variant") != variant
+    or payload.get("seed") != 501
+    or not isinstance(history, list)
+    or len(history) != 100
+    or history[-1].get("epoch") != 100
+    or not math.isfinite(float(payload.get("training_seconds", float("nan"))))
+):
+    raise SystemExit(1)
+PY
+}
+
+for variant in "${STAGE_VARIANTS[@]}"; do
+  if validate_variant_result "${variant}"; then
+    echo "H200_VARIANT_ALREADY_COMPLETE=${variant}"
+    continue
+  fi
+  completed=0
+  for attempt in 1 2; do
+    echo "H200_VARIANT_ATTEMPT=${variant}:${attempt}/2"
+    set +e
+    timeout --signal=TERM --kill-after=5m 8h \
+      "${ENV_ROOT}/bin/python" scripts/run_h200_imagenet100_stage_allocation.py \
+      --root "${RUN_ROOT}" \
+      --data-root "${IMAGENET100_ROOT}" \
+      --variants "${variant}" \
+      --run-seeds 501 \
+      --epochs 100 \
+      --batch-size 128 \
+      --gradient-accumulation-steps 1 \
+      --workers "${WORKERS}" \
+      --precision bfloat16
+    return_code=$?
+    set -e
+    if [[ -f "${H200_CONTROL_STOP_MARKER}" ]]; then
+      echo "H200_EXPERIMENT_STOPPED=${H200_CONTROL_STOP_MARKER}"
+      exit 0
+    fi
+    if (( return_code == 0 )) && validate_variant_result "${variant}"; then
+      completed=1
+      break
+    fi
+    echo "H200_VARIANT_RETRY=${variant}:exit-${return_code}" >&2
+    if (( attempt < 2 )); then sleep 60; fi
+  done
+  if (( completed != 1 )); then
+    echo "ERROR: variant failed after two attempts: ${variant}" >&2
+    exit 1
+  fi
+done
+
+if [[ -f "${H200_CONTROL_STOP_MARKER}" ]]; then
+  echo "H200_EXPERIMENT_STOPPED=${H200_CONTROL_STOP_MARKER}"
+  exit 0
+fi
+if [[ ! -f "${RUN_ROOT}/summary.json" ]]; then
+  echo "ERROR: all variants completed but summary.json is missing" >&2
+  exit 1
+fi
 echo "H200_EXPERIMENT_COMPLETE=${RUN_ROOT}/summary.json"
