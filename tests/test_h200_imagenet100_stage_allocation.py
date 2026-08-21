@@ -67,6 +67,7 @@ def test_h200_entrypoint_is_commit_bound_and_runs_the_exact_screen() -> None:
     assert "prepare_imagenet100.py" in script
     assert "smoke_r2k3_campaign.py" in script
     assert "run_h200_imagenet100_stage_allocation.py" in script
+    assert "cloudflare/stage-allocation-relay/canary.py" in script
     assert "--full-batch-size 128" in script
     assert "--epochs 100" in script
     assert 'export WANDB_API_KEY="${DUMMY_WANDB_API_KEY}"' in script

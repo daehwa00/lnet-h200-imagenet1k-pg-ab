@@ -331,6 +331,9 @@ payload = {
 print("H200_ENV=" + json.dumps(payload, sort_keys=True), flush=True)
 PY
 
+timeout --signal=TERM --kill-after=30s 3m \
+  "${ENV_ROOT}/bin/python" cloudflare/stage-allocation-relay/canary.py
+
 "${ENV_ROOT}/bin/python" h200/validate_imagenet1k.py \
   --root "${DATA_ROOT}" \
   --output "${DATASET_MANIFEST}"
