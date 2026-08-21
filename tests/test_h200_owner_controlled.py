@@ -89,7 +89,7 @@ def test_owner_stop_exits_zero_and_persists_marker(
     assert supervisor.main() == 0
     payload = json.loads(args.stop_marker.read_text(encoding="utf-8"))
     assert payload["generation"] == 2
-    assert payload["checkpoint_policy"] == "last completed epoch remains authoritative"
+    assert payload["checkpoint_policy"] == "last completed cohort epoch remains authoritative"
     assert process.wait_calls == 1
     assert json.loads(args.fast_stop_marker.read_text(encoding="utf-8")) == payload
 

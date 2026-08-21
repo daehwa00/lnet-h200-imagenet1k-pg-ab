@@ -5,7 +5,7 @@ export const CAMPAIGN = {
     "running",
     "finished"
   ],
-  "campaignId": "h200-imagenet100-stage-allocation-s501-v2",
+  "campaignId": "h200-imagenet100-stage-allocation-s501-v3",
   "entity": "daehwa",
   "graphqlEnvelopeKeys": {
     "CreateRunFiles": [
@@ -50,8 +50,8 @@ export const CAMPAIGN = {
     "UpsertBucket": "a30f4b9373ef4d200d9e927fe21315320dc83fc409c70a7ed64201a2b107bf6d",
     "Viewer": "e5782f8ad76269e0104b45e78e82bc03efcc6783ec68299ac082de12c5475a33"
   },
-  "group": "h200-imagenet100-stage-allocation-s501-v2",
-  "manifestSha256": "68494cffc0471b349e73f882dc3638a7c9fb2fe3a5cebce09d6de223cb2b9c3c",
+  "group": "h200-imagenet100-stage-allocation-s501-v3",
+  "manifestSha256": "3d0d0d5436aae967db3b34364ea5f6a19f54424c4984c6af1e8cc0e57c6a6a16",
   "maxFileStreamBodyBytes": 10485760,
   "maxGraphqlBodyBytes": 1048576,
   "noVariableOperations": [
@@ -60,53 +60,13 @@ export const CAMPAIGN = {
     "ServerFeaturesQuery"
   ],
   "project": "alphabet2d-imagenet100-h200",
-  "protocolVersion": "wandb-0.22.3-h200-imagenet100-stage-v2",
+  "protocolVersion": "wandb-0.22.3-h200-imagenet100-stage-v3",
   "runFiles": [
     "config.yaml",
     "wandb-summary.json"
   ],
   "runsById": {
-    "293d1058e82a1bba": {
-      "displayName": "H200-I100-S501-11-K128-P128x4-D2223-FullSR7x1",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "stage-allocation",
-        "seed501",
-        "authenticated"
-      ]
-    },
-    "35bdfc999b05a02f": {
-      "displayName": "H200-I100-S501-01-K128-P128x4-D2222-Control",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "stage-allocation",
-        "seed501",
-        "authenticated"
-      ]
-    },
-    "3d004b6bf5de5779": {
-      "displayName": "H200-I100-S501-04-K128-P160-160-160-128-D2222",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "stage-allocation",
-        "seed501",
-        "authenticated"
-      ]
-    },
-    "45c63e3ee821dd83": {
-      "displayName": "H200-I100-S501-08-K128-P96x4-D2222",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "stage-allocation",
-        "seed501",
-        "authenticated"
-      ]
-    },
-    "64ad47a6801015cf": {
+    "08f53ad9f4022795": {
       "displayName": "H200-I100-S501-05-K128-P160-160-160-96-D2222",
       "tags": [
         "H200",
@@ -116,8 +76,8 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
-    "69317f5ddd57f528": {
-      "displayName": "H200-I100-S501-10-K128-P128x4-D2232-FullSR14x1",
+    "176b84265208f096": {
+      "displayName": "H200-I100-S501-04-K128-P160-160-160-128-D2222",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -126,66 +86,7 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
-    "6f75b2daadc186da": {
-      "displayName": "H200-I100-S501-09-K96-P128x4-D2222",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "stage-allocation",
-        "seed501",
-        "authenticated"
-      ]
-    },
-    "8796a8e3ad94f895": {
-      "displayName": "H200-I100-S501-03-K128-P128-160-160-128-D2222",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "stage-allocation",
-        "seed501",
-        "authenticated"
-      ]
-    },
-    "9f8c7ecb05f34cf9": {
-      "displayName": "H200-I100-S501-12-K128-P128x4-D2242-FullSR14x2",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "stage-allocation",
-        "seed501",
-        "authenticated"
-      ]
-    },
-    "d16c7979e783d7b6": {
-      "displayName": "H200-I100-S501-13-K128-P128x4-D2262-FullSR14x4",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "stage-allocation",
-        "seed501",
-        "authenticated"
-      ]
-    },
-    "d4782711ffe66305": {
-      "displayName": "H200-I100-stage-relay-permanent-canary-v2",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "relay-canary",
-        "authenticated"
-      ]
-    },
-    "e89c9513212e8f7a": {
-      "displayName": "H200-I100-S501-06-K128-P128-128-160-96-D2222",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "stage-allocation",
-        "seed501",
-        "authenticated"
-      ]
-    },
-    "ea67e914c52b0174": {
+    "1f280e808681c775": {
       "displayName": "H200-I100-S501-07-K128-P96-128-160-96-D2222",
       "tags": [
         "H200",
@@ -195,8 +96,107 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
-    "f9644a12f47eca2a": {
+    "238915e7e8cd806a": {
+      "displayName": "H200-I100-S501-13-K128-P128x4-D2262-FullSR14x4",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "262eb7ac769a3c51": {
+      "displayName": "H200-I100-S501-06-K128-P128-128-160-96-D2222",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "555fbdd208c93cd0": {
+      "displayName": "H200-I100-S501-12-K128-P128x4-D2242-FullSR14x2",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "92b202e12ca21a96": {
+      "displayName": "H200-I100-S501-09-K96-P128x4-D2222",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "a5aeb2225a2fc909": {
+      "displayName": "H200-I100-S501-08-K128-P96x4-D2222",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "c0a2a6340bac8bf8": {
+      "displayName": "H200-I100-stage-relay-permanent-canary-v3",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "relay-canary",
+        "authenticated"
+      ]
+    },
+    "c1f1f99432bcdf88": {
+      "displayName": "H200-I100-S501-03-K128-P128-160-160-128-D2222",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "c6e6a8d87921c54d": {
+      "displayName": "H200-I100-S501-11-K128-P128x4-D2223-FullSR7x1",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "d1f895e5782fc9c0": {
+      "displayName": "H200-I100-S501-01-K128-P128x4-D2222-Control",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "db8432a5f68cd22b": {
       "displayName": "H200-I100-S501-02-K128-P128-128-160-128-D2222",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "ec1cc3cd87618da8": {
+      "displayName": "H200-I100-S501-10-K128-P128x4-D2232-FullSR14x1",
       "tags": [
         "H200",
         "ImageNet-100",

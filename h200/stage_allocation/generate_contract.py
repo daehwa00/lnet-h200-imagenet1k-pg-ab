@@ -65,7 +65,7 @@ def _records(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def _canary(manifest: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": _run_id(manifest["campaign_id"], "permanent-canary"),
-        "display_name": "H200-I100-stage-relay-permanent-canary-v2",
+        "display_name": "H200-I100-stage-relay-permanent-canary-v3",
         "tags": ["H200", "ImageNet-100", "relay-canary", "authenticated"],
     }
 

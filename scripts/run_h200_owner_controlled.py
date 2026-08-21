@@ -104,7 +104,7 @@ def _stop_payload(
         "observed_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "phase": phase,
         "forced": forced,
-        "checkpoint_policy": "last completed epoch remains authoritative",
+        "checkpoint_policy": "last completed cohort epoch remains authoritative",
         "partial_epoch_discarded": True,
     }
 

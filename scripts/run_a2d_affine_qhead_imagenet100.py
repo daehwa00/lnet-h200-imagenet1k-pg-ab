@@ -47,8 +47,6 @@ SEEDS = (501, 509, 521)
 _ORIGINAL_EVALUATE = harness._evaluate
 
 
-
-
 def _protocol(variant: str) -> dict[str, Any]:
     protocols: dict[str, dict[str, Any]] = {
         "H0-Affine": {
@@ -299,6 +297,40 @@ def _flat_metrics(logits: Tensor, labels: Tensor, prefix: str) -> dict[str, floa
     }
 
 
+def _evaluation_from_collected(
+    model: nn.Module,
+    outputs: list[list[Tensor]],
+    target: Tensor,
+    device: torch.device,
+) -> dict[str, float]:
+    joint, affine, fusion, lrq, descriptor = [torch.cat(values, dim=0) for values in outputs]
+    classifier = cast("A2DAffineQClassifier", cast("Any", model).classifier)
+    result = {
+        "accuracy": float(joint.argmax(dim=-1).eq(target).float().mean()),
+        "cross_entropy": float(functional.cross_entropy(joint, target)),
+        "nll": float(functional.cross_entropy(joint, target)),
+        "ece": expected_calibration_error(joint, target),
+    }
+    if classifier.affine is not None:
+        result.update(_flat_metrics(affine, target, "affine_only"))
+        with torch.inference_mode():
+            active_descriptor = descriptor.to(device)
+            standardized = classifier.affine.standardizer(active_descriptor)
+            reconstructed = classifier.affine.linear(standardized).cpu()
+        result["affine_reconstruction_max_error"] = float((affine - reconstructed).abs().max())
+    if classifier.fusion is not None:
+        result.update(_flat_metrics(fusion, target, "fusion_only"))
+    if classifier.lrq is not None and classifier.beta_lrq is not None:
+        result.update(_flat_metrics(lrq, target, "lrq_only"))
+        without_lrq = joint - float(classifier.beta_lrq.detach()) * lrq
+        result["without_lrq_accuracy"] = float(without_lrq.argmax(dim=-1).eq(target).float().mean())
+        result["lrq_removal_drop_pp"] = 100.0 * (
+            result["accuracy"] - result["without_lrq_accuracy"]
+        )
+    cast("Any", model)._latest_evaluation_metrics = result
+    return result
+
+
 def _evaluate(
     model: nn.Module,
     runtime: nn.Module,
@@ -340,32 +372,8 @@ def _evaluate(
             for index, value in enumerate(output):
                 outputs[index].append(value.detach().float().cpu())
             labels.append(targets.cpu())
-    joint, affine, fusion, lrq, descriptor = [torch.cat(values, dim=0) for values in outputs]
     target = torch.cat(labels)
-    result = {
-        "accuracy": float(joint.argmax(dim=-1).eq(target).float().mean()),
-        "cross_entropy": float(functional.cross_entropy(joint, target)),
-        "nll": float(functional.cross_entropy(joint, target)),
-        "ece": expected_calibration_error(joint, target),
-    }
-    if classifier.affine is not None:
-        result.update(_flat_metrics(affine, target, "affine_only"))
-        with torch.inference_mode():
-            active_descriptor = descriptor.to(device)
-            standardized = classifier.affine.standardizer(active_descriptor)
-            reconstructed = classifier.affine.linear(standardized).cpu()
-        result["affine_reconstruction_max_error"] = float((affine - reconstructed).abs().max())
-    if classifier.fusion is not None:
-        result.update(_flat_metrics(fusion, target, "fusion_only"))
-    if classifier.lrq is not None and classifier.beta_lrq is not None:
-        result.update(_flat_metrics(lrq, target, "lrq_only"))
-        without_lrq = joint - float(classifier.beta_lrq.detach()) * lrq
-        result["without_lrq_accuracy"] = float(without_lrq.argmax(dim=-1).eq(target).float().mean())
-        result["lrq_removal_drop_pp"] = 100.0 * (
-            result["accuracy"] - result["without_lrq_accuracy"]
-        )
-    cast("Any", model)._latest_evaluation_metrics = result
-    return result
+    return _evaluation_from_collected(model, outputs, target, device)
 
 
 def _wandb_model_metrics(model: nn.Module) -> dict[str, float]:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ruff: noqa: ANN401, BLE001, EM101, EM102, PLC0415, SLF001, T201, TRY003
+# ruff: noqa: BLE001, EM101, EM102, PLC0415, SLF001, T201, TRY003
 """Run the stage-allocation screen with relay-bound H200 W&B identities."""
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import remote_run_control
+import run_a2d_r2k3_stage_allocation_cohort_imagenet100 as cohort
 import run_a2d_r2k3_stage_allocation_screen_imagenet100 as stage
 import run_alphabet2d_imagenet100_nano as harness
 
@@ -23,7 +24,6 @@ if TYPE_CHECKING:
 
 _ACTIVE_VARIANT: str | None = None
 _OPTIMIZER_UPDATES_SEEN = 0
-_ORIGINAL_TRAIN_EPOCH_WITH_STEP_COUNT = harness._train_epoch_with_step_count
 
 
 def _runtime() -> dict[str, Any]:
@@ -189,25 +189,13 @@ def _raise_if_owner_stopped() -> None:
         raise remote_run_control.StopRequestedError(record)
 
 
-def _controlled_train_epoch_with_step_count(*args: Any, **kwargs: Any) -> Any:
-    """Check the supervisor's atomic stop marker after a successful update."""
-    optimizer = args[4]
-    original_step = optimizer.step
-
-    def step_then_check(*step_args: Any, **step_kwargs: Any) -> Any:
-        global _OPTIMIZER_UPDATES_SEEN  # noqa: PLW0603
-        result = original_step(*step_args, **step_kwargs)
-        _OPTIMIZER_UPDATES_SEEN += 1
-        _raise_if_owner_stopped()
-        if _OPTIMIZER_UPDATES_SEEN % 100 == 0:
-            _write_heartbeat()
-        return result
-
-    optimizer.step = step_then_check
-    try:
-        return _ORIGINAL_TRAIN_EPOCH_WITH_STEP_COUNT(*args, **kwargs)
-    finally:
-        optimizer.step = original_step
+def _controlled_after_cohort_batch(batch_index: int) -> None:
+    """Check owner control only after all models completed the shared batch."""
+    global _OPTIMIZER_UPDATES_SEEN  # noqa: PLW0603
+    _OPTIMIZER_UPDATES_SEEN += len(stage.VARIANTS)
+    _raise_if_owner_stopped()
+    if batch_index % 50 == 0:
+        _write_heartbeat()
 
 
 def _argument_path(name: str) -> Path:
@@ -232,28 +220,29 @@ def _write_stop_marker(error: remote_run_control.StopRequestedError) -> Path:
         "reason": error.record["reason"],
         "control_updated_at": error.record["updated_at"],
         "observed_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "phase": "optimizer_step_boundary",
+        "phase": "cohort_batch_boundary",
         "forced": False,
-        "checkpoint_policy": "last completed epoch remains authoritative",
+        "checkpoint_policy": "last completed cohort epoch remains authoritative",
         "partial_epoch_discarded": True,
     }
     _atomic_json(marker, payload)
     return marker
 
 
-def _selected_variant() -> str:
+def _selected_variants() -> tuple[str, ...]:
     try:
         start = sys.argv.index("--variants") + 1
     except ValueError as error:
-        raise RuntimeError("H200 controlled runs require exactly one --variants value") from error
+        raise RuntimeError("H200 shared cohort requires --variants") from error
     values: list[str] = []
     for value in sys.argv[start:]:
         if value.startswith("--"):
             break
         values.append(value)
-    if len(values) != 1:
-        raise RuntimeError("H200 controlled runs require exactly one --variants value")
-    return values[0]
+    selected = tuple(values)
+    if selected != stage.VARIANTS:
+        raise RuntimeError("H200 shared cohort requires the frozen 13-variant order")
+    return selected
 
 
 def main() -> None:
@@ -268,9 +257,10 @@ def main() -> None:
     missing = [name for name in required_environment if not os.environ.get(name)]
     if missing:
         raise RuntimeError(f"required H200 run-control environment is missing: {missing}")
-    _ACTIVE_VARIANT = _selected_variant()
+    _selected_variants()
+    _ACTIVE_VARIANT = "shared-batch-cohort"
     harness._initialize_wandb_run = _initialize_required_wandb_run
-    harness._train_epoch_with_step_count = _controlled_train_epoch_with_step_count
+    cohort._after_cohort_batch = _controlled_after_cohort_batch
     initial_stop = _read_owner_stop_marker(Path(os.environ["H200_CONTROL_FAST_STOP_MARKER"]))
     if initial_stop is not None:
         error = remote_run_control.StopRequestedError(initial_stop)
@@ -278,7 +268,7 @@ def main() -> None:
         print(f"H200_KILL_SWITCH_STOPPED={marker}", flush=True)
         return
     try:
-        stage.main()
+        cohort.main()
     except remote_run_control.StopRequestedError as error:
         marker = _write_stop_marker(error)
         print(f"H200_KILL_SWITCH_STOPPED={marker}", flush=True)

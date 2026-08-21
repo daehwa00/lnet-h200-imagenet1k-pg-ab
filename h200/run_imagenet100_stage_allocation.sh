@@ -242,7 +242,7 @@ export PYTORCH_ALLOC_CONF=expandable_segments:True
 export TORCHINDUCTOR_CACHE_DIR="${CACHE_ROOT}/torchinductor"
 export TRITON_CACHE_DIR="${CACHE_ROOT}/triton"
 export LNET_LAUNCH_CACHE="${CACHE_ROOT}/lnet-launch"
-export LNET_COMPILE_MODE=reduce-overhead
+export LNET_COMPILE_MODE=default
 export LNET_PERSISTENT_WORKERS=0
 export LNET_DATALOADER_PREFETCH_FACTOR=2
 unset \
@@ -388,7 +388,7 @@ if [[ ! -f "${STAGED_DATA_READY}" ]]; then
     du --bytes --summarize --dereference \
       "${IMAGENET100_ROOT}/train" \
       "${IMAGENET100_ROOT}/val" \
-      | awk '{ total += $1 } END { print total }'
+      | awk '{ total += $1 } END { printf "%.0f\n", total }'
   )"
   STAGED_DATA_AVAILABLE_BYTES="$(df --block-size=1 --output=avail /app/scratch | tail -n 1 | tr -d ' ')"
   if (( STAGED_DATA_AVAILABLE_BYTES < STAGED_DATA_REQUIRED_BYTES + 2147483648 )); then
@@ -429,65 +429,6 @@ fi
 readonly TRAIN_DATA_ROOT="${STAGED_DATA_ROOT}"
 echo "H200_TRAIN_DATA_ROOT=${TRAIN_DATA_ROOT}"
 
-timeout --signal=TERM --kill-after=2m 1h \
-  "${ENV_ROOT}/bin/python" scripts/smoke_r2k3_campaign.py \
-  --runner a2d_r2k3_stage_allocation_screen \
-  --device cuda \
-  --compile \
-  --full-batch \
-  --full-batch-size 128 \
-  --repeat-steps 2 \
-  --root "${RUN_ROOT}/smoke"
-
-if [[ -f "${H200_CONTROL_STOP_MARKER}" ]]; then
-  echo "H200_EXPERIMENT_STOPPED=${H200_CONTROL_STOP_MARKER}"
-  exit 0
-fi
-
-readonly PREFLIGHT_ROOT="${RUN_ROOT}/data-backed-preflight"
-export WANDB_MODE=disabled
-timeout --signal=TERM --kill-after=2m 2h \
-  "${ENV_ROOT}/bin/python" scripts/run_h200_imagenet100_stage_allocation.py \
-  --root "${PREFLIGHT_ROOT}" \
-  --data-root "${TRAIN_DATA_ROOT}" \
-  --variants K128-P128x4-D2222-Control \
-  --run-seeds 501 \
-  --epochs 2 \
-  --batch-size 128 \
-  --gradient-accumulation-steps 1 \
-  --workers "${WORKERS}" \
-  --precision bfloat16
-"${ENV_ROOT}/bin/python" - "${PREFLIGHT_ROOT}/results/K128-P128x4-D2222-Control__seed501.json" <<'PY'
-import json
-import math
-import sys
-from pathlib import Path
-
-payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-history = payload.get("history")
-if (
-    not isinstance(history, list)
-    or len(history) != 2
-    or history[-1].get("epoch") != 2
-):
-    raise SystemExit("optimized data-backed preflight history is incomplete")
-first_seconds = history[0].get("training_seconds")
-second_seconds = history[1].get("training_seconds")
-if not all(isinstance(value, (int, float)) for value in (first_seconds, second_seconds)):
-    raise SystemExit("optimized data-backed preflight timing is missing")
-steady_seconds = float(second_seconds) - float(first_seconds)
-throughput = 130000 / steady_seconds if steady_seconds > 0 else float("nan")
-if not math.isfinite(throughput) or throughput < 300.0:
-    raise SystemExit(f"optimized steady preflight is too slow: {throughput!r}")
-print(f"H200_DATA_BACKED_PREFLIGHT_STEADY_IMAGES_PER_SECOND={throughput:.3f}")
-PY
-export WANDB_MODE=online
-
-if [[ -f "${H200_CONTROL_STOP_MARKER}" ]]; then
-  echo "H200_EXPERIMENT_STOPPED=${H200_CONTROL_STOP_MARKER}"
-  exit 0
-fi
-
 mapfile -t STAGE_VARIANTS < <(
   "${ENV_ROOT}/bin/python" - "${CAMPAIGN_RUNTIME}" <<'PY'
 import json
@@ -504,70 +445,17 @@ if (( ${#STAGE_VARIANTS[@]} != 13 )); then
   exit 2
 fi
 
-validate_variant_result() {
-  local variant="$1"
-  "${ENV_ROOT}/bin/python" - "${RUN_ROOT}/results/${variant}__seed501.json" "${variant}" <<'PY'
-import json
-import math
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-variant = sys.argv[2]
-if not path.is_file():
-    raise SystemExit(1)
-payload = json.loads(path.read_text(encoding="utf-8"))
-history = payload.get("history")
-if (
-    payload.get("variant") != variant
-    or payload.get("seed") != 501
-    or not isinstance(history, list)
-    or len(history) != 100
-    or history[-1].get("epoch") != 100
-    or not math.isfinite(float(payload.get("training_seconds", float("nan"))))
-):
-    raise SystemExit(1)
-PY
-}
-
-for variant in "${STAGE_VARIANTS[@]}"; do
-  if validate_variant_result "${variant}"; then
-    echo "H200_VARIANT_ALREADY_COMPLETE=${variant}"
-    continue
-  fi
-  completed=0
-  for attempt in 1 2; do
-    echo "H200_VARIANT_ATTEMPT=${variant}:${attempt}/2"
-    set +e
-    timeout --signal=TERM --kill-after=5m 8h \
-      "${ENV_ROOT}/bin/python" scripts/run_h200_imagenet100_stage_allocation.py \
-      --root "${RUN_ROOT}" \
-      --data-root "${TRAIN_DATA_ROOT}" \
-      --variants "${variant}" \
-      --run-seeds 501 \
-      --epochs 100 \
-      --batch-size 128 \
-      --gradient-accumulation-steps 1 \
-      --workers "${WORKERS}" \
-      --precision bfloat16
-    return_code=$?
-    set -e
-    if [[ -f "${H200_CONTROL_STOP_MARKER}" ]]; then
-      echo "H200_EXPERIMENT_STOPPED=${H200_CONTROL_STOP_MARKER}"
-      exit 0
-    fi
-    if (( return_code == 0 )) && validate_variant_result "${variant}"; then
-      completed=1
-      break
-    fi
-    echo "H200_VARIANT_RETRY=${variant}:exit-${return_code}" >&2
-    if (( attempt < 2 )); then sleep 60; fi
-  done
-  if (( completed != 1 )); then
-    echo "ERROR: variant failed after two attempts: ${variant}" >&2
-    exit 1
-  fi
-done
+timeout --signal=TERM --kill-after=5m 96h \
+  "${ENV_ROOT}/bin/python" scripts/run_h200_imagenet100_stage_allocation.py \
+  --root "${RUN_ROOT}" \
+  --data-root "${TRAIN_DATA_ROOT}" \
+  --variants "${STAGE_VARIANTS[@]}" \
+  --run-seeds 501 \
+  --epochs 100 \
+  --batch-size 128 \
+  --gradient-accumulation-steps 1 \
+  --workers "${WORKERS}" \
+  --precision bfloat16
 
 if [[ -f "${H200_CONTROL_STOP_MARKER}" ]]; then
   echo "H200_EXPERIMENT_STOPPED=${H200_CONTROL_STOP_MARKER}"

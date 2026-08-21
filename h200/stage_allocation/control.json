@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
-  "campaign_id": "h200-imagenet100-stage-allocation-s501-v2",
+  "campaign_id": "h200-imagenet100-stage-allocation-s501-v3",
   "target_commit": "0000000000000000000000000000000000000000",
   "generation": 1,
   "action": "stop",
-  "updated_at": "2026-08-21T14:15:00+09:00",
-  "reason": "template; enable only after the optimized H200 revision is deployed"
+  "updated_at": "2026-08-21T15:15:00+09:00",
+  "reason": "template; enable only after shared-batch cohort deployment"
 }

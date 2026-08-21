@@ -15,7 +15,6 @@ import pytest
 import run_a2d_r2k3_stage_allocation_screen_imagenet100 as stage
 import run_h200_imagenet100_stage_allocation as h200_runner
 
-
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_PATH = ROOT / "h200/stage_allocation/campaign.runtime.json"
 
@@ -37,9 +36,9 @@ def test_generated_contract_contains_thirteen_scoped_runs() -> None:
         check=True,
     )
     runtime = json.loads(RUNTIME_PATH.read_text())
-    assert runtime["campaign_id"] == "h200-imagenet100-stage-allocation-s501-v2"
-    assert runtime["output_namespace"] == "lnet-h200-imagenet100-stage-allocation-v2"
-    assert runtime["relay_protocol_version"] == "wandb-0.22.3-h200-imagenet100-stage-v2"
+    assert runtime["campaign_id"] == "h200-imagenet100-stage-allocation-s501-v3"
+    assert runtime["output_namespace"] == "lnet-h200-imagenet100-stage-allocation-v3"
+    assert runtime["relay_protocol_version"] == "wandb-0.22.3-h200-imagenet100-stage-v3"
     assert runtime["training"]["variants"] == list(stage.VARIANTS)
     assert runtime["training"] == {
         "batch_size": 128,
@@ -65,19 +64,19 @@ def test_h200_entrypoint_is_commit_bound_and_runs_the_exact_screen() -> None:
     assert "git status --porcelain" in script
     assert "generate_contract.py --check" in script
     assert "prepare_imagenet100.py" in script
-    assert "smoke_r2k3_campaign.py" in script
+    assert "smoke_r2k3_campaign.py" not in script
     assert "run_h200_imagenet100_stage_allocation.py" in script
+    assert script.count("scripts/run_h200_imagenet100_stage_allocation.py") == 1
     assert "cloudflare/stage-allocation-relay/canary.py" in script
-    assert "--full-batch-size 128" in script
     assert "--epochs 100" in script
+    assert "--kill-after=5m 96h" in script
     assert 'export WANDB_API_KEY="${DUMMY_WANDB_API_KEY}"' in script
-    assert "export LNET_COMPILE_MODE=reduce-overhead" in script
+    assert "export LNET_COMPILE_MODE=default" in script
     assert "export LNET_DATALOADER_PREFETCH_FACTOR=2" in script
     assert "WORKERS=$((CPU_COUNT - 1))" in script
     assert "cp --archive --dereference --reflink=auto" in script
-    assert "throughput < 300.0" in script
     assert "STAGED_DATA_AVAILABLE_BYTES" in script
-    assert "--epochs 2" in script
+    assert 'for variant in "${STAGE_VARIANTS[@]}"' not in script
     canary = (ROOT / "cloudflare/stage-allocation-relay/canary.py").read_text()
     assert '"stage_allocation" / "campaign.runtime.json"' in canary
     assert "run.status().sync_items_pending" in canary
@@ -202,6 +201,25 @@ def test_h200_prefetch_override_is_bounded(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("LNET_DATALOADER_PREFETCH_FACTOR", "9")
     with pytest.raises(ValueError, match="between 1 and 8"):
         h200_runner.harness._active_loader_prefetch_factor()
+
+
+def test_h200_wrapper_requires_the_complete_shared_cohort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["runner", "--variants", *stage.VARIANTS, "--epochs", "100"],
+    )
+    assert h200_runner._selected_variants() == stage.VARIANTS
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["runner", "--variants", stage.VARIANTS[0], "--epochs", "100"],
+    )
+    with pytest.raises(RuntimeError, match="13-variant order"):
+        h200_runner._selected_variants()
 
 
 def test_owner_stop_marker_is_validated_off_the_training_path(
