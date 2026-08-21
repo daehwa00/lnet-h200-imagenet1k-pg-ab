@@ -74,6 +74,7 @@ def test_h200_entrypoint_is_commit_bound_and_runs_the_exact_screen() -> None:
     assert "export LNET_COMPILE_MODE=default" in script
     assert "export LNET_DATALOADER_PREFETCH_FACTOR=2" in script
     assert "WORKERS=$((CPU_COUNT - 1))" in script
+    assert "--reuse-existing" in script
     assert script.index('CPU_COUNT="$(nproc)"') < script.index("export OMP_NUM_THREADS=1")
     assert "cp --archive --dereference --reflink=auto" in script
     assert "STAGED_DATA_AVAILABLE_BYTES" in script

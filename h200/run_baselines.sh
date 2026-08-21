@@ -266,7 +266,8 @@ PY
 
 "${ENV_ROOT}/bin/python" h200/validate_imagenet1k.py \
   --root "${DATA_ROOT}" \
-  --output "${DATASET_MANIFEST}"
+  --output "${DATASET_MANIFEST}" \
+  --reuse-existing
 LNET_DATASET_IDENTITY_SHA256="$(
   "${ENV_ROOT}/bin/python" - "${DATASET_MANIFEST}" "${DATA_ROOT}" <<'PY'
 import json

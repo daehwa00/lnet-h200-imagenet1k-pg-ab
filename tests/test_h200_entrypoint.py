@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from h200.validate_imagenet1k import build_manifest, persist_manifest
+from h200.validate_imagenet1k import build_manifest, persist_manifest, reusable_manifest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -54,6 +54,49 @@ def test_persisted_dataset_identity_is_immutable(tmp_path: Path) -> None:
         persist_manifest(_manifest(dataset), output)
 
 
+def test_pinned_manifest_is_reused_without_rehashing_file_bytes(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path / "imagenet")
+    output = tmp_path / "run/dataset_manifest.json"
+    manifest = persist_manifest(_manifest(dataset), output)
+
+    reused = reusable_manifest(
+        dataset,
+        output,
+        expected_identity_sha256=str(manifest["identity_sha256"]),
+        expected_train=2,
+        expected_val=2,
+        expected_classes=2,
+    )
+
+    assert reused == manifest
+
+
+def test_pinned_manifest_rejects_identity_or_root_drift(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path / "imagenet")
+    output = tmp_path / "run/dataset_manifest.json"
+    manifest = persist_manifest(_manifest(dataset), output)
+    with pytest.raises(RuntimeError, match="immutable identity"):
+        reusable_manifest(
+            dataset,
+            output,
+            expected_identity_sha256="a" * 64,
+            expected_train=2,
+            expected_val=2,
+            expected_classes=2,
+        )
+
+    other = _dataset(tmp_path / "other-root")
+    with pytest.raises(RuntimeError, match="immutable identity"):
+        reusable_manifest(
+            other,
+            output,
+            expected_identity_sha256=str(manifest["identity_sha256"]),
+            expected_train=2,
+            expected_val=2,
+            expected_classes=2,
+        )
+
+
 def test_dataset_validator_rejects_class_or_count_drift(tmp_path: Path) -> None:
     dataset = _dataset(tmp_path / "imagenet")
     (dataset / "val/n00000002").rename(dataset / "val/n00000003")
@@ -84,6 +127,7 @@ def test_entrypoint_freezes_commit_campaign_credentials_and_batch_shape() -> Non
     assert script.count("--batch-size 256") == 2
     assert script.count('--workers "${WORKERS}"') == 2
     assert "WORKERS > 8" in script
+    assert "--reuse-existing" in script
     assert script.index('CPU_COUNT="$(nproc)"') < script.index("export OMP_NUM_THREADS=1")
     assert "${OUTPUT_NAMESPACE}-${MANIFEST_SHA256:0:16}" in script
 

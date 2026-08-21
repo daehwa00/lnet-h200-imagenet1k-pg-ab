@@ -57,6 +57,7 @@ def test_baseline_entrypoint_freezes_environment_sources_and_parallel_queue() ->
     assert "DCNv3_build_failed" in script
     assert "DCNV3_WHEEL_SHA_FILE" in script
     assert "H200_DCNV3_WHEEL_SHA256" in script
+    assert "--reuse-existing" in script
     assert '"${QUEUE[@]}" --mode auto-run' in script
 
 
