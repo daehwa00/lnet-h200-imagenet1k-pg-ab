@@ -2,8 +2,8 @@
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-d2262-p-schedule-s501-v1",
   "target_commit": "ba1978b0d739b73e7c5dfea58ad03b7171ee74e6",
-  "generation": 4,
-  "action": "run",
-  "updated_at": "2026-08-21T22:46:57+09:00",
-  "reason": "owner resume from A epoch 12 with corrected 64-CPU worker discovery"
+  "generation": 5,
+  "action": "stop",
+  "updated_at": "2026-08-21T23:20:27+09:00",
+  "reason": "owner stop after no epoch or W&B heartbeat progress during resume"
 }
