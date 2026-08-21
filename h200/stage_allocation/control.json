@@ -2,8 +2,8 @@
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-stage-allocation-s501-v3",
   "target_commit": "1c5ad13871233bcec3235219bb34bdf874abf538",
-  "generation": 2,
-  "action": "run",
-  "updated_at": "2026-08-21T15:46:16+09:00",
-  "reason": "owner start for the first shared-batch cohort v3 H200 run"
+  "generation": 3,
+  "action": "stop",
+  "updated_at": "2026-08-21T17:43:10+09:00",
+  "reason": "owner stop to benchmark batch size and CUDA stream concurrency before long training"
 }
