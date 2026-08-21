@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-stage-allocation-s501-v3",
-  "target_commit": "1c5ad13871233bcec3235219bb34bdf874abf538",
-  "generation": 3,
-  "action": "stop",
-  "updated_at": "2026-08-21T17:43:10+09:00",
-  "reason": "owner stop to benchmark batch size and CUDA stream concurrency before long training"
+  "target_commit": "0ba19373ba1f809338807f1852b0c4467e14b280",
+  "generation": 4,
+  "action": "run",
+  "updated_at": "2026-08-21T18:06:34+09:00",
+  "reason": "owner start for isolated H200 batch and CUDA stream autotune"
 }
