@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-stage-allocation-s501-v3",
-  "target_commit": "0ba19373ba1f809338807f1852b0c4467e14b280",
-  "generation": 4,
+  "target_commit": "4080a525aed47f747dba18fa1bfa550434dce440",
+  "generation": 5,
   "action": "run",
-  "updated_at": "2026-08-21T18:06:34+09:00",
-  "reason": "owner start for isolated H200 batch and CUDA stream autotune"
+  "updated_at": "2026-08-21T18:41:22+09:00",
+  "reason": "owner retry after fixing partial CUDA wave lane pairing"
 }
