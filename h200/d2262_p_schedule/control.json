@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
-  "campaign_id": "h200-imagenet100-d2262-p-schedule-s501-v1",
-  "target_commit": "ba1978b0d739b73e7c5dfea58ad03b7171ee74e6",
-  "generation": 5,
-  "action": "stop",
-  "updated_at": "2026-08-21T23:20:27+09:00",
-  "reason": "owner stop after no epoch or W&B heartbeat progress during resume"
+  "campaign_id": "h200-imagenet100-d2262-p-schedule-s501-v2",
+  "target_commit": "5cf3614ea54470bf121cc161f9091a7a72372be0",
+  "generation": 2,
+  "action": "run",
+  "updated_at": "2026-08-22T00:23:05+09:00",
+  "reason": "owner start for the fresh worker-12 D2262 P-schedule v2 campaign"
 }
