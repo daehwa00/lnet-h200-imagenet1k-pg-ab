@@ -68,6 +68,12 @@ function post(path: string, body: unknown, ip = "test-egress"): Request {
   });
 }
 
+function lastForwardedPayload(): { variables: Record<string, unknown> } {
+  const call = vi.mocked(fetch).mock.calls.at(-1);
+  const body = call?.[1]?.body as ArrayBuffer;
+  return JSON.parse(new TextDecoder().decode(body));
+}
+
 describe("H200 W&B relay", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: {} })));
@@ -81,6 +87,7 @@ describe("H200 W&B relay", () => {
     const response = await worker.fetch(new Request("https://relay.invalid/healthz"), testEnv());
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
+      authorization_manifest_sha256: CAMPAIGN.authorizationManifestSha256,
       campaign_id: CAMPAIGN.campaignId,
       manifest_sha256: CAMPAIGN.manifestSha256,
       ok: true,
@@ -98,7 +105,10 @@ describe("H200 W&B relay", () => {
   });
 
   it("accepts the exact traced UpsertBucket shape for a frozen run", async () => {
-    const [runId, run] = Object.entries(CAMPAIGN.runsById)[0];
+    const entry = Object.entries(CAMPAIGN.runsById)
+      .find(([, run]) => run.group === CAMPAIGN.group);
+    expect(entry).toBeDefined();
+    const [runId, run] = entry!;
     const response = await worker.fetch(post("/graphql", {
       operationName: "UpsertBucket",
       query: UPSERT_QUERY,
@@ -109,7 +119,7 @@ describe("H200 W&B relay", () => {
         description: null,
         displayName: run.displayName,
         entity: CAMPAIGN.entity,
-        groupName: CAMPAIGN.group,
+        groupName: run.group,
         host: "untrusted-host-is-overwritten",
         id: null,
         jobType: null,
@@ -125,6 +135,41 @@ describe("H200 W&B relay", () => {
       },
     }), testEnv());
     expect(response.status).toBe(200);
+    expect(lastForwardedPayload().variables.program).toBe(run.program);
+  });
+
+  it("accepts an allowlisted supplemental campaign run", async () => {
+    const entry = Object.entries(CAMPAIGN.runsById)
+      .find(([, run]) => run.group !== CAMPAIGN.group);
+    expect(entry).toBeDefined();
+    const [runId, run] = entry!;
+    const response = await worker.fetch(post("/graphql", {
+      operationName: "UpsertBucket",
+      query: UPSERT_QUERY,
+      variables: {
+        commit: null,
+        config: "{}",
+        debug: false,
+        description: null,
+        displayName: run.displayName,
+        entity: CAMPAIGN.entity,
+        groupName: run.group,
+        host: "untrusted-host-is-overwritten",
+        id: null,
+        jobType: null,
+        name: runId,
+        notes: null,
+        program: "untrusted-program-is-overwritten",
+        project: CAMPAIGN.project,
+        repo: null,
+        state: "running",
+        summaryMetrics: null,
+        sweep: null,
+        tags: [...run.tags],
+      },
+    }), testEnv());
+    expect(response.status).toBe(200);
+    expect(lastForwardedPayload().variables.program).toBe(run.program);
   });
 
   it("rejects a request outside the secret egress allowlist", async () => {

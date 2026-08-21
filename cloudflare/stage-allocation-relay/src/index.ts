@@ -2,7 +2,13 @@ import { CAMPAIGN } from "./campaign.generated";
 
 type JsonObject = Record<string, unknown>;
 type OperationName = keyof typeof CAMPAIGN.graphqlOperations;
-type RunId = keyof typeof CAMPAIGN.runsById;
+type RunId = string;
+type RunRecord = {
+  readonly displayName: string;
+  readonly group: string;
+  readonly program: string;
+  readonly tags: readonly string[];
+};
 type GraphQLPayload = {
   operationName?: unknown;
   query?: unknown;
@@ -14,6 +20,7 @@ const NO_VARIABLE_OPERATIONS = new Set<string>(CAMPAIGN.noVariableOperations);
 const RUN_FILES = new Set<string>(CAMPAIGN.runFiles);
 const STREAM_FILES = new Set<string>(CAMPAIGN.streamFiles);
 const ALLOWED_STATES = new Set<unknown>(CAMPAIGN.allowedStates);
+const RUNS_BY_ID: Readonly<Record<string, RunRecord>> = CAMPAIGN.runsById;
 
 function isObject(value: unknown): value is JsonObject {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -31,7 +38,7 @@ function hasExactKeys(value: JsonObject, expected: readonly string[]): boolean {
 }
 
 function isRunId(value: unknown): value is RunId {
-  return typeof value === "string" && Object.hasOwn(CAMPAIGN.runsById, value);
+  return typeof value === "string" && Object.hasOwn(RUNS_BY_ID, value);
 }
 
 function operationForHash(hash: string): OperationName | undefined {
@@ -112,8 +119,9 @@ function validateVariables(operation: OperationName, variables: unknown): variab
   if (operation === "UpsertBucket") {
     if (!hasExactKeys(value, CAMPAIGN.upsertBucketVariableKeys)) return false;
     if (value.entity !== CAMPAIGN.entity || value.project !== CAMPAIGN.project || !isRunId(value.name)) return false;
-    const run = CAMPAIGN.runsById[value.name];
-    if (value.groupName !== CAMPAIGN.group || value.displayName !== run.displayName) return false;
+    const run = RUNS_BY_ID[value.name];
+    if (!run) return false;
+    if (value.groupName !== run.group || value.displayName !== run.displayName) return false;
     if (!Array.isArray(value.tags) || value.tags.length !== run.tags.length) return false;
     if (!value.tags.every((tag, index) => tag === run.tags[index])) return false;
     for (const key of ["config", "summaryMetrics"] as const) {
@@ -132,6 +140,8 @@ function runIdFor(operation: OperationName, variables: JsonObject): RunId | unde
 
 function sanitizeVariables(operation: OperationName, variables: JsonObject): JsonObject {
   if (operation !== "UpsertBucket") return variables;
+  const runId = runIdFor(operation, variables);
+  const run = runId ? RUNS_BY_ID[runId] : undefined;
   return {
     ...variables,
     commit: null,
@@ -141,7 +151,7 @@ function sanitizeVariables(operation: OperationName, variables: JsonObject): Jso
     id: null,
     jobType: null,
     notes: null,
-    program: "h200/run_imagenet100_stage_allocation.sh",
+    program: run?.program ?? CAMPAIGN.program,
     repo: "https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab",
     sweep: null,
   };
@@ -269,6 +279,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname === "/healthz" && !url.search) {
     return Response.json({
+      authorization_manifest_sha256: CAMPAIGN.authorizationManifestSha256,
       campaign_id: CAMPAIGN.campaignId,
       manifest_sha256: CAMPAIGN.manifestSha256,
       ok: true,

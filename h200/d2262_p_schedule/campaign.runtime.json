@@ -1,0 +1,136 @@
+{
+  "campaign_id": "h200-imagenet100-d2262-p-schedule-s501-v1",
+  "campaign_manifest_sha256": "c2f1e8f0ce3614fd55f7b52b02a8f41b03fd2d439d59a36e6f38edbc18f872a8",
+  "canary": {
+    "display_name": "H200-I100-D2262-P-schedule-relay-canary-v1",
+    "id": "f7699fa4d16bdd43",
+    "tags": [
+      "H200",
+      "ImageNet-100",
+      "D2262",
+      "P-schedule",
+      "relay-canary"
+    ]
+  },
+  "console": "off",
+  "dataset": {
+    "classes": 100,
+    "first_synset": "n01440764",
+    "last_synset": "n02077923",
+    "selection": "lexicographically first 100 synset directories",
+    "source": "ImageNet-1K ILSVRC2012 train/val",
+    "train_images": 130000,
+    "validation_images": 5000
+  },
+  "entity": "daehwa",
+  "group": "h200-imagenet100-d2262-p-schedule-s501-v1",
+  "output_namespace": "lnet-h200-imagenet100-d2262-p-schedule-v1",
+  "program": "h200/run_imagenet100_d2262_p_schedule.sh",
+  "project": "alphabet2d-imagenet100-h200",
+  "relay_protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v3",
+  "runs": {
+    "A-K128-P160-160-160-128-D2262": {
+      "501": {
+        "display_name": "H200-I100-S501-01-A-K128-P160-160-160-128-D2262",
+        "id": "af4cdc3c837dccab",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "D2262",
+          "P-schedule",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "B-K128-P160-160-192-128-D2262": {
+      "501": {
+        "display_name": "H200-I100-S501-02-B-K128-P160-160-192-128-D2262",
+        "id": "84ddbf16284c4736",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "D2262",
+          "P-schedule",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "C-K128-P160-192-160-128-D2262": {
+      "501": {
+        "display_name": "H200-I100-S501-03-C-K128-P160-192-160-128-D2262",
+        "id": "c76b9a5b94a558f3",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "D2262",
+          "P-schedule",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "D-K128-P160-192-192-128-D2262": {
+      "501": {
+        "display_name": "H200-I100-S501-04-D-K128-P160-192-192-128-D2262",
+        "id": "6ab482a9af3101ff",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "D2262",
+          "P-schedule",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "E-K128-P128-192-192-128-D2262": {
+      "501": {
+        "display_name": "H200-I100-S501-05-E-K128-P128-192-192-128-D2262",
+        "id": "669a5763b5cbe163",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "D2262",
+          "P-schedule",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "F-K128-P128-160-192-128-D2262": {
+      "501": {
+        "display_name": "H200-I100-S501-06-F-K128-P128-160-192-128-D2262",
+        "id": "07d8482b0c7f765a",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "D2262",
+          "P-schedule",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    }
+  },
+  "schema": "lnet.h200.imagenet100.d2262_p_schedule.runtime.v1",
+  "training": {
+    "batch_size": 128,
+    "epochs": 100,
+    "execution": "one_model_to_epoch_100_then_next",
+    "precision": "bfloat16",
+    "seed": 501,
+    "variants": [
+      "A-K128-P160-160-160-128-D2262",
+      "B-K128-P160-160-192-128-D2262",
+      "C-K128-P160-192-160-128-D2262",
+      "D-K128-P160-192-192-128-D2262",
+      "E-K128-P128-192-192-128-D2262",
+      "F-K128-P128-160-192-128-D2262"
+    ]
+  },
+  "wandb_app_url": "https://wandb.ai",
+  "wandb_base_url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+  "wandb_sdk_version": "0.22.3"
+}

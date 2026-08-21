@@ -3,7 +3,9 @@
   "campaign_manifest_sha256": "3d0d0d5436aae967db3b34364ea5f6a19f54424c4984c6af1e8cc0e57c6a6a16",
   "canary": {
     "display_name": "H200-I100-stage-relay-permanent-canary-v3",
+    "group": "h200-imagenet100-stage-allocation-s501-v3",
     "id": "c0a2a6340bac8bf8",
+    "program": "h200/run_imagenet100_stage_allocation.sh",
     "tags": [
       "H200",
       "ImageNet-100",
@@ -30,7 +32,9 @@
     "K128-P128-128-160-128-D2222": {
       "501": {
         "display_name": "H200-I100-S501-02-K128-P128-128-160-128-D2222",
+        "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "db8432a5f68cd22b",
+        "program": "h200/run_imagenet100_stage_allocation.sh",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -43,7 +47,9 @@
     "K128-P128-128-160-96-D2222": {
       "501": {
         "display_name": "H200-I100-S501-06-K128-P128-128-160-96-D2222",
+        "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "262eb7ac769a3c51",
+        "program": "h200/run_imagenet100_stage_allocation.sh",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -56,7 +62,9 @@
     "K128-P128-160-160-128-D2222": {
       "501": {
         "display_name": "H200-I100-S501-03-K128-P128-160-160-128-D2222",
+        "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "c1f1f99432bcdf88",
+        "program": "h200/run_imagenet100_stage_allocation.sh",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -69,7 +77,9 @@
     "K128-P128x4-D2222-Control": {
       "501": {
         "display_name": "H200-I100-S501-01-K128-P128x4-D2222-Control",
+        "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "d1f895e5782fc9c0",
+        "program": "h200/run_imagenet100_stage_allocation.sh",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -82,7 +92,9 @@
     "K128-P128x4-D2223-FullSR7x1": {
       "501": {
         "display_name": "H200-I100-S501-11-K128-P128x4-D2223-FullSR7x1",
+        "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "c6e6a8d87921c54d",
+        "program": "h200/run_imagenet100_stage_allocation.sh",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -95,7 +107,9 @@
     "K128-P128x4-D2232-FullSR14x1": {
       "501": {
         "display_name": "H200-I100-S501-10-K128-P128x4-D2232-FullSR14x1",
+        "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "ec1cc3cd87618da8",
+        "program": "h200/run_imagenet100_stage_allocation.sh",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -108,7 +122,9 @@
     "K128-P128x4-D2242-FullSR14x2": {
       "501": {
         "display_name": "H200-I100-S501-12-K128-P128x4-D2242-FullSR14x2",
+        "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "555fbdd208c93cd0",
+        "program": "h200/run_imagenet100_stage_allocation.sh",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -121,7 +137,9 @@
     "K128-P128x4-D2262-FullSR14x4": {
       "501": {
         "display_name": "H200-I100-S501-13-K128-P128x4-D2262-FullSR14x4",
+        "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "238915e7e8cd806a",
+        "program": "h200/run_imagenet100_stage_allocation.sh",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -134,7 +152,9 @@
     "K128-P160-160-160-128-D2222": {
       "501": {
         "display_name": "H200-I100-S501-04-K128-P160-160-160-128-D2222",
+        "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "176b84265208f096",
+        "program": "h200/run_imagenet100_stage_allocation.sh",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -147,7 +167,9 @@
     "K128-P160-160-160-96-D2222": {
       "501": {
         "display_name": "H200-I100-S501-05-K128-P160-160-160-96-D2222",
+        "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "08f53ad9f4022795",
+        "program": "h200/run_imagenet100_stage_allocation.sh",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -160,7 +182,9 @@
     "K128-P96-128-160-96-D2222": {
       "501": {
         "display_name": "H200-I100-S501-07-K128-P96-128-160-96-D2222",
+        "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "1f280e808681c775",
+        "program": "h200/run_imagenet100_stage_allocation.sh",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -173,7 +197,9 @@
     "K128-P96x4-D2222": {
       "501": {
         "display_name": "H200-I100-S501-08-K128-P96x4-D2222",
+        "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "a5aeb2225a2fc909",
+        "program": "h200/run_imagenet100_stage_allocation.sh",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -186,7 +212,9 @@
     "K96-P128x4-D2222": {
       "501": {
         "display_name": "H200-I100-S501-09-K96-P128x4-D2222",
+        "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "92b202e12ca21a96",
+        "program": "h200/run_imagenet100_stage_allocation.sh",
         "tags": [
           "H200",
           "ImageNet-100",

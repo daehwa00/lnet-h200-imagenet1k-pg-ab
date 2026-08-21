@@ -221,10 +221,19 @@ def _build(variant: str, config: ComplexScanConfig) -> ComplexScanBackbone:
     except KeyError as error:
         raise ValueError(f"unsupported stage-allocation variant: {variant}") from error
 
+    model = _build_for_spec(spec, variant, config)
+    runtime.configure(VARIANTS, SEEDS)
+    return model
+
+
+def _build_for_spec(
+    spec: StageAllocationSpec,
+    label: str,
+    config: ComplexScanConfig,
+) -> ComplexScanBackbone:
     model = capacity_insight._build_all_resolution(spec.as_insight_spec(), config)
     model = _append_repeated_blocks(model, spec)
-    runtime.configure(VARIANTS, SEEDS)
-    _assert_model(model, variant)
+    _assert_model_for_spec(model, spec, label)
     return model
 
 
@@ -244,12 +253,19 @@ def _assert_block(
 
 
 def _assert_model(model: ComplexScanBackbone, variant: str) -> None:
-    spec = SPECS[variant]
+    _assert_model_for_spec(model, SPECS[variant], variant)
+
+
+def _assert_model_for_spec(
+    model: ComplexScanBackbone,
+    spec: StageAllocationSpec,
+    label: str,
+) -> None:
     extras = getattr(model, "extra_same_resolution_blocks", None)
     if extras is not None:
         delattr(model, "extra_same_resolution_blocks")
     try:
-        capacity_insight._assert_model_for_spec(model, spec.as_insight_spec(), variant)
+        capacity_insight._assert_model_for_spec(model, spec.as_insight_spec(), label)
     finally:
         if extras is not None:
             model.extra_same_resolution_blocks = extras
@@ -260,7 +276,7 @@ def _assert_model(model: ComplexScanBackbone, variant: str) -> None:
         if count
     }
     if {name: len(blocks) for name, blocks in active_extras.items()} != expected:
-        raise RuntimeError(f"{variant} changed its repeated same-resolution depth")
+        raise RuntimeError(f"{label} changed its repeated same-resolution depth")
     for stage_index, resolution in enumerate(RESOLUTIONS):
         key = str(resolution)
         if key not in active_extras:
@@ -270,12 +286,18 @@ def _assert_model(model: ComplexScanBackbone, variant: str) -> None:
                 block,
                 excitation_modes=spec.excitation_modes[stage_index],
                 pole_modes=spec.pole_modes[stage_index],
-                label=f"{variant}/ExtraSR{resolution}.{repeat_index}",
+                label=f"{label}/ExtraSR{resolution}.{repeat_index}",
             )
 
 
 def _variant_config(variant: str) -> dict[str, Any]:
-    spec = SPECS[variant]
+    return _variant_config_for_spec(variant, SPECS[variant])
+
+
+def _variant_config_for_spec(
+    variant: str,
+    spec: StageAllocationSpec,
+) -> dict[str, Any]:
     payload = deepcopy(
         capacity_insight._variant_config_for_spec(variant, spec.as_insight_spec())
     )
