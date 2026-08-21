@@ -12,6 +12,12 @@ readonly DUMMY_WANDB_API_KEY="0000000000000000000000000000000000000000"
 readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab.git"
 readonly CONTROL_REF="refs/heads/control/imagenet100-stage-allocation"
 readonly CONTROL_PATH="h200/stage_allocation/control.json"
+export H200_AUTOTUNE_ONLY="${H200_AUTOTUNE_ONLY:-0}"
+readonly H200_AUTOTUNE_ONLY
+if [[ "${H200_AUTOTUNE_ONLY}" != "0" && "${H200_AUTOTUNE_ONLY}" != "1" ]]; then
+  echo "ERROR: H200_AUTOTUNE_ONLY must be 0 or 1" >&2
+  exit 2
+fi
 
 cd "${PROJECT_ROOT}"
 
@@ -331,8 +337,12 @@ payload = {
 print("H200_ENV=" + json.dumps(payload, sort_keys=True), flush=True)
 PY
 
-timeout --signal=TERM --kill-after=30s 3m \
-  "${ENV_ROOT}/bin/python" cloudflare/stage-allocation-relay/canary.py
+if [[ "${H200_AUTOTUNE_ONLY}" == "0" ]]; then
+  timeout --signal=TERM --kill-after=30s 3m \
+    "${ENV_ROOT}/bin/python" cloudflare/stage-allocation-relay/canary.py
+else
+  echo "H200_AUTOTUNE_WANDB=disabled"
+fi
 
 "${ENV_ROOT}/bin/python" h200/validate_imagenet1k.py \
   --root "${DATA_ROOT}" \
@@ -443,6 +453,19 @@ PY
 if (( ${#STAGE_VARIANTS[@]} != 13 )); then
   echo "ERROR: expected exactly 13 stage-allocation variants" >&2
   exit 2
+fi
+
+if [[ "${H200_AUTOTUNE_ONLY}" == "1" ]]; then
+  readonly AUTOTUNE_ROOT="${OUTPUT_BASE}/autotune"
+  mkdir -p "${AUTOTUNE_ROOT}"
+  timeout --signal=TERM --kill-after=5m 3h \
+    env WANDB_MODE=disabled \
+    "${ENV_ROOT}/bin/python" scripts/benchmark_h200_stage_allocation_autotune.py \
+    --root "${AUTOTUNE_ROOT}" \
+    --data-root "${TRAIN_DATA_ROOT}" \
+    --workers "${WORKERS}" \
+    --precision bfloat16
+  exit 0
 fi
 
 timeout --signal=TERM --kill-after=5m 96h \
