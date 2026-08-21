@@ -88,6 +88,12 @@ def _partitions(total: int, lanes: int) -> list[int]:
     return [lanes] * full + ([remainder] if remainder else [])
 
 
+def _wave_pairs(wave: list[Any], lanes: list[Any]) -> list[tuple[Any, Any]]:
+    if len(wave) > len(lanes):
+        raise ValueError("a wave cannot exceed the available CUDA lanes")
+    return list(zip(wave, lanes[: len(wave)], strict=True))
+
+
 def _canonical_sha256(payload: object) -> str:
     return hashlib.sha256(
         json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
@@ -386,7 +392,7 @@ def _launch_shared_batch(
     losses: list[Tensor] = []
     for wave_start in range(0, len(members), len(streams)):
         wave = members[wave_start : wave_start + len(streams)]
-        for member, stream in zip(wave, streams, strict=True):
+        for member, stream in _wave_pairs(wave, streams):
             if member.runtime is None:
                 raise RuntimeError(f"missing runtime for {member.variant}")
             stream.wait_stream(default_stream)

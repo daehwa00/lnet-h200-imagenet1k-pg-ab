@@ -59,6 +59,11 @@ def test_candidate_matrix_and_partitions_are_exact() -> None:
     assert autotune._partitions(13, 6) == [6, 6, 1]
     assert autotune._partitions(13, 7) == [7, 6]
     assert autotune._partitions(13, 8) == [8, 5]
+    assert autotune._wave_pairs(list(range(5)), list(range(8))) == list(
+        zip(range(5), range(5), strict=True)
+    )
+    with pytest.raises(ValueError, match="cannot exceed"):
+        autotune._wave_pairs(list(range(9)), list(range(8)))
 
 
 def test_selection_rejects_unsafe_rows_and_selects_large_gain() -> None:
