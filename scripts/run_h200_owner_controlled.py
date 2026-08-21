@@ -32,6 +32,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--campaign-id", required=True)
     parser.add_argument("--target-commit", required=True)
     parser.add_argument("--stop-marker", type=Path, required=True)
+    parser.add_argument("--fast-stop-marker", type=Path, required=True)
     parser.add_argument("--poll-seconds", type=float, default=15.0)
     parser.add_argument("--grace-seconds", type=float, default=120.0)
     parser.add_argument("--term-seconds", type=float, default=30.0)
@@ -164,9 +165,11 @@ def _record_stop(
     phase: str,
     forced: bool,
 ) -> None:
+    payload = _stop_payload(error.record, phase=phase, forced=forced)
+    _atomic_json(args.fast_stop_marker, payload)
     _atomic_json(
         args.stop_marker,
-        _stop_payload(error.record, phase=phase, forced=forced),
+        payload,
     )
     print(
         "H200_OWNER_STOPPED="
@@ -197,9 +200,11 @@ def main() -> int:
         return 0
     if stopped_generation is not None:
         _archive_cleared_marker(args.stop_marker, int(start_record["generation"]))
+    args.fast_stop_marker.unlink(missing_ok=True)
 
     environment = os.environ.copy()
     environment["H200_CONTROL_STOP_MARKER"] = str(args.stop_marker)
+    environment["H200_CONTROL_FAST_STOP_MARKER"] = str(args.fast_stop_marker)
     environment["H200_CONTROL_START_GENERATION"] = str(start_record["generation"])
     process = subprocess.Popen(
         args.command,

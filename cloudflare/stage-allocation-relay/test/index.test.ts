@@ -159,6 +159,54 @@ describe("H200 W&B relay", () => {
     expect(response.status).toBe(200);
   });
 
+  it("forwards the exact empty W&B heartbeat", async () => {
+    const runId = Object.keys(CAMPAIGN.runsById)[0];
+    const path = `/files/${CAMPAIGN.entity}/${CAMPAIGN.project}/${runId}/file_stream`;
+    const response = await worker.fetch(post(path, {}), testEnv());
+
+    expect(response.status).toBe(200);
+  });
+
+  it("forwards an allowed uploaded-file acknowledgement", async () => {
+    const runId = Object.keys(CAMPAIGN.runsById)[0];
+    const path = `/files/${CAMPAIGN.entity}/${CAMPAIGN.project}/${runId}/file_stream`;
+    const response = await worker.fetch(post(path, {
+      uploaded: ["config.yaml"],
+    }), testEnv());
+
+    expect(response.status).toBe(200);
+  });
+
+  it("passes upstream stop feedback back to the SDK", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ stopped: false })));
+    const runId = Object.keys(CAMPAIGN.runsById)[0];
+    const path = `/files/${CAMPAIGN.entity}/${CAMPAIGN.project}/${runId}/file_stream`;
+    const response = await worker.fetch(post(path, {}), testEnv());
+
+    await expect(response.json()).resolves.toEqual({ stopped: false });
+  });
+
+  it("accepts a signed int32 exit code with a completed run", async () => {
+    const runId = Object.keys(CAMPAIGN.runsById)[0];
+    const path = `/files/${CAMPAIGN.entity}/${CAMPAIGN.project}/${runId}/file_stream`;
+    const response = await worker.fetch(post(path, {
+      complete: true,
+      exitcode: -15,
+    }), testEnv());
+
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects an uploaded-file acknowledgement outside the campaign", async () => {
+    const runId = Object.keys(CAMPAIGN.runsById)[0];
+    const path = `/files/${CAMPAIGN.entity}/${CAMPAIGN.project}/${runId}/file_stream`;
+    const response = await worker.fetch(post(path, {
+      uploaded: ["requirements.txt"],
+    }), testEnv());
+
+    expect(response.status).toBe(403);
+  });
+
   it("enforces the per-run rate limiter", async () => {
     const response = await worker.fetch(post("/graphql", {
       query: PROBE_QUERY,

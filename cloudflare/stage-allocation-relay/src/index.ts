@@ -141,7 +141,7 @@ function sanitizeVariables(operation: OperationName, variables: JsonObject): Jso
     id: null,
     jobType: null,
     notes: null,
-    program: "h200/run_baselines.sh",
+    program: "h200/run_imagenet100_stage_allocation.sh",
     repo: "https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab",
     sweep: null,
   };
@@ -150,12 +150,13 @@ function sanitizeVariables(operation: OperationName, variables: JsonObject): Jso
 function validateStreamFile(value: unknown): boolean {
   if (!isObject(value) || !hasExactKeys(value, ["content", "offset"])) return false;
   if (!Number.isSafeInteger(value.offset) || (value.offset as number) < 0) return false;
-  if (!Array.isArray(value.content) || value.content.length > 1024) return false;
-  return value.content.every((item) => typeof item === "string" && item.length <= 1024 * 1024);
+  return Array.isArray(value.content)
+    && value.content.every((item) => typeof item === "string");
 }
 
 function validateFileStreamBody(payload: unknown): payload is JsonObject {
   if (!isObject(payload)) return false;
+  if (Object.keys(payload).length === 0) return true;
   const allowedKeys = new Set(["complete", "dropped", "exitcode", "failed", "files", "preempting", "uploaded"]);
   if (Object.keys(payload).some((key) => !allowedKeys.has(key))) return false;
   if (payload.files !== undefined) {
@@ -172,8 +173,16 @@ function validateFileStreamBody(payload: unknown): payload is JsonObject {
     if (payload[key] !== undefined && typeof payload[key] !== "boolean") return false;
   }
   if (payload.dropped !== undefined && (!Number.isSafeInteger(payload.dropped) || (payload.dropped as number) < 0)) return false;
-  if (payload.exitcode !== undefined && payload.exitcode !== 0 && payload.exitcode !== 1) return false;
-  return payload.files !== undefined || payload.complete !== undefined || payload.preempting !== undefined;
+  if (
+    payload.exitcode !== undefined
+    && (!Number.isSafeInteger(payload.exitcode)
+      || (payload.exitcode as number) < -(2 ** 31)
+      || (payload.exitcode as number) >= 2 ** 31)
+  ) return false;
+  return payload.files !== undefined
+    || payload.uploaded !== undefined
+    || payload.complete !== undefined
+    || payload.preempting !== undefined;
 }
 
 function basicAuthorization(key: string): string {

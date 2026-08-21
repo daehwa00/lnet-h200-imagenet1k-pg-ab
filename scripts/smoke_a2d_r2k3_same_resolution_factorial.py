@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, cast
 import a2d_r2k3_runtime as runtime
 import run_a2d_r2k3_same_resolution_depth_imagenet100 as prior
 import run_a2d_r2k3_same_resolution_factorial_imagenet100 as runner
+import run_alphabet2d_imagenet100_nano as training_harness
 import torch
 
 from lnet.complex_scan_stage import ComplexScanStage
@@ -54,10 +55,13 @@ def _logits(output: Any) -> torch.Tensor:
 
 
 def _compiled_cuda_step(model: torch.nn.Module) -> float:
+    model.to(memory_format=torch.channels_last)
     model.prepare_for_compiled_training_()
-    compiled = torch.compile(model, mode="default")
+    compiled = training_harness._build_runtime(model, {"compile_mode": "default"})
     compiled.train()
-    inputs = torch.randn(2, 3, 224, 224, device="cuda")
+    inputs = torch.randn(2, 3, 224, 224, device="cuda").contiguous(
+        memory_format=torch.channels_last
+    )
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         loss = _logits(compiled(inputs)).float().square().mean()
     loss.backward()
@@ -295,8 +299,7 @@ def _shape_and_stage_checks(
 
     spatial = {56: 8, 28: 4, 14: 2, 7: 1}
     expected_states = {
-        f"sr{resolution}": [batch, size, size, state_width]
-        for resolution, size in spatial.items()
+        f"sr{resolution}": [batch, size, size, state_width] for resolution, size in spatial.items()
     }
     expected_states.update(
         {
@@ -316,9 +319,7 @@ def _shape_and_stage_checks(
         "states": states,
         "descriptor": list(descriptor.shape),
         "transition_max_abs": transition_error,
-        "transition_check_mode": (
-            "diagnostic-bf16" if device.type == "cuda" else "enforced-fp32"
-        ),
+        "transition_check_mode": ("diagnostic-bf16" if device.type == "cuda" else "enforced-fp32"),
         "minimum_update_rms": None if minimum_update == float("inf") else minimum_update,
     }
 
@@ -497,14 +498,17 @@ def _full_batch_cuda_step(
         variant,
         runtime.model_config(),
     ).cuda()
+    model.to(memory_format=torch.channels_last)
     model.prepare_for_compiled_training_()
     optimizer = torch.optim.AdamW(model.parameters(), lr=1.0e-4)
-    inputs = torch.randn(batch_size, 3, 224, 224, device="cuda")
+    inputs = torch.randn(batch_size, 3, 224, 224, device="cuda").contiguous(
+        memory_format=torch.channels_last
+    )
     loss = inputs.new_zeros(())
     samples = []
     torch.cuda.reset_peak_memory_stats()
     with cast("Any", torch)._dynamo.config.patch(fail_on_recompile_limit_hit=True):
-        compiled = torch.compile(model, mode="default", fullgraph=False, dynamic=False)
+        compiled = training_harness._build_runtime(model, {"compile_mode": "default"})
         for _ in range(repeat_steps):
             start = torch.cuda.Event(enable_timing=True)
             end = torch.cuda.Event(enable_timing=True)

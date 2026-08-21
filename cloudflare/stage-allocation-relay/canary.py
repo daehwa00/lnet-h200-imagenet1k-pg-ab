@@ -1,4 +1,4 @@
-"""Exercise the baseline relay with its permanent non-production W&B run."""
+"""Exercise the stage-allocation relay with its permanent W&B canary."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def main() -> None:
     runtime = json.loads(
-        (ROOT / "h200" / "baselines" / "wandb.runtime.json").read_text(encoding="utf-8")
+        (ROOT / "h200" / "stage_allocation" / "campaign.runtime.json").read_text(encoding="utf-8")
     )
     expected_sdk = runtime["wandb_sdk_version"]
     actual_sdk = importlib.metadata.version("wandb")
@@ -48,7 +48,7 @@ def main() -> None:
         tags=tuple(canary["tags"]),
         config={
             "campaign_manifest_sha256": runtime["campaign_manifest_sha256"],
-            "purpose": "permanent baseline relay protocol canary; never experiment evidence",
+            "purpose": "permanent stage-allocation relay canary; never experiment evidence",
             "relay_protocol_version": runtime["relay_protocol_version"],
         },
         settings=wandb.Settings(
@@ -61,20 +61,32 @@ def main() -> None:
             x_disable_meta=True,
             x_disable_stats=True,
             x_disable_viewer=True,
-            x_extra_http_headers={
-                "User-Agent": "Mozilla/5.0 lnet-h200-baseline-wandb-canary/1"
-            },
+            x_extra_http_headers={"User-Agent": "Mozilla/5.0 lnet-h200-stage-wandb-canary/1"},
             x_save_requirements=False,
         ),
     )
     if run is None or not run.url:
-        message = "baseline relay canary did not create a W&B run"
+        message = "stage-allocation relay canary did not create a W&B run"
         raise RuntimeError(message)
+    internal_log = Path(run.settings.log_internal)
     step = int(time.time())
     run.log({"relay_canary/ok": 1, "relay_canary/unix_time": step}, step=step)
+    for _ in range(30):
+        if run.status().sync_items_pending == 0:
+            break
+        time.sleep(1)
+    else:
+        message = "stage-allocation relay canary did not drain its initial uploads"
+        raise RuntimeError(message)
+    time.sleep(35)
+    run.log({"relay_canary/heartbeat_ok": 1}, step=step + 1)
     run.summary["relay_canary_status"] = "ok"
     run.finish()
-    print(f"H200_BASELINE_RELAY_CANARY_OK={run.url}", flush=True)
+    internal_text = internal_log.read_text(encoding="utf-8", errors="replace")
+    if "filestream: fatal error" in internal_text:
+        message = "stage-allocation relay canary observed a fatal filestream error"
+        raise RuntimeError(message)
+    print(f"H200_STAGE_RELAY_CANARY_OK={run.url}", flush=True)
 
 
 if __name__ == "__main__":

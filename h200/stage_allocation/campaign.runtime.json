@@ -1,9 +1,9 @@
 {
-  "campaign_id": "h200-imagenet100-stage-allocation-s501-v1",
-  "campaign_manifest_sha256": "62c3be218bf263facfebfb4529b466c8130b1753a6ed592a14b92d69f8adbfb8",
+  "campaign_id": "h200-imagenet100-stage-allocation-s501-v2",
+  "campaign_manifest_sha256": "68494cffc0471b349e73f882dc3638a7c9fb2fe3a5cebce09d6de223cb2b9c3c",
   "canary": {
-    "display_name": "H200-I100-stage-relay-permanent-canary-v1",
-    "id": "5e552b9655fab181",
+    "display_name": "H200-I100-stage-relay-permanent-canary-v2",
+    "id": "d4782711ffe66305",
     "tags": [
       "H200",
       "ImageNet-100",
@@ -22,15 +22,15 @@
     "validation_images": 5000
   },
   "entity": "daehwa",
-  "group": "h200-imagenet100-stage-allocation-s501-v1",
-  "output_namespace": "lnet-h200-imagenet100-stage-allocation-v1",
+  "group": "h200-imagenet100-stage-allocation-s501-v2",
+  "output_namespace": "lnet-h200-imagenet100-stage-allocation-v2",
   "project": "alphabet2d-imagenet100-h200",
-  "relay_protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v1",
+  "relay_protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v2",
   "runs": {
     "K128-P128-128-160-128-D2222": {
       "501": {
         "display_name": "H200-I100-S501-02-K128-P128-128-160-128-D2222",
-        "id": "3426284ea3681eb4",
+        "id": "f9644a12f47eca2a",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -43,7 +43,7 @@
     "K128-P128-128-160-96-D2222": {
       "501": {
         "display_name": "H200-I100-S501-06-K128-P128-128-160-96-D2222",
-        "id": "d4f16c020e52a3b8",
+        "id": "e89c9513212e8f7a",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -56,7 +56,7 @@
     "K128-P128-160-160-128-D2222": {
       "501": {
         "display_name": "H200-I100-S501-03-K128-P128-160-160-128-D2222",
-        "id": "881c88dad9b52570",
+        "id": "8796a8e3ad94f895",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -69,7 +69,7 @@
     "K128-P128x4-D2222-Control": {
       "501": {
         "display_name": "H200-I100-S501-01-K128-P128x4-D2222-Control",
-        "id": "68db2de8e046d7c5",
+        "id": "35bdfc999b05a02f",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -82,7 +82,7 @@
     "K128-P128x4-D2223-FullSR7x1": {
       "501": {
         "display_name": "H200-I100-S501-11-K128-P128x4-D2223-FullSR7x1",
-        "id": "01d960b0acf7c9fb",
+        "id": "293d1058e82a1bba",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -95,7 +95,7 @@
     "K128-P128x4-D2232-FullSR14x1": {
       "501": {
         "display_name": "H200-I100-S501-10-K128-P128x4-D2232-FullSR14x1",
-        "id": "d9b5ae209a206d7f",
+        "id": "69317f5ddd57f528",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -108,7 +108,7 @@
     "K128-P128x4-D2242-FullSR14x2": {
       "501": {
         "display_name": "H200-I100-S501-12-K128-P128x4-D2242-FullSR14x2",
-        "id": "8b3f8293a6fb2f30",
+        "id": "9f8c7ecb05f34cf9",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -121,7 +121,7 @@
     "K128-P128x4-D2262-FullSR14x4": {
       "501": {
         "display_name": "H200-I100-S501-13-K128-P128x4-D2262-FullSR14x4",
-        "id": "35ad53355fb2b883",
+        "id": "d16c7979e783d7b6",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -134,7 +134,7 @@
     "K128-P160-160-160-128-D2222": {
       "501": {
         "display_name": "H200-I100-S501-04-K128-P160-160-160-128-D2222",
-        "id": "f07284e68c570274",
+        "id": "3d004b6bf5de5779",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -147,7 +147,7 @@
     "K128-P160-160-160-96-D2222": {
       "501": {
         "display_name": "H200-I100-S501-05-K128-P160-160-160-96-D2222",
-        "id": "98a4b9ffd80fb5f1",
+        "id": "64ad47a6801015cf",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -160,7 +160,7 @@
     "K128-P96-128-160-96-D2222": {
       "501": {
         "display_name": "H200-I100-S501-07-K128-P96-128-160-96-D2222",
-        "id": "850c9e5a5fb8ac92",
+        "id": "ea67e914c52b0174",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -173,7 +173,7 @@
     "K128-P96x4-D2222": {
       "501": {
         "display_name": "H200-I100-S501-08-K128-P96x4-D2222",
-        "id": "aa7f7462e16b3c44",
+        "id": "45c63e3ee821dd83",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -186,7 +186,7 @@
     "K96-P128x4-D2222": {
       "501": {
         "display_name": "H200-I100-S501-09-K96-P128x4-D2222",
-        "id": "c8c9bc578a46cf15",
+        "id": "6f75b2daadc186da",
         "tags": [
           "H200",
           "ImageNet-100",

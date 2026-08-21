@@ -1,7 +1,7 @@
 {
   "schema": "lnet.h200.imagenet100.stage_allocation.v1",
-  "campaign_id": "h200-imagenet100-stage-allocation-s501-v1",
-  "output_namespace": "lnet-h200-imagenet100-stage-allocation-v1",
+  "campaign_id": "h200-imagenet100-stage-allocation-s501-v2",
+  "output_namespace": "lnet-h200-imagenet100-stage-allocation-v2",
   "dataset": {
     "source": "ImageNet-1K ILSVRC2012 train/val",
     "selection": "lexicographically first 100 synset directories",
@@ -38,16 +38,16 @@
     "app_url": "https://wandb.ai",
     "entity": "daehwa",
     "project": "alphabet2d-imagenet100-h200",
-    "group": "h200-imagenet100-stage-allocation-s501-v1",
+    "group": "h200-imagenet100-stage-allocation-s501-v2",
     "console": "off"
   },
   "relay": {
     "worker_name": "lnet-h200-imagenet100-stage-relay-v1",
     "url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
     "upstream_origin": "https://api.wandb.ai",
-    "protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v1",
+    "protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v2",
     "rate_limit_namespace_id": "31705",
     "max_graphql_body_bytes": 1048576,
-    "max_file_stream_body_bytes": 8388608
+    "max_file_stream_body_bytes": 10485760
   }
 }

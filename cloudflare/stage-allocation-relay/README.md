@@ -1,14 +1,14 @@
 # H200 ImageNet-100 stage-allocation W&B relay
 
-This is the dedicated non-authoritative W&B relay for the 20-model, three-seed
-ImageNet-1K baseline campaign. It is generated from
+This is the dedicated non-authoritative W&B relay for the 13-variant, seed-501
+ImageNet-100 stage-allocation campaign. It is generated from
 `h200/stage_allocation/campaign.json` and the already traced W&B 0.22.3 protocol.
-Exactly 60 production run IDs and one permanent canary ID are accepted.
+Exactly 13 production run IDs and one permanent canary ID are accepted.
 
 The real W&B key and H200 egress allowlist are Worker secrets:
 
 ```sh
-cd cloudflare/baseline-relay
+cd cloudflare/stage-allocation-relay
 npx wrangler secret put WANDB_API_KEY
 npx wrangler secret put ALLOWED_EGRESS_IPS
 npm run check
@@ -16,7 +16,7 @@ npm run deploy:dry
 npx wrangler deploy
 ```
 
-Regenerate after editing the baseline campaign:
+Regenerate after editing the stage-allocation campaign:
 
 ```sh
 python h200/stage_allocation/generate_contract.py

@@ -36,6 +36,7 @@ PY
   readonly CONTROL_CAMPAIGN_ID
   readonly CONTROL_STATE_ROOT="/app/output/daehwa00/run-control/${CONTROL_CAMPAIGN_ID}/${H200_EXPECTED_COMMIT}"
   readonly CONTROL_STOP_MARKER="${CONTROL_STATE_ROOT}/stopped.json"
+  readonly CONTROL_FAST_STOP_MARKER="/dev/shm/lnet-owner-stop-${CONTROL_CAMPAIGN_ID}-${H200_EXPECTED_COMMIT}.json"
   export H200_RUN_CONTROL_REPO_URL="${CONTROL_REPO_URL}"
   export H200_RUN_CONTROL_REF="${CONTROL_REF}"
   export H200_RUN_CONTROL_PATH="${CONTROL_PATH}"
@@ -48,6 +49,7 @@ PY
     --campaign-id "${CONTROL_CAMPAIGN_ID}" \
     --target-commit "${H200_EXPECTED_COMMIT}" \
     --stop-marker "${CONTROL_STOP_MARKER}" \
+    --fast-stop-marker "${CONTROL_FAST_STOP_MARKER}" \
     --poll-seconds 15 \
     --grace-seconds 120 \
     --term-seconds 30 \
@@ -236,12 +238,13 @@ uv_command pip sync \
 export PYTHONPATH="${PROJECT_ROOT}/src:${PROJECT_ROOT}/scripts"
 export CUDA_VISIBLE_DEVICES=0
 export CUDA_MODULE_LOADING=LAZY
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export PYTORCH_ALLOC_CONF=expandable_segments:True
 export TORCHINDUCTOR_CACHE_DIR="${CACHE_ROOT}/torchinductor"
 export TRITON_CACHE_DIR="${CACHE_ROOT}/triton"
 export LNET_LAUNCH_CACHE="${CACHE_ROOT}/lnet-launch"
-export LNET_COMPILE_MODE=default
+export LNET_COMPILE_MODE=reduce-overhead
 export LNET_PERSISTENT_WORKERS=0
+export LNET_DATALOADER_PREFETCH_FACTOR=2
 unset \
   WANDB_CONFIG_PATHS \
   WANDB_IDENTITY_TOKEN_FILE \
@@ -271,11 +274,15 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 
 CPU_COUNT="$(nproc)"
-WORKERS=$((CPU_COUNT / 4))
-if (( CPU_COUNT >= 2 && WORKERS < 1 )); then WORKERS=1; fi
-if (( WORKERS > 8 )); then WORKERS=8; fi
+if (( CPU_COUNT <= 2 )); then
+  WORKERS="${CPU_COUNT}"
+else
+  WORKERS=$((CPU_COUNT - 1))
+fi
+if (( WORKERS > 12 )); then WORKERS=12; fi
 readonly WORKERS
 export LNET_DATALOADER_WORKERS="${WORKERS}"
+echo "H200_INPUT_PIPELINE=cpus:${CPU_COUNT},workers:${WORKERS},prefetch:${LNET_DATALOADER_PREFETCH_FACTOR},compile:${LNET_COMPILE_MODE}"
 
 "${ENV_ROOT}/bin/python" - "${WANDB_SDK_VERSION}" <<'PY'
 import importlib.metadata
@@ -367,6 +374,58 @@ readonly LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256
 export LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256
 echo "H200_IMAGENET100_MANIFEST=${LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256}"
 
+readonly STAGED_DATA_PARENT="/app/scratch/datasets"
+readonly STAGED_DATA_ROOT="${STAGED_DATA_PARENT}/${OUTPUT_NAMESPACE}-${LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256:0:16}"
+readonly STAGED_DATA_READY="${STAGED_DATA_ROOT}/.lnet-ready-${LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256}"
+mkdir -p "${STAGED_DATA_PARENT}"
+df -h /app/scratch /dev/shm
+free -h || true
+if [[ ! -f "${STAGED_DATA_READY}" ]]; then
+  STAGED_DATA_REQUIRED_BYTES="$(
+    du --bytes --summarize --dereference \
+      "${IMAGENET100_ROOT}/train" \
+      "${IMAGENET100_ROOT}/val" \
+      | awk '{ total += $1 } END { print total }'
+  )"
+  STAGED_DATA_AVAILABLE_BYTES="$(df --block-size=1 --output=avail /app/scratch | tail -n 1 | tr -d ' ')"
+  if (( STAGED_DATA_AVAILABLE_BYTES < STAGED_DATA_REQUIRED_BYTES + 2147483648 )); then
+    echo "ERROR: /app/scratch lacks ImageNet-100 staging space" >&2
+    echo "required=${STAGED_DATA_REQUIRED_BYTES} available=${STAGED_DATA_AVAILABLE_BYTES}" >&2
+    exit 2
+  fi
+  STAGED_DATA_TEMP="$(mktemp -d "${STAGED_DATA_PARENT}/.${OUTPUT_NAMESPACE}.XXXXXX")"
+  stage_started="$(date +%s)"
+  cp --archive --dereference --reflink=auto \
+    "${IMAGENET100_ROOT}/train" \
+    "${IMAGENET100_ROOT}/val" \
+    "${STAGED_DATA_TEMP}/"
+  "${ENV_ROOT}/bin/python" - \
+    "${STAGED_DATA_TEMP}" \
+    "${LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256}" <<'PY'
+import sys
+from pathlib import Path
+
+from imagenet100_data_runtime import dataset_digest
+
+root = Path(sys.argv[1])
+expected = sys.argv[2]
+digest, train_images, validation_images = dataset_digest(root)
+if digest != expected or (train_images, validation_images) != (130000, 5000):
+    raise SystemExit(
+        f"staged ImageNet-100 mismatch: digest={digest}, "
+        f"train={train_images}, val={validation_images}"
+    )
+(root / f".lnet-ready-{expected}").write_text("ready\n", encoding="utf-8")
+PY
+  if [[ -e "${STAGED_DATA_ROOT}" ]]; then
+    mv "${STAGED_DATA_ROOT}" "${STAGED_DATA_ROOT}.incomplete-$$"
+  fi
+  mv "${STAGED_DATA_TEMP}" "${STAGED_DATA_ROOT}"
+  echo "H200_DATA_STAGED_SECONDS=$(( $(date +%s) - stage_started ))"
+fi
+readonly TRAIN_DATA_ROOT="${STAGED_DATA_ROOT}"
+echo "H200_TRAIN_DATA_ROOT=${TRAIN_DATA_ROOT}"
+
 timeout --signal=TERM --kill-after=2m 1h \
   "${ENV_ROOT}/bin/python" scripts/smoke_r2k3_campaign.py \
   --runner a2d_r2k3_stage_allocation_screen \
@@ -387,10 +446,10 @@ export WANDB_MODE=disabled
 timeout --signal=TERM --kill-after=2m 2h \
   "${ENV_ROOT}/bin/python" scripts/run_h200_imagenet100_stage_allocation.py \
   --root "${PREFLIGHT_ROOT}" \
-  --data-root "${IMAGENET100_ROOT}" \
+  --data-root "${TRAIN_DATA_ROOT}" \
   --variants K128-P128x4-D2222-Control \
   --run-seeds 501 \
-  --epochs 1 \
+  --epochs 2 \
   --batch-size 128 \
   --gradient-accumulation-steps 1 \
   --workers "${WORKERS}" \
@@ -403,17 +462,21 @@ from pathlib import Path
 
 payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 history = payload.get("history")
-throughput = payload.get("complete_training_examples_per_second")
 if (
     not isinstance(history, list)
-    or len(history) != 1
-    or history[-1].get("epoch") != 1
-    or not isinstance(throughput, (int, float))
-    or not math.isfinite(throughput)
-    or throughput <= 1.0
+    or len(history) != 2
+    or history[-1].get("epoch") != 2
 ):
-    raise SystemExit("data-backed preflight result is incomplete or non-finite")
-print(f"H200_DATA_BACKED_PREFLIGHT_IMAGES_PER_SECOND={throughput:.3f}")
+    raise SystemExit("optimized data-backed preflight history is incomplete")
+first_seconds = history[0].get("training_seconds")
+second_seconds = history[1].get("training_seconds")
+if not all(isinstance(value, (int, float)) for value in (first_seconds, second_seconds)):
+    raise SystemExit("optimized data-backed preflight timing is missing")
+steady_seconds = float(second_seconds) - float(first_seconds)
+throughput = 130000 / steady_seconds if steady_seconds > 0 else float("nan")
+if not math.isfinite(throughput) or throughput < 300.0:
+    raise SystemExit(f"optimized steady preflight is too slow: {throughput!r}")
+print(f"H200_DATA_BACKED_PREFLIGHT_STEADY_IMAGES_PER_SECOND={throughput:.3f}")
 PY
 export WANDB_MODE=online
 
@@ -476,7 +539,7 @@ for variant in "${STAGE_VARIANTS[@]}"; do
     timeout --signal=TERM --kill-after=5m 8h \
       "${ENV_ROOT}/bin/python" scripts/run_h200_imagenet100_stage_allocation.py \
       --root "${RUN_ROOT}" \
-      --data-root "${IMAGENET100_ROOT}" \
+      --data-root "${TRAIN_DATA_ROOT}" \
       --variants "${variant}" \
       --run-seeds 501 \
       --epochs 100 \

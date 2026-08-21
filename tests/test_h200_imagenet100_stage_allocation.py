@@ -9,13 +9,11 @@ import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
+import pytest
 import run_a2d_r2k3_stage_allocation_screen_imagenet100 as stage
 import run_h200_imagenet100_stage_allocation as h200_runner
-
-if TYPE_CHECKING:
-    import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,13 +30,16 @@ def _prepare_module() -> ModuleType:
     return module
 
 
-def test_generated_contract_contains_twelve_scoped_runs() -> None:
+def test_generated_contract_contains_thirteen_scoped_runs() -> None:
     subprocess.run(
         ["python", "h200/stage_allocation/generate_contract.py", "--check"],
         cwd=ROOT,
         check=True,
     )
     runtime = json.loads(RUNTIME_PATH.read_text())
+    assert runtime["campaign_id"] == "h200-imagenet100-stage-allocation-s501-v2"
+    assert runtime["output_namespace"] == "lnet-h200-imagenet100-stage-allocation-v2"
+    assert runtime["relay_protocol_version"] == "wandb-0.22.3-h200-imagenet100-stage-v2"
     assert runtime["training"]["variants"] == list(stage.VARIANTS)
     assert runtime["training"] == {
         "batch_size": 128,
@@ -69,6 +70,18 @@ def test_h200_entrypoint_is_commit_bound_and_runs_the_exact_screen() -> None:
     assert "--full-batch-size 128" in script
     assert "--epochs 100" in script
     assert 'export WANDB_API_KEY="${DUMMY_WANDB_API_KEY}"' in script
+    assert "export LNET_COMPILE_MODE=reduce-overhead" in script
+    assert "export LNET_DATALOADER_PREFETCH_FACTOR=2" in script
+    assert "WORKERS=$((CPU_COUNT - 1))" in script
+    assert "cp --archive --dereference --reflink=auto" in script
+    assert "throughput < 300.0" in script
+    assert "STAGED_DATA_AVAILABLE_BYTES" in script
+    assert "--epochs 2" in script
+    canary = (ROOT / "cloudflare/stage-allocation-relay/canary.py").read_text()
+    assert '"stage_allocation" / "campaign.runtime.json"' in canary
+    assert "run.status().sync_items_pending" in canary
+    assert "time.sleep(35)" in canary
+    assert '"filestream: fatal error"' in canary
 
 
 def test_first100_view_is_zero_copy_and_stable(
@@ -179,3 +192,42 @@ def test_wandb_run_uses_variant_scoped_relay_identity(
     assert settings_payload["disable_code"] is True
     assert settings_payload["disable_git"] is True
     assert settings_payload["x_disable_stats"] is True
+
+
+def test_h200_prefetch_override_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LNET_DATALOADER_PREFETCH_FACTOR", "4")
+    assert h200_runner.harness._active_loader_prefetch_factor() == 4
+
+    monkeypatch.setenv("LNET_DATALOADER_PREFETCH_FACTOR", "9")
+    with pytest.raises(ValueError, match="between 1 and 8"):
+        h200_runner.harness._active_loader_prefetch_factor()
+
+
+def test_owner_stop_marker_is_validated_off_the_training_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = json.loads(RUNTIME_PATH.read_text())
+    target_commit = "a" * 40
+    marker = tmp_path / "stopped.json"
+    marker.write_text(
+        json.dumps(
+            {
+                "schema": "lnet.h200.owner_stop.v1",
+                "campaign_id": runtime["campaign_id"],
+                "target_commit": target_commit,
+                "generation": 2,
+                "reason": "test stop",
+                "control_updated_at": "2026-08-21T14:02:37+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("H200_STAGE_ALLOCATION_WANDB_RUNTIME", str(RUNTIME_PATH))
+    monkeypatch.setenv("H200_EXPECTED_COMMIT", target_commit)
+
+    record = h200_runner._read_owner_stop_marker(marker)
+
+    assert record is not None
+    assert record["generation"] == 2
+    assert record["action"] == "stop"

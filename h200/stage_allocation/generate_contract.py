@@ -65,7 +65,7 @@ def _records(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def _canary(manifest: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": _run_id(manifest["campaign_id"], "permanent-canary"),
-        "display_name": "H200-I100-stage-relay-permanent-canary-v1",
+        "display_name": "H200-I100-stage-relay-permanent-canary-v2",
         "tags": ["H200", "ImageNet-100", "relay-canary", "authenticated"],
     }
 
@@ -130,10 +130,7 @@ def _runtime(manifest: dict[str, Any], digest: str) -> dict[str, Any]:
         "console": manifest["wandb"]["console"],
         "relay_protocol_version": manifest["relay"]["protocol_version"],
         "canary": _canary(manifest),
-        "runs": {
-            variant: {"501": record}
-            for variant, record in _records(manifest).items()
-        },
+        "runs": {variant: {"501": record} for variant, record in _records(manifest).items()},
     }
 
 
@@ -183,7 +180,7 @@ def _rendered_outputs(
         "$schema": "./node_modules/wrangler/config-schema.json",
         "name": manifest["relay"]["worker_name"],
         "main": "src/index.ts",
-        "compatibility_date": "2026-08-20",
+        "compatibility_date": "2026-08-21",
         "compatibility_flags": ["nodejs_compat"],
         "workers_dev": True,
         "ratelimits": [

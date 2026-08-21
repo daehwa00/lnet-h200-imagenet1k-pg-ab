@@ -148,10 +148,9 @@ def _write_heartbeat() -> None:
     )
 
 
-def _raise_if_owner_stopped() -> None:
-    marker = Path(os.environ["H200_CONTROL_STOP_MARKER"])
+def _read_owner_stop_marker(marker: Path) -> dict[str, Any] | None:
     if not marker.is_file():
-        return
+        return None
     payload = json.loads(marker.read_text(encoding="utf-8"))
     expected = {
         "schema": "lnet.h200.owner_stop.v1",
@@ -172,17 +171,22 @@ def _raise_if_owner_stopped() -> None:
         or not isinstance(updated_at, str)
     ):
         raise RuntimeError("H200 owner-stop marker is invalid")
-    raise remote_run_control.StopRequestedError(
-        {
-            "schema": remote_run_control.SCHEMA,
-            "campaign_id": expected["campaign_id"],
-            "target_commit": expected["target_commit"],
-            "generation": generation,
-            "action": "stop",
-            "updated_at": updated_at,
-            "reason": reason,
-        }
-    )
+    return {
+        "schema": remote_run_control.SCHEMA,
+        "campaign_id": expected["campaign_id"],
+        "target_commit": expected["target_commit"],
+        "generation": generation,
+        "action": "stop",
+        "updated_at": updated_at,
+        "reason": reason,
+    }
+
+
+def _raise_if_owner_stopped() -> None:
+    marker = Path(os.environ["H200_CONTROL_FAST_STOP_MARKER"])
+    record = _read_owner_stop_marker(marker)
+    if record is not None:
+        raise remote_run_control.StopRequestedError(record)
 
 
 def _controlled_train_epoch_with_step_count(*args: Any, **kwargs: Any) -> Any:
@@ -195,7 +199,7 @@ def _controlled_train_epoch_with_step_count(*args: Any, **kwargs: Any) -> Any:
         result = original_step(*step_args, **step_kwargs)
         _OPTIMIZER_UPDATES_SEEN += 1
         _raise_if_owner_stopped()
-        if _OPTIMIZER_UPDATES_SEEN % 50 == 0:
+        if _OPTIMIZER_UPDATES_SEEN % 100 == 0:
             _write_heartbeat()
         return result
 
@@ -257,6 +261,7 @@ def main() -> None:
     _runtime()
     required_environment = (
         "H200_CONTROL_START_GENERATION",
+        "H200_CONTROL_FAST_STOP_MARKER",
         "H200_CONTROL_STOP_MARKER",
         "H200_EXPECTED_COMMIT",
     )
@@ -266,8 +271,13 @@ def main() -> None:
     _ACTIVE_VARIANT = _selected_variant()
     harness._initialize_wandb_run = _initialize_required_wandb_run
     harness._train_epoch_with_step_count = _controlled_train_epoch_with_step_count
+    initial_stop = _read_owner_stop_marker(Path(os.environ["H200_CONTROL_FAST_STOP_MARKER"]))
+    if initial_stop is not None:
+        error = remote_run_control.StopRequestedError(initial_stop)
+        marker = _write_stop_marker(error)
+        print(f"H200_KILL_SWITCH_STOPPED={marker}", flush=True)
+        return
     try:
-        _raise_if_owner_stopped()
         stage.main()
     except remote_run_control.StopRequestedError as error:
         marker = _write_stop_marker(error)

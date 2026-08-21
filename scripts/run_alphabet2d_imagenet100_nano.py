@@ -80,6 +80,14 @@ def _active_loader_workers(requested: int) -> int:
     return workers
 
 
+def _active_loader_prefetch_factor() -> int:
+    factor = int(os.environ.get("LNET_DATALOADER_PREFETCH_FACTOR", PREFETCH_FACTOR))
+    if not 1 <= factor <= 8:
+        message = "DataLoader prefetch factor must be between 1 and 8"
+        raise ValueError(message)
+    return factor
+
+
 def _persistent_loader_workers(active_workers: int) -> bool:
     """Keep worker lifetimes at epoch boundaries so loader RNG can be restored.
 
@@ -322,11 +330,11 @@ def _contract(args: argparse.Namespace) -> dict[str, Any]:
             "loader_workers": loader_workers,
             "loader_persistent_workers": loader_persistent_workers,
             "validation_loader_persistent_workers": False,
-            "loader_prefetch_factor": PREFETCH_FACTOR,
+            "loader_prefetch_factor": _active_loader_prefetch_factor(),
             "cpu_affinity": os.environ.get("LNET_CPU_AFFINITY_ACTIVE"),
             "device_prefetch_stream": True,
             "device_prefetch_scope": "copy_only",
-            "fused_h2d_channels_last": False,
+            "fused_h2d_channels_last": True,
             "augmentation": ("RandomResizedCrop(224,bicubic)+HFlip+RandAugment(2,9)+RandomErasing"),
             "selection": "fixed final epoch; validation is not used for selection",
             "resume": (
@@ -422,7 +430,7 @@ def _loaders(
         "pin_memory": True,
     }
     if active_workers > 0:
-        common["prefetch_factor"] = PREFETCH_FACTOR
+        common["prefetch_factor"] = _active_loader_prefetch_factor()
     train_loader = DataLoader(
         train_dataset,
         shuffle=True,
@@ -485,7 +493,7 @@ def _device_batches(
             batch_inputs,
             batch_targets,
             device,
-            channels_last=False,
+            channels_last=channels_last,
         )
 
     while True:
@@ -506,11 +514,9 @@ def _device_batches(
                     batch_inputs,
                     batch_targets,
                     device,
-                    channels_last=False,
+                    channels_last=channels_last,
                 )
 
-        if channels_last:
-            inputs = inputs.contiguous(memory_format=torch.channels_last)
         yield inputs, targets
         if not has_next:
             break
@@ -1055,9 +1061,7 @@ def _append_telemetry_record(path: Path, record: dict[str, Any]) -> bool:
         path.parent.mkdir(parents=True, exist_ok=True)
         with temporary.open("w") as stream:
             for existing in (*records, record):
-                stream.write(
-                    json.dumps(existing, separators=(",", ":"), sort_keys=True) + "\n"
-                )
+                stream.write(json.dumps(existing, separators=(",", ":"), sort_keys=True) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
         temporary.replace(path)
@@ -1078,8 +1082,7 @@ def _report_wandb_degraded(operation: str, error: BaseException) -> None:
         "training_continues": True,
     }
     print(  # noqa: T201
-        "H200_WANDB_DEGRADED_JSON="
-        + json.dumps(payload, separators=(",", ":"), sort_keys=True),
+        "H200_WANDB_DEGRADED_JSON=" + json.dumps(payload, separators=(",", ":"), sort_keys=True),
         flush=True,
     )
 
@@ -1146,6 +1149,7 @@ def _epoch_telemetry_metrics(row: dict[str, float]) -> dict[str, float]:
     }
     optional = {
         "time/training_seconds": "training_seconds",
+        "time/host_input_wait_seconds": "host_input_wait_seconds",
         "global_step": "global_step",
         "optimizer_steps/epoch": "optimizer_steps",
     }
@@ -1159,12 +1163,8 @@ def _final_telemetry_summary(result: dict[str, Any]) -> dict[str, float]:
     history = result["history"]
     return {
         "final_validation_accuracy": float(result["final_validation"]["accuracy"]),
-        "final_validation_cross_entropy": float(
-            result["final_validation"]["cross_entropy"]
-        ),
-        "best_validation_accuracy": max(
-            float(row["validation_accuracy"]) for row in history
-        ),
+        "final_validation_cross_entropy": float(result["final_validation"]["cross_entropy"]),
+        "best_validation_accuracy": max(float(row["validation_accuracy"]) for row in history),
         "training_seconds": float(result["training_seconds"]),
     }
 
@@ -1384,6 +1384,7 @@ def _run_job(  # noqa: C901, PLR0915
             "training_seconds": training_seconds,
             "global_step": global_step,
             "optimizer_steps": optimizer_steps,
+            "host_input_wait_seconds": float(train.get("host_input_wait_seconds", 0.0)),
         }
         history.append(row)
         metrics = _epoch_telemetry_metrics(row)
@@ -1461,9 +1462,7 @@ def _run_job(  # noqa: C901, PLR0915
         "parameters": parameters,
         "global_step": global_step,
         "final_validation": final_validation,
-        "best_validation_accuracy_diagnostic": max(
-            row["validation_accuracy"] for row in history
-        ),
+        "best_validation_accuracy_diagnostic": max(row["validation_accuracy"] for row in history),
         "training_seconds": training_seconds,
         "complete_training_examples_per_second": (
             recipe["epochs"]

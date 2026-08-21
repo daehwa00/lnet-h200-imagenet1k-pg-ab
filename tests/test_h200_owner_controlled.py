@@ -37,6 +37,7 @@ def _args(tmp_path: Path) -> argparse.Namespace:
         campaign_id="campaign",
         target_commit=TARGET,
         stop_marker=tmp_path / "state" / "stopped.json",
+        fast_stop_marker=tmp_path / "fast" / "stopped.json",
         poll_seconds=1.0,
         grace_seconds=0.0,
         term_seconds=0.0,
@@ -90,6 +91,7 @@ def test_owner_stop_exits_zero_and_persists_marker(
     assert payload["generation"] == 2
     assert payload["checkpoint_policy"] == "last completed epoch remains authoritative"
     assert process.wait_calls == 1
+    assert json.loads(args.fast_stop_marker.read_text(encoding="utf-8")) == payload
 
 
 def test_ordinary_child_failure_is_not_reported_as_an_owner_stop(
