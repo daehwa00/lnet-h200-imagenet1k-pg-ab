@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
-  "campaign_id": "h200-imagenet100-stage-allocation-s501-v1",
-  "target_commit": "515d618083de37a6c7fa994ccc83c70ecc6e24cf",
-  "generation": 2,
+  "campaign_id": "h200-imagenet100-stage-allocation-s501-v2",
+  "target_commit": "5b3ea83f7aeb159875851b2f63b1bf895ff1ddcb",
+  "generation": 1,
   "action": "stop",
-  "updated_at": "2026-08-21T14:02:37+09:00",
-  "reason": "owner stop after two hours without an observable training heartbeat"
+  "updated_at": "2026-08-21T14:31:58+09:00",
+  "reason": "optimized v2 is deployed but remains disabled until the owner starts a new request"
 }
