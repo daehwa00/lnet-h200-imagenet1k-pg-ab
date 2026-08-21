@@ -2,8 +2,8 @@
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-stage-allocation-s501-v2",
   "target_commit": "53cd22b003e9c4e1a46cdfc506e069f5ebebac3d",
-  "generation": 2,
-  "action": "stop",
-  "updated_at": "2026-08-21T14:33:24+09:00",
-  "reason": "optimized v2 with provider-side relay canary remains disabled until owner start"
+  "generation": 3,
+  "action": "run",
+  "updated_at": "2026-08-21T14:35:29+09:00",
+  "reason": "owner start for the optimized v2 H200 preflight and stage-allocation run"
 }
