@@ -2,8 +2,8 @@
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-d2262-p-schedule-s501-v1",
   "target_commit": "1c2b7ddebbb88ddd7a445e772f9de2f0f30260ef",
-  "generation": 2,
-  "action": "run",
-  "updated_at": "2026-08-21T20:24:27+09:00",
-  "reason": "owner start for the six-model sequential D2262 P-schedule campaign"
+  "generation": 3,
+  "action": "stop",
+  "updated_at": "2026-08-21T22:31:48+09:00",
+  "reason": "owner pause to measure the managed Pod CPU and cgroup allocation"
 }
