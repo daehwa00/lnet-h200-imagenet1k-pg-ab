@@ -1,0 +1,10 @@
+{
+  "schema": "lnet.h200.imagenet1k.canonical_receipt.v1",
+  "dataset_root": "/app/data/ImageNet-2012",
+  "identity_sha256": "992f76a6fb0949826e1217d624fb8307292c04077d385665464cbbb7d917eceb",
+  "classes": 1000,
+  "train_images": 1281167,
+  "validation_images": 50000,
+  "identity_method": "full path-size-content SHA-256",
+  "provenance": "Repeated managed H200 full-content validations before 2026-08-22"
+}

@@ -64,13 +64,13 @@ def _records(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def _canary(manifest: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": _run_id(manifest["campaign_id"], "permanent-canary"),
-        "display_name": "H200-I100-D2262-P-schedule-relay-canary-v1",
+        "display_name": "H200-I100-D2262-P-schedule-relay-canary-v2",
         "tags": ["H200", "ImageNet-100", "D2262", "P-schedule", "relay-canary"],
     }
 
 
 def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -> None:
-    if manifest.get("schema") != "lnet.h200.imagenet100.d2262_p_schedule.v1":
+    if manifest.get("schema") != "lnet.h200.imagenet100.d2262_p_schedule.v2":
         raise ValueError("invalid D2262 P-schedule campaign schema")
     if not HEX_64.fullmatch(digest):
         raise ValueError("invalid combined campaign digest")
@@ -115,7 +115,7 @@ def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -
 
 def _runtime(manifest: dict[str, Any], digest: str) -> dict[str, Any]:
     return {
-        "schema": "lnet.h200.imagenet100.d2262_p_schedule.runtime.v1",
+        "schema": "lnet.h200.imagenet100.d2262_p_schedule.runtime.v2",
         "campaign_id": manifest["campaign_id"],
         "output_namespace": manifest["output_namespace"],
         "campaign_manifest_sha256": digest,

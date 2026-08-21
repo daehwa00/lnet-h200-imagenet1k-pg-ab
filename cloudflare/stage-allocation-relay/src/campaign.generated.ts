@@ -5,7 +5,7 @@ export const CAMPAIGN = {
     "running",
     "finished"
   ],
-  "authorizationManifestSha256": "429233615a260ae26f1bfcaf72707fab2425b1ea93e5256e1eb28ff8f46b7333",
+  "authorizationManifestSha256": "cfc3d30b63da483eb7482cc19b2df1b3839b4e09582b77317ca3130a0f096bd9",
   "campaignId": "h200-imagenet100-stage-allocation-s501-v3",
   "entity": "daehwa",
   "graphqlEnvelopeKeys": {
@@ -68,19 +68,6 @@ export const CAMPAIGN = {
     "wandb-summary.json"
   ],
   "runsById": {
-    "07d8482b0c7f765a": {
-      "displayName": "H200-I100-S501-06-F-K128-P128-160-192-128-D2262",
-      "group": "h200-imagenet100-d2262-p-schedule-s501-v1",
-      "program": "h200/run_imagenet100_d2262_p_schedule.sh",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "D2262",
-        "P-schedule",
-        "seed501",
-        "authenticated"
-      ]
-    },
     "08f53ad9f4022795": {
       "displayName": "H200-I100-S501-05-K128-P160-160-160-96-D2222",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
@@ -89,6 +76,19 @@ export const CAMPAIGN = {
         "H200",
         "ImageNet-100",
         "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "0bf15f94ec901bde": {
+      "displayName": "H200-I100-S501-02-B-K128-P160-160-192-128-D2262",
+      "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
+      "program": "h200/run_imagenet100_d2262_p_schedule.sh",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "D2262",
+        "P-schedule",
         "seed501",
         "authenticated"
       ]
@@ -129,6 +129,19 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "2468c0113b0107a4": {
+      "displayName": "H200-I100-S501-05-E-K128-P128-192-192-128-D2262",
+      "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
+      "program": "h200/run_imagenet100_d2262_p_schedule.sh",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "D2262",
+        "P-schedule",
+        "seed501",
+        "authenticated"
+      ]
+    },
     "262eb7ac769a3c51": {
       "displayName": "H200-I100-S501-06-K128-P128-128-160-96-D2222",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
@@ -137,6 +150,19 @@ export const CAMPAIGN = {
         "H200",
         "ImageNet-100",
         "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "3a69c73ca80fb205": {
+      "displayName": "H200-I100-S501-06-F-K128-P128-160-192-128-D2262",
+      "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
+      "program": "h200/run_imagenet100_d2262_p_schedule.sh",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "D2262",
+        "P-schedule",
         "seed501",
         "authenticated"
       ]
@@ -153,35 +179,9 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
-    "669a5763b5cbe163": {
-      "displayName": "H200-I100-S501-05-E-K128-P128-192-192-128-D2262",
-      "group": "h200-imagenet100-d2262-p-schedule-s501-v1",
-      "program": "h200/run_imagenet100_d2262_p_schedule.sh",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "D2262",
-        "P-schedule",
-        "seed501",
-        "authenticated"
-      ]
-    },
-    "6ab482a9af3101ff": {
-      "displayName": "H200-I100-S501-04-D-K128-P160-192-192-128-D2262",
-      "group": "h200-imagenet100-d2262-p-schedule-s501-v1",
-      "program": "h200/run_imagenet100_d2262_p_schedule.sh",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "D2262",
-        "P-schedule",
-        "seed501",
-        "authenticated"
-      ]
-    },
-    "84ddbf16284c4736": {
-      "displayName": "H200-I100-S501-02-B-K128-P160-160-192-128-D2262",
-      "group": "h200-imagenet100-d2262-p-schedule-s501-v1",
+    "793acdf9c5264018": {
+      "displayName": "H200-I100-S501-03-C-K128-P160-192-160-128-D2262",
+      "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
       "program": "h200/run_imagenet100_d2262_p_schedule.sh",
       "tags": [
         "H200",
@@ -204,6 +204,19 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "a5479be2824e7c8f": {
+      "displayName": "H200-I100-S501-01-A-K128-P160-160-160-128-D2262",
+      "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
+      "program": "h200/run_imagenet100_d2262_p_schedule.sh",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "D2262",
+        "P-schedule",
+        "seed501",
+        "authenticated"
+      ]
+    },
     "a5aeb2225a2fc909": {
       "displayName": "H200-I100-S501-08-K128-P96x4-D2222",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
@@ -216,17 +229,16 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
-    "af4cdc3c837dccab": {
-      "displayName": "H200-I100-S501-01-A-K128-P160-160-160-128-D2262",
-      "group": "h200-imagenet100-d2262-p-schedule-s501-v1",
+    "acc2724d5b11b2ce": {
+      "displayName": "H200-I100-D2262-P-schedule-relay-canary-v2",
+      "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
       "program": "h200/run_imagenet100_d2262_p_schedule.sh",
       "tags": [
         "H200",
         "ImageNet-100",
         "D2262",
         "P-schedule",
-        "seed501",
-        "authenticated"
+        "relay-canary"
       ]
     },
     "c0a2a6340bac8bf8": {
@@ -264,9 +276,9 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
-    "c76b9a5b94a558f3": {
-      "displayName": "H200-I100-S501-03-C-K128-P160-192-160-128-D2262",
-      "group": "h200-imagenet100-d2262-p-schedule-s501-v1",
+    "c89e19eea60670ca": {
+      "displayName": "H200-I100-S501-04-D-K128-P160-192-192-128-D2262",
+      "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
       "program": "h200/run_imagenet100_d2262_p_schedule.sh",
       "tags": [
         "H200",
@@ -311,18 +323,6 @@ export const CAMPAIGN = {
         "stage-allocation",
         "seed501",
         "authenticated"
-      ]
-    },
-    "f7699fa4d16bdd43": {
-      "displayName": "H200-I100-D2262-P-schedule-relay-canary-v1",
-      "group": "h200-imagenet100-d2262-p-schedule-s501-v1",
-      "program": "h200/run_imagenet100_d2262_p_schedule.sh",
-      "tags": [
-        "H200",
-        "ImageNet-100",
-        "D2262",
-        "P-schedule",
-        "relay-canary"
       ]
     }
   },

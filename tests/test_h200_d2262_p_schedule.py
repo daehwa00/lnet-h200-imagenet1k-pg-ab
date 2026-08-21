@@ -41,8 +41,8 @@ def test_generated_campaign_freezes_six_sequential_runs() -> None:
     )
     runtime = json.loads(RUNTIME_PATH.read_text())
 
-    assert runtime["schema"] == "lnet.h200.imagenet100.d2262_p_schedule.runtime.v1"
-    assert runtime["campaign_id"] == "h200-imagenet100-d2262-p-schedule-s501-v1"
+    assert runtime["schema"] == "lnet.h200.imagenet100.d2262_p_schedule.runtime.v2"
+    assert runtime["campaign_id"] == "h200-imagenet100-d2262-p-schedule-s501-v2"
     assert runtime["training"] == {
         "batch_size": 128,
         "epochs": 100,
@@ -66,6 +66,7 @@ def test_h200_shell_runs_exactly_one_model_per_process() -> None:
     assert "H200_EXPECTED_COMMIT" in script
     assert "git status --porcelain" in script
     assert "h200/d2262_p_schedule/generate_contract.py --check" in script
+    assert "lnet.h200.imagenet100.d2262_p_schedule.runtime.v2" in script
     assert "canary_d2262_p_schedule.py" in script
     assert 'for variant in "${P_SCHEDULE_VARIANTS[@]}"' in script
     assert '--variants "${variant}"' in script
@@ -78,6 +79,8 @@ def test_h200_shell_runs_exactly_one_model_per_process() -> None:
     assert "--kill-after=5m 24h" in script
     assert "H200_D2262_P_RESULTS_COMPLETE" in script
     assert "--reuse-existing" in script
+    assert "--managed-canonical-receipt h200/imagenet1k_canonical_receipt.json" in script
+    assert "6871da811224d961422ae8fe68339c81180e40d06983ce950189f5470add5db9" in script
     assert script.index('CPU_COUNT="$(nproc)"') < script.index("export OMP_NUM_THREADS=1")
 
 

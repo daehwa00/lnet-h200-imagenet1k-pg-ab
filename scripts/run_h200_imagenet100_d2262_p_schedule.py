@@ -36,7 +36,7 @@ def _runtime() -> dict[str, Any]:
     if not value:
         raise RuntimeError("H200_D2262_P_SCHEDULE_WANDB_RUNTIME is required")
     payload = json.loads(Path(value).read_text(encoding="utf-8"))
-    if payload.get("schema") != "lnet.h200.imagenet100.d2262_p_schedule.runtime.v1":
+    if payload.get("schema") != "lnet.h200.imagenet100.d2262_p_schedule.runtime.v2":
         raise RuntimeError("invalid H200 D2262 P-schedule W&B runtime")
     return cast("dict[str, Any]", payload)
 

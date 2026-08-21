@@ -9,6 +9,7 @@ readonly PROTOCOL_MANIFEST="${PROJECT_ROOT}/h200/campaign.json"
 readonly PYTHON_VERSION="3.13.11"
 readonly UV_VERSION="0.9.26"
 readonly DUMMY_WANDB_API_KEY="0000000000000000000000000000000000000000"
+readonly IMAGENET100_CANONICAL_MANIFEST_SHA256="6871da811224d961422ae8fe68339c81180e40d06983ce950189f5470add5db9"
 readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab.git"
 readonly CONTROL_REF="refs/heads/control/imagenet100-d2262-p-schedule"
 readonly CONTROL_PATH="h200/d2262_p_schedule/control.json"
@@ -102,7 +103,7 @@ required = (
     "console",
     "relay_protocol_version",
 )
-if runtime.get("schema") != "lnet.h200.imagenet100.d2262_p_schedule.runtime.v1":
+if runtime.get("schema") != "lnet.h200.imagenet100.d2262_p_schedule.runtime.v2":
     raise SystemExit("invalid D2262 P-schedule runtime schema")
 missing = [key for key in required if not isinstance(runtime.get(key), str) or not runtime[key]]
 if missing:
@@ -341,7 +342,8 @@ timeout --signal=TERM --kill-after=30s 3m \
 "${ENV_ROOT}/bin/python" h200/validate_imagenet1k.py \
   --root "${DATA_ROOT}" \
   --output "${DATASET_MANIFEST}" \
-  --reuse-existing
+  --reuse-existing \
+  --managed-canonical-receipt h200/imagenet1k_canonical_receipt.json
 export LNET_DATASET_MANIFEST_PATH="${DATASET_MANIFEST}"
 LNET_DATASET_IDENTITY_SHA256="$(
   "${ENV_ROOT}/bin/python" - "${DATASET_MANIFEST}" <<'PY'
@@ -379,6 +381,10 @@ print(digest)
 PY
 )"
 readonly LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256
+if [[ "${LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256}" != "${IMAGENET100_CANONICAL_MANIFEST_SHA256}" ]]; then
+  echo "ERROR: managed ImageNet-100 manifest differs from the pinned campaign dataset" >&2
+  exit 2
+fi
 export LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256
 echo "H200_IMAGENET100_MANIFEST=${LNET_IMAGENET100_EXPECTED_MANIFEST_SHA256}"
 

@@ -1,7 +1,7 @@
 {
-  "schema": "lnet.h200.imagenet100.d2262_p_schedule.v1",
-  "campaign_id": "h200-imagenet100-d2262-p-schedule-s501-v1",
-  "output_namespace": "lnet-h200-imagenet100-d2262-p-schedule-v1",
+  "schema": "lnet.h200.imagenet100.d2262_p_schedule.v2",
+  "campaign_id": "h200-imagenet100-d2262-p-schedule-s501-v2",
+  "output_namespace": "lnet-h200-imagenet100-d2262-p-schedule-v2",
   "dataset": {
     "source": "ImageNet-1K ILSVRC2012 train/val",
     "selection": "lexicographically first 100 synset directories",
@@ -32,7 +32,7 @@
     "app_url": "https://wandb.ai",
     "entity": "daehwa",
     "project": "alphabet2d-imagenet100-h200",
-    "group": "h200-imagenet100-d2262-p-schedule-s501-v1",
+    "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
     "console": "off"
   },
   "relay": {

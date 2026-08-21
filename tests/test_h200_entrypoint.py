@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from h200.validate_imagenet1k import build_manifest, persist_manifest, reusable_manifest
+from h200.validate_imagenet1k import (
+    build_manifest,
+    managed_manifest_receipt,
+    persist_manifest,
+    reusable_manifest,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -84,7 +89,6 @@ def test_pinned_manifest_rejects_identity_or_root_drift(tmp_path: Path) -> None:
             expected_val=2,
             expected_classes=2,
         )
-
     other = _dataset(tmp_path / "other-root")
     with pytest.raises(RuntimeError, match="immutable identity"):
         reusable_manifest(
@@ -94,6 +98,70 @@ def test_pinned_manifest_rejects_identity_or_root_drift(tmp_path: Path) -> None:
             expected_train=2,
             expected_val=2,
             expected_classes=2,
+        )
+
+
+def test_managed_receipt_pins_prior_identity_without_reading_image_bytes(
+    tmp_path: Path,
+) -> None:
+    dataset = _dataset(tmp_path / "imagenet")
+    output = tmp_path / "run/dataset_manifest.json"
+    trusted_receipt = tmp_path / "canonical-receipt.json"
+    trusted_receipt.write_text(
+        json.dumps(
+            {
+                "schema": "lnet.h200.imagenet1k.canonical_receipt.v1",
+                "dataset_root": str(dataset.resolve()),
+                "identity_sha256": "a" * 64,
+                "classes": 2,
+                "train_images": 2,
+                "validation_images": 2,
+                "identity_method": "full path-size-content SHA-256",
+            }
+        )
+    )
+    receipt = managed_manifest_receipt(
+        dataset,
+        trusted_receipt_path=trusted_receipt,
+        expected_identity_sha256="a" * 64,
+        expected_train=2,
+        expected_val=2,
+        expected_classes=2,
+    )
+    persist_manifest(receipt, output)
+
+    (dataset / "train/n00000001/a.JPEG").write_bytes(b"managed-source-not-rehashed")
+    reused = reusable_manifest(
+        dataset,
+        output,
+        expected_identity_sha256="a" * 64,
+        expected_train=2,
+        expected_val=2,
+        expected_classes=2,
+        managed_receipt_path=trusted_receipt,
+    )
+
+    assert reused == receipt
+    assert receipt["schema_version"] == 2
+    with pytest.raises(RuntimeError, match="explicit trust"):
+        reusable_manifest(
+            dataset,
+            output,
+            expected_identity_sha256="a" * 64,
+            expected_train=2,
+            expected_val=2,
+            expected_classes=2,
+        )
+    trusted_receipt.write_text(trusted_receipt.read_text() + "\n")
+    with pytest.raises(RuntimeError, match="trusted source"):
+        reusable_manifest(
+            dataset,
+            output,
+            expected_identity_sha256="a" * 64,
+            expected_train=2,
+            expected_val=2,
+            expected_classes=2,
+            managed_receipt_path=trusted_receipt,
         )
 
 

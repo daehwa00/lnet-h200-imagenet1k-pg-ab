@@ -110,7 +110,7 @@ def _supplemental_records(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     records.append(
         {
             "id": _run_id(campaign_id, "permanent-canary"),
-            "display_name": "H200-I100-D2262-P-schedule-relay-canary-v1",
+            "display_name": "H200-I100-D2262-P-schedule-relay-canary-v2",
             "group": manifest["wandb"]["group"],
             "program": "h200/run_imagenet100_d2262_p_schedule.sh",
             "tags": ["H200", "ImageNet-100", "D2262", "P-schedule", "relay-canary"],
@@ -127,17 +127,17 @@ def _validate_supplemental(
     wandb = supplemental.get("wandb", {})
     relay = supplemental.get("relay", {})
     if (
-        supplemental.get("schema") != "lnet.h200.imagenet100.d2262_p_schedule.v1"
-        or supplemental.get("campaign_id") != "h200-imagenet100-d2262-p-schedule-s501-v1"
+        supplemental.get("schema") != "lnet.h200.imagenet100.d2262_p_schedule.v2"
+        or supplemental.get("campaign_id") != "h200-imagenet100-d2262-p-schedule-s501-v2"
         or supplemental.get("output_namespace")
-        != "lnet-h200-imagenet100-d2262-p-schedule-v1"
+        != "lnet-h200-imagenet100-d2262-p-schedule-v2"
         or tuple(training.get("variants", ())) != D2262_P_SCHEDULE_VARIANTS
         or training.get("seed") != 501
         or training.get("epochs") != 100
         or training.get("batch_size") != 128
         or training.get("precision") != "bfloat16"
         or training.get("execution") != "one_model_to_epoch_100_then_next"
-        or wandb.get("group") != "h200-imagenet100-d2262-p-schedule-s501-v1"
+        or wandb.get("group") != "h200-imagenet100-d2262-p-schedule-s501-v2"
         or wandb.get("group") == primary["wandb"]["group"]
         or wandb.get("base_url") != primary["wandb"]["base_url"]
         or wandb.get("entity") != primary["wandb"]["entity"]

@@ -1,9 +1,9 @@
 {
-  "campaign_id": "h200-imagenet100-d2262-p-schedule-s501-v1",
-  "campaign_manifest_sha256": "c2f1e8f0ce3614fd55f7b52b02a8f41b03fd2d439d59a36e6f38edbc18f872a8",
+  "campaign_id": "h200-imagenet100-d2262-p-schedule-s501-v2",
+  "campaign_manifest_sha256": "e35d336f08bcb532123c4b07acb8ad6ebd12985b819852bee447deb677c6d5d4",
   "canary": {
-    "display_name": "H200-I100-D2262-P-schedule-relay-canary-v1",
-    "id": "f7699fa4d16bdd43",
+    "display_name": "H200-I100-D2262-P-schedule-relay-canary-v2",
+    "id": "acc2724d5b11b2ce",
     "tags": [
       "H200",
       "ImageNet-100",
@@ -23,8 +23,8 @@
     "validation_images": 5000
   },
   "entity": "daehwa",
-  "group": "h200-imagenet100-d2262-p-schedule-s501-v1",
-  "output_namespace": "lnet-h200-imagenet100-d2262-p-schedule-v1",
+  "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
+  "output_namespace": "lnet-h200-imagenet100-d2262-p-schedule-v2",
   "program": "h200/run_imagenet100_d2262_p_schedule.sh",
   "project": "alphabet2d-imagenet100-h200",
   "relay_protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v3",
@@ -32,7 +32,7 @@
     "A-K128-P160-160-160-128-D2262": {
       "501": {
         "display_name": "H200-I100-S501-01-A-K128-P160-160-160-128-D2262",
-        "id": "af4cdc3c837dccab",
+        "id": "a5479be2824e7c8f",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -46,7 +46,7 @@
     "B-K128-P160-160-192-128-D2262": {
       "501": {
         "display_name": "H200-I100-S501-02-B-K128-P160-160-192-128-D2262",
-        "id": "84ddbf16284c4736",
+        "id": "0bf15f94ec901bde",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -60,7 +60,7 @@
     "C-K128-P160-192-160-128-D2262": {
       "501": {
         "display_name": "H200-I100-S501-03-C-K128-P160-192-160-128-D2262",
-        "id": "c76b9a5b94a558f3",
+        "id": "793acdf9c5264018",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -74,7 +74,7 @@
     "D-K128-P160-192-192-128-D2262": {
       "501": {
         "display_name": "H200-I100-S501-04-D-K128-P160-192-192-128-D2262",
-        "id": "6ab482a9af3101ff",
+        "id": "c89e19eea60670ca",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -88,7 +88,7 @@
     "E-K128-P128-192-192-128-D2262": {
       "501": {
         "display_name": "H200-I100-S501-05-E-K128-P128-192-192-128-D2262",
-        "id": "669a5763b5cbe163",
+        "id": "2468c0113b0107a4",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -102,7 +102,7 @@
     "F-K128-P128-160-192-128-D2262": {
       "501": {
         "display_name": "H200-I100-S501-06-F-K128-P128-160-192-128-D2262",
-        "id": "07d8482b0c7f765a",
+        "id": "3a69c73ca80fb205",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -114,7 +114,7 @@
       }
     }
   },
-  "schema": "lnet.h200.imagenet100.d2262_p_schedule.runtime.v1",
+  "schema": "lnet.h200.imagenet100.d2262_p_schedule.runtime.v2",
   "training": {
     "batch_size": 128,
     "epochs": 100,
