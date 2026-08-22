@@ -17,7 +17,10 @@ import torch
 from torch import Tensor, nn
 
 from .complex_scan_stage import ComplexScanStage
-from .pac_complex_layers import ComplexLinear, semi_orthogonal_complex_linear_
+from .pac_complex_layers import (
+    ComplexLinear,
+    semi_orthogonal_complex_linear_,
+)
 from .pac_factorized_complex_scan_reader import FactorizedComplexConv2dReader
 from .pac_gated_post_fusion import GatedComplexPostFusion
 from .pac_phase_gated_transition import PathOnlyCollapse

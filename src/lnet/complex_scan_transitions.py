@@ -67,6 +67,19 @@ def _weighted_s2d_carry(
     )
 
 
+def complex_rms_unit(
+    real: Tensor,
+    imag: Tensor,
+    epsilon: float = 1.0e-6,
+) -> ComplexField:
+    """Normalize one complex row without introducing a learnable gain."""
+    if real.shape != imag.shape:
+        raise ValueError("complex RMS inputs must have matching shapes")
+    energy = (real.float().square() + imag.float().square()).mean(dim=-1, keepdim=True)
+    inverse_rms = torch.rsqrt(energy + epsilon).to(dtype=real.dtype)
+    return real * inverse_rms, imag * inverse_rms
+
+
 class ComplexRMSNorm(nn.Module):
     """Global-phase-equivariant RMS normalization with a direct real weight."""
 
@@ -83,10 +96,9 @@ class ComplexRMSNorm(nn.Module):
         if real.shape != imag.shape or real.shape[-1] != self.modes:
             message = "complex RMS normalization inputs have incompatible shapes"
             raise ValueError(message)
-        energy = (real.float().square() + imag.float().square()).mean(dim=-1, keepdim=True)
-        inverse_rms = torch.rsqrt(energy + self.epsilon).to(dtype=real.dtype)
+        unit_real, unit_imag = complex_rms_unit(real, imag, self.epsilon)
         weight = self.weight.to(dtype=real.dtype)
-        return real * inverse_rms * weight, imag * inverse_rms * weight
+        return unit_real * weight, unit_imag * weight
 
 
 class ComplexModulatedTransition(ComplexFFN):

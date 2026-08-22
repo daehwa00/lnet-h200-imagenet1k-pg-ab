@@ -5,6 +5,7 @@ from __future__ import annotations
 
 # pyright: reportArgumentType=false, reportExplicitAny=false
 # pyright: reportImplicitRelativeImport=false, reportPrivateUsage=false
+# pyright: reportImplicitStringConcatenation=false
 from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -32,6 +33,7 @@ SPECS = {
     variant: capacity.CapacitySpec(
         excitation_modes=(width,) * 4,
         pole_modes=(width,) * 4,
+        post_hidden_ratio=2.0,
     )
     for variant, width in zip(VARIANTS, WIDTHS, strict=True)
 }
@@ -84,7 +86,7 @@ def _build(variant: str, config: ComplexScanConfig) -> ComplexScanBackbone:
         message = f"unsupported uniform combined variant: {variant}"
         raise ValueError(message) from error
 
-    model = cast("ComplexScanBackbone", capacity._build_spec(spec, config))
+    model = capacity._build_spec(spec, config)
     _install_combined_transition(model)
     _assert_model(model, variant)
     return model
@@ -173,9 +175,11 @@ def _contract(args: Namespace) -> dict[str, Any]:
     }
     payload["architecture"] = dict.fromkeys(
         selected,
-        "Uniform K=P R2K3 Raw-Q Orth NoPG capacity control with learned CRMSNorm "
-        "before each nonterminal reader and real-SiLU-gated complex PostFusion; "
-        "terminal reader, Q4 affine head, optimizer, and recipe remain unchanged.",
+        (
+            "Uniform K=P R2K3 Raw-Q Orth NoPG capacity control with learned CRMSNorm "
+            "before each nonterminal reader and real-SiLU-gated complex PostFusion; "
+            "terminal reader, Q4 affine head, optimizer, and recipe remain unchanged."
+        ),
     )
     payload["source_sha256"]["uniform_combined_runner"] = runtime.digest(Path(__file__))
     payload["source_sha256"]["r2k3_runtime"] = runtime.digest(Path("scripts/a2d_r2k3_runtime.py"))

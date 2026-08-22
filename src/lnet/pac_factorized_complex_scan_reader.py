@@ -342,9 +342,7 @@ class FactorizedComplexConv2dReader(nn.Module):
                 .square()
                 .sum(dim=(1, 2), keepdim=False)
                 .unsqueeze(1)
-                .div(
-                    self.rms_reference_modes,
-                )
+                .div(self.rms_reference_modes)
             )
             token_scale = torch.sqrt(
                 (input_energy + self.variance_epsilon) / (output_energy + self.variance_epsilon)
@@ -368,14 +366,7 @@ class FactorizedComplexConv2dReader(nn.Module):
 
 
 class GatedWidelyLinearFactorizedComplexConv2dReader(nn.Module):
-    """Add a zero-gated factorized conjugate branch to a strict reader.
-
-    The effective map is ``Wz + tanh(beta) V*conj(z)``.  ``W`` remains the
-    nested strict reader, while ``V`` has the same low-rank spatial
-    factorization.  Copy-initializing the conjugate factors makes the gate
-    trainable on the first step; the exactly-zero gate nevertheless preserves
-    the source function bit-for-bit at construction.
-    """
+    """Add a zero-gated factorized conjugate branch to a strict reader."""
 
     def __init__(self, strict_reader: FactorizedComplexConv2dReader) -> None:
         super().__init__()
@@ -407,7 +398,6 @@ class GatedWidelyLinearFactorizedComplexConv2dReader(nn.Module):
         cls,
         source: FactorizedComplexConv2dReader,
     ) -> GatedWidelyLinearFactorizedComplexConv2dReader:
-        """Wrap ``source`` without changing or copying its strict parameters."""
         return cls(source)
 
     @property
@@ -427,7 +417,6 @@ class GatedWidelyLinearFactorizedComplexConv2dReader(nn.Module):
         return self.strict_reader.kernel_size
 
     def synthesized_conjugate_kernel(self) -> ComplexField:
-        """Synthesize the ungated conjugate kernel represented by ``V``."""
         point_real = self.conjugate_point_weight_real.float()
         point_imag = self.conjugate_point_weight_imag.float()
         spatial_real = self.conjugate_spatial_weight_real.float()
@@ -439,7 +428,6 @@ class GatedWidelyLinearFactorizedComplexConv2dReader(nn.Module):
         return full_real, full_imag
 
     def joint_unit_energy_kernels(self) -> tuple[ComplexField, ComplexField]:
-        """Return ``W`` and gated ``V`` with joint unit output-row energy."""
         weight_real, weight_imag = self.strict_reader.synthesized_kernel()
         conjugate_real, conjugate_imag = self.synthesized_conjugate_kernel()
         gate = torch.tanh(self.conjugate_gate.float()).view(-1, 1, 1, 1)
@@ -460,14 +448,12 @@ class GatedWidelyLinearFactorizedComplexConv2dReader(nn.Module):
 
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         strict = self.strict_reader
-        strict._validate_input(real, imag)  # noqa: SLF001 - same-module composition
+        strict._validate_input(real, imag)
         if strict.input_norm is not None:
             real, imag = strict.input_norm(real, imag)
         (weight_real, weight_imag), (conjugate_real, conjugate_imag) = (
             self.joint_unit_energy_kernels()
         )
-        # Match packed_widely_linear_weight and GatedWidelyLinearConv2d:
-        # [[Wr + Vr, Vi - Wi], [Wi + Vi, Wr - Vr]].
         top_left = weight_real + conjugate_real
         top_right = conjugate_imag - weight_imag
         bottom_left = weight_imag + conjugate_imag
@@ -479,11 +465,7 @@ class GatedWidelyLinearFactorizedComplexConv2dReader(nn.Module):
             ),
             dim=0,
         )
-        return strict._apply_packed_kernel(  # noqa: SLF001 - same-module composition
-            real,
-            imag,
-            packed_kernel,
-        )
+        return strict._apply_packed_kernel(real, imag, packed_kernel)
 
 
 __all__ = [

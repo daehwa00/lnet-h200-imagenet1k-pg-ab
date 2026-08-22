@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # pyright: reportExplicitAny=false, reportMissingImports=false, reportUnknownLambdaType=false
-# ruff: noqa: SLF001
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -307,14 +306,14 @@ def test_telemetry_replace_failure_is_degraded_not_raised(
     )
 
 
-def test_persistent_workers_are_rejected_for_rng_continuous_resume(
+def test_persistent_workers_require_explicit_opt_in(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("LNET_PERSISTENT_WORKERS", raising=False)
     assert harness._persistent_loader_workers(8) is False
     monkeypatch.setenv("LNET_PERSISTENT_WORKERS", "1")
-    with pytest.raises(RuntimeError, match="RNG-continuous epoch-boundary resume"):
-        harness._persistent_loader_workers(8)
+    assert harness._persistent_loader_workers(8) is True
+    assert harness._persistent_loader_workers(0) is False
 
 
 def test_wandb_retry_schedule_is_bounded() -> None:

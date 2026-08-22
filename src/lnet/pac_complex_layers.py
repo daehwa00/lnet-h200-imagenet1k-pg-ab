@@ -101,6 +101,10 @@ class ComplexLinear(nn.Module):
             self.weight_real.mul_(math.sqrt(0.5))
             self.weight_imag.mul_(math.sqrt(0.5))
 
+    def packed_weight(self) -> Tensor:
+        """Return the real matrix mapping ``[real | imag]`` rows to packed rows."""
+        return packed_complex_linear_weight(self.weight_real, self.weight_imag)
+
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         if real.shape != imag.shape or real.shape[-1] != self.input_modes:
             message = "complex linear inputs have incompatible shapes"
@@ -119,16 +123,91 @@ class PackedComplexLinear(ComplexLinear):
             message = "packed complex-linear inputs have incompatible shapes"
             raise ValueError(message)
         packed_input = torch.cat((real, imag), dim=-1)
-        packed_weight = packed_complex_linear_weight(self.weight_real, self.weight_imag)
-        packed_output = functional.linear(packed_input, packed_weight)
+        packed_output = functional.linear(packed_input, self.packed_weight())
         output_real, output_imag = packed_output.split(self.output_modes, dim=-1)
         return output_real, output_imag
+
+
+class ScaleStableComplexLinear(ComplexLinear):
+    """Learn a complex basis map while preserving its initialized row energy."""
+
+    reference_row_norm: Tensor
+
+    def __init__(self, input_modes: int, output_modes: int) -> None:
+        super().__init__(input_modes, output_modes)
+        reference_row_norm = torch.empty(output_modes, 1)
+        self.register_buffer(
+            "reference_row_norm",
+            reference_row_norm,
+        )
+        self.reference_row_norm = reference_row_norm
+        self.capture_reference_row_norm_()
+
+    def compute_row_norm(self) -> Tensor:
+        calculation_dtype = (
+            torch.float64 if self.weight_real.dtype is torch.float64 else torch.float32
+        )
+        energy = self.weight_real.to(calculation_dtype).square() + self.weight_imag.to(
+            calculation_dtype
+        ).square()
+        return energy.sum(dim=-1, keepdim=True).sqrt().to(self.weight_real.dtype)
+
+    @torch.no_grad()
+    def capture_reference_row_norm_(self) -> None:
+        self.reference_row_norm.copy_(self.compute_row_norm())
+
+    def normalized_weight(self) -> tuple[Tensor, Tensor]:
+        current = self.compute_row_norm().clamp_min(torch.finfo(self.weight_real.dtype).tiny)
+        scale = self.reference_row_norm / current
+        return self.weight_real * scale, self.weight_imag * scale
+
+    @classmethod
+    def from_projection(cls, source: ComplexLinear) -> ScaleStableComplexLinear:
+        reference = source.weight_real
+        with torch.random.fork_rng(devices=[]):
+            projection = cls(source.input_modes, source.output_modes).to(
+                device=reference.device,
+                dtype=reference.dtype,
+            )
+        with torch.no_grad():
+            projection.weight_real.copy_(source.weight_real)
+            projection.weight_imag.copy_(source.weight_imag)
+            projection.capture_reference_row_norm_()
+        return projection
+
+    def packed_weight(self) -> Tensor:
+        weight_real, weight_imag = self.normalized_weight()
+        return packed_complex_linear_weight(weight_real, weight_imag)
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        if real.shape != imag.shape or real.shape[-1] != self.input_modes:
+            raise ValueError("scale-stable complex linear inputs have incompatible shapes")
+        weight_real, weight_imag = self.normalized_weight()
+        return (
+            functional.linear(real, weight_real) - functional.linear(imag, weight_imag),
+            functional.linear(real, weight_imag) + functional.linear(imag, weight_real),
+        )
 
 
 @torch.no_grad()
 def semi_orthogonal_complex_linear_(layer: ComplexLinear) -> None:
     """Initialize a strict complex map as a real semi-orthogonal projection."""
     nn.init.orthogonal_(layer.weight_real)
+    layer.weight_imag.zero_()
+
+
+@torch.no_grad()
+def identity_complex_linear_(layer: ComplexLinear) -> None:
+    """Initialize a square strict-complex map as the exact identity."""
+    if layer.input_modes != layer.output_modes:
+        raise ValueError("identity complex initialization requires a square map")
+    layer.weight_real.copy_(
+        torch.eye(
+            layer.input_modes,
+            device=layer.weight_real.device,
+            dtype=layer.weight_real.dtype,
+        )
+    )
     layer.weight_imag.zero_()
 
 
@@ -194,6 +273,15 @@ class WidelyLinear(nn.Module):
                 self.bias_real.copy_(bias[:output_modes])
                 self.bias_imag.copy_(bias[output_modes:])
 
+    def packed_weight(self) -> Tensor:
+        """Return the real matrix mapping ``[real | imag]`` rows to packed rows."""
+        return packed_widely_linear_weight(
+            self.weight_real,
+            self.weight_imag,
+            self.conjugate_real,
+            self.conjugate_imag,
+        )
+
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         if real.shape != imag.shape or real.shape[-1] != self.input_modes:
             message = "widely-linear inputs have incompatible shapes"
@@ -227,7 +315,9 @@ class WidelyLinear(nn.Module):
 __all__ = [
     "ComplexLinear",
     "PackedComplexLinear",
+    "ScaleStableComplexLinear",
     "WidelyLinear",
+    "identity_complex_linear_",
     "packed_complex_linear_weight",
     "packed_widely_linear_bias",
     "packed_widely_linear_weight",

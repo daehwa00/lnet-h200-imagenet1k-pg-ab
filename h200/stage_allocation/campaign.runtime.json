@@ -6,6 +6,7 @@
     "group": "h200-imagenet100-stage-allocation-s501-v3",
     "id": "c0a2a6340bac8bf8",
     "program": "h200/run_imagenet100_stage_allocation.sh",
+    "project": "alphabet2d-imagenet100-h200",
     "tags": [
       "H200",
       "ImageNet-100",
@@ -35,6 +36,7 @@
         "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "db8432a5f68cd22b",
         "program": "h200/run_imagenet100_stage_allocation.sh",
+        "project": "alphabet2d-imagenet100-h200",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -50,6 +52,7 @@
         "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "262eb7ac769a3c51",
         "program": "h200/run_imagenet100_stage_allocation.sh",
+        "project": "alphabet2d-imagenet100-h200",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -65,6 +68,7 @@
         "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "c1f1f99432bcdf88",
         "program": "h200/run_imagenet100_stage_allocation.sh",
+        "project": "alphabet2d-imagenet100-h200",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -80,6 +84,7 @@
         "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "d1f895e5782fc9c0",
         "program": "h200/run_imagenet100_stage_allocation.sh",
+        "project": "alphabet2d-imagenet100-h200",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -95,6 +100,7 @@
         "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "c6e6a8d87921c54d",
         "program": "h200/run_imagenet100_stage_allocation.sh",
+        "project": "alphabet2d-imagenet100-h200",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -110,6 +116,7 @@
         "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "ec1cc3cd87618da8",
         "program": "h200/run_imagenet100_stage_allocation.sh",
+        "project": "alphabet2d-imagenet100-h200",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -125,6 +132,7 @@
         "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "555fbdd208c93cd0",
         "program": "h200/run_imagenet100_stage_allocation.sh",
+        "project": "alphabet2d-imagenet100-h200",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -140,6 +148,7 @@
         "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "238915e7e8cd806a",
         "program": "h200/run_imagenet100_stage_allocation.sh",
+        "project": "alphabet2d-imagenet100-h200",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -155,6 +164,7 @@
         "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "176b84265208f096",
         "program": "h200/run_imagenet100_stage_allocation.sh",
+        "project": "alphabet2d-imagenet100-h200",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -170,6 +180,7 @@
         "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "08f53ad9f4022795",
         "program": "h200/run_imagenet100_stage_allocation.sh",
+        "project": "alphabet2d-imagenet100-h200",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -185,6 +196,7 @@
         "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "1f280e808681c775",
         "program": "h200/run_imagenet100_stage_allocation.sh",
+        "project": "alphabet2d-imagenet100-h200",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -200,6 +212,7 @@
         "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "a5aeb2225a2fc909",
         "program": "h200/run_imagenet100_stage_allocation.sh",
+        "project": "alphabet2d-imagenet100-h200",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -215,6 +228,7 @@
         "group": "h200-imagenet100-stage-allocation-s501-v3",
         "id": "92b202e12ca21a96",
         "program": "h200/run_imagenet100_stage_allocation.sh",
+        "project": "alphabet2d-imagenet100-h200",
         "tags": [
           "H200",
           "ImageNet-100",

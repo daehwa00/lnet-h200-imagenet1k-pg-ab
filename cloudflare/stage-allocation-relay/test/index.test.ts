@@ -126,7 +126,7 @@ describe("H200 W&B relay", () => {
         name: runId,
         notes: null,
         program: "untrusted-program-is-overwritten",
-        project: CAMPAIGN.project,
+        project: run.project,
         repo: null,
         state: "running",
         summaryMetrics: null,
@@ -160,7 +160,7 @@ describe("H200 W&B relay", () => {
         name: runId,
         notes: null,
         program: "untrusted-program-is-overwritten",
-        project: CAMPAIGN.project,
+        project: run.project,
         repo: null,
         state: "running",
         summaryMetrics: null,
@@ -170,6 +170,39 @@ describe("H200 W&B relay", () => {
     }), testEnv());
     expect(response.status).toBe(200);
     expect(lastForwardedPayload().variables.program).toBe(run.program);
+  });
+
+  it("accepts the frozen K64 campaign in its canonical non-H200 project", async () => {
+    const entry = Object.entries(CAMPAIGN.runsById)
+      .find(([, run]) => run.project !== CAMPAIGN.project);
+    expect(entry).toBeDefined();
+    const [runId, run] = entry!;
+    const response = await worker.fetch(post("/graphql", {
+      operationName: "UpsertBucket",
+      query: UPSERT_QUERY,
+      variables: {
+        commit: null,
+        config: "{}",
+        debug: false,
+        description: null,
+        displayName: run.displayName,
+        entity: CAMPAIGN.entity,
+        groupName: run.group,
+        host: null,
+        id: null,
+        jobType: null,
+        name: runId,
+        notes: null,
+        program: null,
+        project: run.project,
+        repo: null,
+        state: "running",
+        summaryMetrics: null,
+        sweep: null,
+        tags: [...run.tags],
+      },
+    }), testEnv());
+    expect(response.status).toBe(200);
   });
 
   it("rejects a request outside the secret egress allowlist", async () => {

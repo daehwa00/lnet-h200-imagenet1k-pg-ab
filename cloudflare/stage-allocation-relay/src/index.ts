@@ -6,6 +6,7 @@ type RunId = string;
 type RunRecord = {
   readonly displayName: string;
   readonly group: string;
+  readonly project: string;
   readonly program: string;
   readonly tags: readonly string[];
 };
@@ -39,6 +40,12 @@ function hasExactKeys(value: JsonObject, expected: readonly string[]): boolean {
 
 function isRunId(value: unknown): value is RunId {
   return typeof value === "string" && Object.hasOwn(RUNS_BY_ID, value);
+}
+
+function hasRunProject(runId: unknown, project: unknown): runId is RunId {
+  return isRunId(runId)
+    && typeof project === "string"
+    && RUNS_BY_ID[runId]?.project === project;
 }
 
 function operationForHash(hash: string): OperationName | undefined {
@@ -100,25 +107,23 @@ function validateVariables(operation: OperationName, variables: unknown): variab
   if (operation === "RunResumeStatus") {
     return hasExactKeys(value, ["entity", "name", "project"])
       && value.entity === CAMPAIGN.entity
-      && value.project === CAMPAIGN.project
-      && isRunId(value.name);
+      && hasRunProject(value.name, value.project);
   }
   if (operation === "RunStoppedStatus") {
     return hasExactKeys(value, ["entityName", "projectName", "runId"])
       && value.entityName === CAMPAIGN.entity
-      && value.projectName === CAMPAIGN.project
-      && isRunId(value.runId);
+      && hasRunProject(value.runId, value.projectName);
   }
   if (operation === "CreateRunFiles") {
     if (!hasExactKeys(value, ["entity", "files", "project", "run"])) return false;
-    if (value.entity !== CAMPAIGN.entity || value.project !== CAMPAIGN.project || !isRunId(value.run)) return false;
+    if (value.entity !== CAMPAIGN.entity || !hasRunProject(value.run, value.project)) return false;
     if (!Array.isArray(value.files) || value.files.length < 1 || value.files.length > RUN_FILES.size) return false;
     return new Set(value.files).size === value.files.length
       && value.files.every((file) => typeof file === "string" && RUN_FILES.has(file));
   }
   if (operation === "UpsertBucket") {
     if (!hasExactKeys(value, CAMPAIGN.upsertBucketVariableKeys)) return false;
-    if (value.entity !== CAMPAIGN.entity || value.project !== CAMPAIGN.project || !isRunId(value.name)) return false;
+    if (value.entity !== CAMPAIGN.entity || !hasRunProject(value.name, value.project)) return false;
     const run = RUNS_BY_ID[value.name];
     if (!run) return false;
     if (value.groupName !== run.group || value.displayName !== run.displayName) return false;
@@ -308,7 +313,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   const streamMatch = /^\/files\/([^/]+)\/([^/]+)\/([^/]+)\/file_stream$/.exec(url.pathname);
   if (streamMatch) {
     const [, pathEntity, pathProject, pathRun] = streamMatch;
-    if (pathEntity !== CAMPAIGN.entity || pathProject !== CAMPAIGN.project || !isRunId(pathRun)) {
+    if (pathEntity !== CAMPAIGN.entity || !hasRunProject(pathRun, pathProject)) {
       return reject("stream_scope_mismatch", 403, requestId, "file_stream");
     }
     const body = await readBoundedBody(request, CAMPAIGN.maxFileStreamBodyBytes);

@@ -112,7 +112,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
             "schedule": "warmup plus cosine",
             "label_smoothing": 0.1,
             "mixup_alpha": 0.8,
-            "loader_prefetch_factor": heads.harness._active_loader_prefetch_factor(),
+            "loader_prefetch_factor": heads.harness.PREFETCH_FACTOR,
             "device_prefetch_scope": "copy_only",
             # Record the mode that actually runs, so the contract cannot claim
             # one compile mode while LNET_COMPILE_MODE selects another.

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+import a2d_r2k3_capacity_factory as capacity
 import a2d_r2k3_runtime as runtime
 import a2d_r2k3_source_manifest as source_manifest
 import run_a2d_r2k3_uniform_prenorm_gated_postfusion_imagenet100 as base
@@ -33,8 +34,6 @@ if TYPE_CHECKING:
 
 WIDTHS = (64, 96, 128)
 RESOLUTIONS = (56, 28, 14, 7)
-POST_HIDDEN_NUMERATOR = 3
-POST_HIDDEN_DENOMINATOR = 2
 READER_RANK = 2
 KERNEL_SIZE = 3
 SEEDS = runtime.DEFAULT_SEEDS
@@ -46,14 +45,11 @@ BASE_VARIANT_BY_WIDTH = dict(zip(WIDTHS, base.VARIANTS, strict=True))
 class FactorialSpec:
     width: int
     resolutions: tuple[int, ...]
+    post_hidden_ratio: float = capacity.DEFAULT_POST_HIDDEN_RATIO
 
     @property
     def post_hidden(self) -> int:
-        numerator = self.width * POST_HIDDEN_NUMERATOR
-        if numerator % POST_HIDDEN_DENOMINATOR:
-            message = "PostFusion ratio must produce an integral hidden width"
-            raise ValueError(message)
-        return numerator // POST_HIDDEN_DENOMINATOR
+        return round(self.width * self.post_hidden_ratio)
 
 
 def _resolutions_from_mask(mask: int) -> tuple[int, ...]:
@@ -294,7 +290,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
         "widths": list(WIDTHS),
         "resolutions": list(RESOLUTIONS),
         "cells": len(VARIANTS),
-        "post_fusion_ratio": POST_HIDDEN_NUMERATOR / POST_HIDDEN_DENOMINATOR,
+        "post_fusion_ratio": capacity.DEFAULT_POST_HIDDEN_RATIO,
     }
     payload["variant_configs"] = {variant: _variant_config(variant) for variant in selected}
     payload["parameter_counts"] = {

@@ -89,22 +89,9 @@ def _active_loader_prefetch_factor() -> int:
 
 
 def _persistent_loader_workers(active_workers: int) -> bool:
-    """Keep worker lifetimes at epoch boundaries so loader RNG can be restored.
-
-    A persistent worker owns Python and Torch RNG states that are not represented
-    in an epoch checkpoint.  Reusing that worker after an uninterrupted epoch and
-    recreating it after a restart therefore produce different augmentations.  The
-    confirmatory harness deliberately rejects that configuration instead of
-    claiming an exact resume it cannot provide.
-    """
+    """Enable persistent training workers only through an explicit campaign opt-in."""
     requested = os.environ.get("LNET_PERSISTENT_WORKERS", "0") == "1"
-    if active_workers > 0 and requested:
-        message = (
-            "persistent DataLoader workers are incompatible with RNG-continuous "
-            "epoch-boundary resume; set LNET_PERSISTENT_WORKERS=0"
-        )
-        raise RuntimeError(message)
-    return False
+    return active_workers > 0 and requested
 
 
 def _parse_cpu_set(value: str) -> set[int]:
@@ -338,9 +325,9 @@ def _contract(args: argparse.Namespace) -> dict[str, Any]:
             "augmentation": ("RandomResizedCrop(224,bicubic)+HFlip+RandAugment(2,9)+RandomErasing"),
             "selection": "fixed final epoch; validation is not used for selection",
             "resume": (
-                "epoch-boundary continuity for sampler, augmentation-worker, mixup, "
-                "process, and CUDA RNG; persistent workers forbidden; bitwise CUDA "
-                "kernel determinism is not claimed"
+                "epoch-boundary model/optimizer/scheduler and main RNG restore; "
+                "persistent augmentation-worker RNG is process-continuous and starts "
+                "fresh after process recovery; bitwise CUDA determinism is not claimed"
             ),
         },
         "data": {
@@ -738,7 +725,7 @@ def _train_epoch_with_step_count(
     original_step = optimizer.step
     optimizer_steps = 0
 
-    def step_and_count(*args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+    def step_and_count(*args: Any, **kwargs: Any) -> Any:
         nonlocal optimizer_steps
         result = original_step(*args, **kwargs)
         optimizer_steps += 1
@@ -940,7 +927,7 @@ def _initialize_wandb_run(
     if not project or os.environ.get("WANDB_MODE") == "disabled":
         return None
     try:
-        import wandb  # noqa: PLC0415
+        import wandb
     except ModuleNotFoundError as error:
         message = "WANDB_PROJECT is set but the wandb package is not installed"
         raise RuntimeError(message) from error
@@ -991,7 +978,7 @@ def _report_telemetry_degraded(operation: str, error: BaseException) -> None:
         "operation": operation,
         "training_continues": True,
     }
-    print(  # noqa: T201
+    print(
         "H200_TELEMETRY_DEGRADED_JSON="
         + json.dumps(payload, separators=(",", ":"), sort_keys=True),
         flush=True,
@@ -1081,7 +1068,7 @@ def _report_wandb_degraded(operation: str, error: BaseException) -> None:
         "operation": operation,
         "training_continues": True,
     }
-    print(  # noqa: T201
+    print(
         "H200_WANDB_DEGRADED_JSON=" + json.dumps(payload, separators=(",", ":"), sort_keys=True),
         flush=True,
     )
@@ -1250,7 +1237,7 @@ def _reconcile_completed_result(
     _best_effort_finish_wandb(wandb_run)
 
 
-def _run_job(  # noqa: C901, PLR0915
+def _run_job(
     root: Path,
     contract: dict[str, Any],
     *,
@@ -1427,7 +1414,7 @@ def _run_job(  # noqa: C901, PLR0915
             "training_seconds": training_seconds,
             "variant": variant,
         }
-        print(  # noqa: T201
+        print(
             "H200_PROGRESS_JSON="
             + json.dumps(progress_payload, separators=(",", ":"), sort_keys=True),
             flush=True,
@@ -1598,7 +1585,7 @@ def main(bindings: RunnerBindings | None = None) -> None:
             )
     summary = active.summarize(args.root, contract)
     if summary is not None:
-        print(json.dumps(summary, indent=2, sort_keys=True))  # noqa: T201
+        print(json.dumps(summary, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

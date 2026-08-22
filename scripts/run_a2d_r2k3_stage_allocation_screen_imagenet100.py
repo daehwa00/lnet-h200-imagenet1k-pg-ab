@@ -231,6 +231,7 @@ def _build_for_spec(
     label: str,
     config: ComplexScanConfig,
 ) -> ComplexScanBackbone:
+    """Build one explicit spec for downstream frozen campaign composition."""
     model = capacity_insight._build_all_resolution(spec.as_insight_spec(), config)
     model = _append_repeated_blocks(model, spec)
     _assert_model_for_spec(model, spec, label)
@@ -253,7 +254,8 @@ def _assert_block(
 
 
 def _assert_model(model: ComplexScanBackbone, variant: str) -> None:
-    _assert_model_for_spec(model, SPECS[variant], variant)
+    spec = SPECS[variant]
+    _assert_model_for_spec(model, spec, variant)
 
 
 def _assert_model_for_spec(
@@ -291,7 +293,8 @@ def _assert_model_for_spec(
 
 
 def _variant_config(variant: str) -> dict[str, Any]:
-    return _variant_config_for_spec(variant, SPECS[variant])
+    spec = SPECS[variant]
+    return _variant_config_for_spec(variant, spec)
 
 
 def _variant_config_for_spec(

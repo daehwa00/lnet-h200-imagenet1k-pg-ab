@@ -5,7 +5,7 @@ export const CAMPAIGN = {
     "running",
     "finished"
   ],
-  "authorizationManifestSha256": "3b35599229a087d6d069478a695e55a1ae1238132978d5a39eec7a330b4888d3",
+  "authorizationManifestSha256": "f9f3fea75bbddfdf4eb2b4867477f42bb9693c111f7d00df7605c63b308fb41f",
   "campaignId": "h200-imagenet100-stage-allocation-s501-v3",
   "entity": "daehwa",
   "graphqlEnvelopeKeys": {
@@ -72,6 +72,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-05-K128-P160-160-160-96-D2222",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -84,6 +85,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-02-B-K128-P160-160-192-128-D2262",
       "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
       "program": "h200/run_imagenet100_d2262_p_schedule.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -93,10 +95,26 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "129091e25d1df2a9": {
+      "displayName": "H200-I100-S501-01-K64-P96-160-160-128-D2262",
+      "group": "R2K3-K64-PAllocation-D2262-H200-S501",
+      "program": "h200/run_imagenet100_k64_p_allocation.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K64",
+        "P-allocation",
+        "D2262",
+        "seed501",
+        "authenticated"
+      ]
+    },
     "176b84265208f096": {
       "displayName": "H200-I100-S501-04-K128-P160-160-160-128-D2222",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -109,6 +127,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-07-K128-P96-128-160-96-D2222",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -121,6 +140,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-13-K128-P128x4-D2262-FullSR14x4",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -133,6 +153,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-05-E-K128-P128-192-192-128-D2262",
       "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
       "program": "h200/run_imagenet100_d2262_p_schedule.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -146,6 +167,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-06-K128-P128-128-160-96-D2222",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -158,6 +180,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-06-F-K128-P128-160-192-128-D2262",
       "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
       "program": "h200/run_imagenet100_d2262_p_schedule.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -171,6 +194,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-12-K128-P128x4-D2242-FullSR14x2",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -179,10 +203,26 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "5eeec1c555cc515e": {
+      "displayName": "H200-I100-S501-02-K64-P96-160-192-96-D2262",
+      "group": "R2K3-K64-PAllocation-D2262-H200-S501",
+      "program": "h200/run_imagenet100_k64_p_allocation.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K64",
+        "P-allocation",
+        "D2262",
+        "seed501",
+        "authenticated"
+      ]
+    },
     "793acdf9c5264018": {
       "displayName": "H200-I100-S501-03-C-K128-P160-192-160-128-D2262",
       "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
       "program": "h200/run_imagenet100_d2262_p_schedule.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -192,10 +232,25 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "7bdaa0a80eb38a2f": {
+      "displayName": "H200-I100-K64-P-allocation-D2262-relay-canary-v1",
+      "group": "R2K3-K64-PAllocation-D2262-H200-S501",
+      "program": "h200/run_imagenet100_k64_p_allocation.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K64",
+        "P-allocation",
+        "D2262",
+        "relay-canary"
+      ]
+    },
     "8d3c78a5a6b9a525": {
       "displayName": "H200-I100-Reader-WL-relay-canary-v1",
       "group": "h200-imagenet100-reader-wl-s501-v1",
       "program": "h200/run_imagenet100_reader_wl.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -208,6 +263,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-09-K96-P128x4-D2222",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -220,6 +276,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-01-StrictReader-K96-128-128-128-P128-192-192-128-D2262",
       "group": "h200-imagenet100-reader-wl-s501-v1",
       "program": "h200/run_imagenet100_reader_wl.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -233,6 +290,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-01-A-K128-P160-160-160-128-D2262",
       "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
       "program": "h200/run_imagenet100_d2262_p_schedule.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -246,6 +304,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-08-K128-P96x4-D2222",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -258,6 +317,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-D2262-P-schedule-relay-canary-v2",
       "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
       "program": "h200/run_imagenet100_d2262_p_schedule.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -270,6 +330,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-stage-relay-permanent-canary-v3",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -281,6 +342,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-03-K128-P128-160-160-128-D2222",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -293,6 +355,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-11-K128-P128x4-D2223-FullSR7x1",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -305,6 +368,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-04-D-K128-P160-192-192-128-D2262",
       "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
       "program": "h200/run_imagenet100_d2262_p_schedule.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -318,6 +382,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-01-K128-P128x4-D2222-Control",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -330,6 +395,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-02-K128-P128-128-160-128-D2222",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -342,6 +408,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-10-K128-P128x4-D2232-FullSR14x1",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
       "program": "h200/run_imagenet100_stage_allocation.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",
@@ -354,6 +421,7 @@ export const CAMPAIGN = {
       "displayName": "H200-I100-S501-02-WLReader-K96-128-128-128-P128-192-192-128-D2262",
       "group": "h200-imagenet100-reader-wl-s501-v1",
       "program": "h200/run_imagenet100_reader_wl.sh",
+      "project": "alphabet2d-imagenet100-h200",
       "tags": [
         "H200",
         "ImageNet-100",

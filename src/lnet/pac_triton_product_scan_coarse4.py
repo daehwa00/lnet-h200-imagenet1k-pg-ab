@@ -108,7 +108,8 @@ _PATH_SCAN_LAUNCH_CANDIDATES = tuple(
         num_warps=warps,
         blocks={"BLOCK_LINES": 1, "BLOCK_MODES": modes},
     )
-    for modes, warps in ((4, 4), (4, 8), (8, 4), (8, 8))
+    for modes in (4, 8, 16, 32, 64)
+    for warps in (4, 8)
 )
 _FINALIZE_LAUNCH_CANDIDATES = tuple(
     LaunchGeometry.build(num_warps=warps, blocks={"BLOCK_MODES": modes})
@@ -466,9 +467,7 @@ def _product_scan_coarse4_associative_forward_kernel(
                 ),
             )
             gate_indices = tl.broadcast_to(
-                (
-                    2 * SWIGLU_HIDDEN + value_coordinate % SWIGLU_HIDDEN
-                )[None, None, :],
+                (2 * SWIGLU_HIDDEN + value_coordinate % SWIGLU_HIDDEN)[None, None, :],
                 (
                     BLOCK_MODES,
                     BLOCK_HEIGHT * BLOCK_LINES,
@@ -967,9 +966,7 @@ def _product_scan_coarse4_associative_backward_kernel(  # noqa: PLR0912
                 ),
             )
             gate_indices = tl.broadcast_to(
-                (
-                    2 * SWIGLU_HIDDEN + value_coordinate % SWIGLU_HIDDEN
-                )[None, None, :],
+                (2 * SWIGLU_HIDDEN + value_coordinate % SWIGLU_HIDDEN)[None, None, :],
                 (
                     BLOCK_MODES,
                     BLOCK_HEIGHT * BLOCK_LINES,
@@ -996,19 +993,14 @@ def _product_scan_coarse4_associative_backward_kernel(  # noqa: PLR0912
                 & (value_coordinate[None, None, :] < 2 * SWIGLU_HIDDEN),
                 other=0.0,
             ).to(tl.bfloat16)
-            grad_gated_value = tl.dot(active_grad_output, active_output_weight).to(
-                tl.float32
-            )
+            grad_gated_value = tl.dot(active_grad_output, active_output_weight).to(tl.float32)
             active_value = value.to(tl.float32)
             active_gate = gate.to(tl.float32)
             grad_value = grad_gated_value * active_gate
-            gate_derivative = gate_sigmoid * (
-                1.0 + gate_logits * (1.0 - gate_sigmoid)
-            )
+            gate_derivative = gate_sigmoid * (1.0 + gate_logits * (1.0 - gate_sigmoid))
             grad_gate_contribution = grad_gated_value * active_value * gate_derivative
             value_match = (
-                hidden_coordinate[None, None, None, :]
-                == value_coordinate[None, None, :, None]
+                hidden_coordinate[None, None, None, :] == value_coordinate[None, None, :, None]
             )
             value_joint_gradient = tl.sum(
                 tl.where(value_match, grad_value[:, :, :, None], 0.0),
@@ -1016,17 +1008,13 @@ def _product_scan_coarse4_associative_backward_kernel(  # noqa: PLR0912
             )
             gate_match = (
                 hidden_coordinate[None, None, None, :]
-                == (
-                    2 * SWIGLU_HIDDEN + value_coordinate % SWIGLU_HIDDEN
-                )[None, None, :, None]
+                == (2 * SWIGLU_HIDDEN + value_coordinate % SWIGLU_HIDDEN)[None, None, :, None]
             )
             gate_joint_gradient = tl.sum(
                 tl.where(gate_match, grad_gate_contribution[:, :, :, None], 0.0),
                 axis=2,
             )
-            grad_preactivation = (value_joint_gradient + gate_joint_gradient).to(
-                tl.bfloat16
-            )
+            grad_preactivation = (value_joint_gradient + gate_joint_gradient).to(tl.bfloat16)
             if BLOCK_HEIGHT * BLOCK_LINES >= 16:
                 path_output_weight_gradient = tl.dot(
                     tl.permute(active_grad_output, (0, 2, 1)),
@@ -1034,8 +1022,7 @@ def _product_scan_coarse4_associative_backward_kernel(  # noqa: PLR0912
                 )
             else:
                 path_output_weight_gradient = tl.sum(
-                    active_grad_output[:, :, :, None]
-                    * gated_value[:, :, None, :],
+                    active_grad_output[:, :, :, None] * gated_value[:, :, None, :],
                     axis=1,
                 )
             output_weight_mask = (
@@ -1058,9 +1045,7 @@ def _product_scan_coarse4_associative_backward_kernel(  # noqa: PLR0912
                 & (hidden_coordinate[None, None, :] < packed_path_hidden),
                 other=0.0,
             ).to(tl.bfloat16)
-            grad_hidden = tl.dot(active_grad_output, active_output_weight).to(
-                tl.float32
-            )
+            grad_hidden = tl.dot(active_grad_output, active_output_weight).to(tl.float32)
             grad_preactivation = (
                 grad_hidden * sigmoid * (1.0 + preactivation_float * (1.0 - sigmoid))
             ).to(tl.bfloat16)
@@ -1103,8 +1088,7 @@ def _product_scan_coarse4_associative_backward_kernel(  # noqa: PLR0912
                 axis=1,
             )
         path_input_weight_gradient_offset = (
-            mode_vector[:, None, None] * packed_path_hidden
-            + hidden_coordinate[None, :, None]
+            mode_vector[:, None, None] * packed_path_hidden + hidden_coordinate[None, :, None]
         ) * _PACKED_PATH_INPUTS_TL + path_coordinate[None, None, :]
         tl.atomic_add(
             grad_path_input_weight + path_input_weight_gradient_offset,
@@ -1558,11 +1542,6 @@ def _launch_product_scan4_backward(  # noqa: C901, PLR0912
                 else ()
             ),
         ),
-        geometry=(
-            _PATH_SCAN_LAUNCH_CANDIDATES[0]
-            if path_collapse is not None
-            else None
-        ),
         scope=_scan_launch_scope(
             _product_scan_coarse4_associative_backward_kernel,
             source_real_a,
@@ -1607,9 +1586,7 @@ def _launch_product_scan4_backward(  # noqa: C901, PLR0912
         BLOCK_HEIGHT=triton.next_power_of_2(height),
         BLOCK_PATH_HIDDEN=max(16, triton.next_power_of_2(packed_path_hidden)),
         BLOCK_SWIGLU_VALUE=(
-            max(16, triton.next_power_of_2(2 * swiglu_hidden))
-            if path_swiglu
-            else 16
+            max(16, triton.next_power_of_2(2 * swiglu_hidden)) if path_swiglu else 16
         ),
     )
     base_gradients = (*coefficient_gradients, *source_gradients)
@@ -1888,26 +1865,15 @@ def _launch_product_scan4_forward(
         path_input_weight, path_input_bias, path_output_weight, path_output_bias = (
             value.contiguous() for value in path_collapse
         )
-        swiglu_hidden = (
-            path_input_weight.shape[1] // 3 if path_swiglu else 0
-        )
-        expected_output_hidden = (
-            2 * swiglu_hidden if path_swiglu else path_input_weight.shape[1]
-        )
+        swiglu_hidden = path_input_weight.shape[1] // 3 if path_swiglu else 0
+        expected_output_hidden = 2 * swiglu_hidden if path_swiglu else path_input_weight.shape[1]
         if (
             path_input_weight.ndim != 3
             or path_input_weight.shape[0] != modes
             or path_input_weight.shape[2] != _PACKED_PATH_INPUTS
             or path_input_bias.shape != path_input_weight.shape[:2]
-            or (
-                path_swiglu
-                and (
-                    path_input_weight.shape[1] < 3
-                    or path_input_weight.shape[1] % 3
-                )
-            )
-            or path_output_weight.shape
-            != (modes, _PACKED_PATH_OUTPUTS, expected_output_hidden)
+            or (path_swiglu and (path_input_weight.shape[1] < 3 or path_input_weight.shape[1] % 3))
+            or path_output_weight.shape != (modes, _PACKED_PATH_OUTPUTS, expected_output_hidden)
             or path_output_bias.shape != (modes, _PACKED_PATH_OUTPUTS)
         ):
             raise ValueError("scan-path collapse parameters have incompatible shapes")
@@ -1995,9 +1961,7 @@ def _launch_product_scan4_forward(
         BLOCK_HEIGHT=triton.next_power_of_2(height),
         BLOCK_PATH_HIDDEN=max(16, triton.next_power_of_2(packed_path_hidden)),
         BLOCK_SWIGLU_VALUE=(
-            max(16, triton.next_power_of_2(2 * swiglu_hidden))
-            if path_swiglu
-            else 16
+            max(16, triton.next_power_of_2(2 * swiglu_hidden)) if path_swiglu else 16
         ),
     )
     if emit_descriptor:

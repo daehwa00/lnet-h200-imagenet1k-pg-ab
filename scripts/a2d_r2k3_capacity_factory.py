@@ -53,12 +53,14 @@ STAGE_NAMES = runtime.STAGE_NAMES
 READER_RANK = 2
 KERNEL_SIZE = 3
 PATH_HIDDEN = 8
+DEFAULT_POST_HIDDEN_RATIO = 1.5
 
 
 @dataclass(frozen=True, slots=True)
 class CapacitySpec:
     excitation_modes: tuple[int, int, int, int]
     pole_modes: tuple[int, int, int, int]
+    post_hidden_ratio: float = DEFAULT_POST_HIDDEN_RATIO
 
     @property
     def descriptor_dim(self) -> int:
@@ -68,11 +70,19 @@ class CapacitySpec:
     def q4_dim(self) -> int:
         return 4 * self.pole_modes[-1]
 
+    @property
+    def post_hidden_modes(self) -> tuple[int, ...]:
+        return tuple(
+            round(modes * self.post_hidden_ratio)
+            for modes in self.excitation_modes
+        )
+
 
 SPECS = {
     K128_P128: CapacitySpec(
         excitation_modes=(128, 128, 128, 128),
         pole_modes=(128, 128, 128, 128),
+        post_hidden_ratio=2.0,
     ),
 }
 
@@ -239,6 +249,7 @@ def _install_stage(
     excitation_modes: int,
     pole_modes: int,
     output_modes: int,
+    post_hidden: int,
 ) -> None:
     if stage.modes != pole_modes:
         message = "capacity builder emitted an unexpected pole width"
@@ -257,7 +268,7 @@ def _install_stage(
         pole_modes,
         excitation_modes,
         output_modes,
-        post_hidden=2 * output_modes,
+        post_hidden=post_hidden,
     )
     with torch.random.fork_rng(devices=[]):
         stage.pole_input_projection = _make_reader(excitation_modes, pole_modes)
@@ -314,6 +325,7 @@ def _build_spec(spec: CapacitySpec, config: ComplexScanConfig) -> ComplexScanBac
             excitation_modes=spec.excitation_modes[index],
             pole_modes=spec.pole_modes[index],
             output_modes=spec.excitation_modes[index + 1],
+            post_hidden=spec.post_hidden_modes[index + 1],
         )
     _install_terminal(
         model.terminal,
@@ -372,6 +384,7 @@ def _assert_model(model: ComplexScanBackbone, spec: CapacitySpec) -> None:
             continue
 
         output_modes = spec.excitation_modes[index + 1]
+        post_hidden = spec.post_hidden_modes[index + 1]
         transition = stage.augmented
         if (
             stage.output_modes != output_modes
@@ -380,7 +393,7 @@ def _assert_model(model: ComplexScanBackbone, spec: CapacitySpec) -> None:
             or transition.excitation_modes != excitation_modes
             or transition.output_modes != output_modes
             or transition.carry_input_modes != 4 * excitation_modes
-            or transition.post_hidden != 2 * output_modes
+            or transition.post_hidden != post_hidden
         ):
             message = f"{name} lost its pole-to-excitation transition contract"
             raise RuntimeError(message)
@@ -439,7 +452,11 @@ def _variant_config_for_spec(variant: str, spec: CapacitySpec) -> dict[str, Any]
                 "memory": "path collapse at pole width, optional strict CL to next excitation width",
                 "carry": "S2D average at excitation width, optional strict CL to next excitation width",
                 "merge": "projected memory plus projected carry",
-                "post_fusion": "target-width residual WL PostFusion",
+                "post_fusion": {
+                    "operator": "target-width residual WL PostFusion",
+                    "hidden_ratio": spec.post_hidden_ratio,
+                    "hidden_modes_by_excitation_stage": list(spec.post_hidden_modes),
+                },
             },
             "descriptor": {
                 "operator": "direct raw directional log-energy",

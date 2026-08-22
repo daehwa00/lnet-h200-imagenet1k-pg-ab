@@ -147,7 +147,11 @@ def _templates(model: ComplexScanBackbone) -> dict[int, Any]:
 
 
 def _build_all_resolution(spec: InsightSpec, config: ComplexScanConfig) -> ComplexScanBackbone:
-    capacity_spec = capacity.CapacitySpec(spec.excitation_modes, spec.pole_modes)
+    capacity_spec = capacity.CapacitySpec(
+        spec.excitation_modes,
+        spec.pole_modes,
+        post_hidden_ratio=2.0,
+    )
     model = capacity._build_spec(capacity_spec, config)
     uniform._install_combined_transition(model)
     factorial._resize_postfusion(model, POST_HIDDEN)

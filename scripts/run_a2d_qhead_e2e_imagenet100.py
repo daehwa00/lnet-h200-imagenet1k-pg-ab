@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import math
-import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -328,12 +327,8 @@ def _train_epoch(
     diagnostics: dict[str, list[Tensor]] = {}
     count = 0
     batch_count = len(loader)
-    batches = iter(harness._device_batches(loader, device, channels_last=channels_last))
-    host_input_wait_seconds = 0.0
-    for batch_index in range(batch_count):
-        waiting_started = time.perf_counter()
-        inputs, targets = next(batches)
-        host_input_wait_seconds += time.perf_counter() - waiting_started
+    batches = harness._device_batches(loader, device, channels_last=channels_last)
+    for batch_index, (inputs, targets) in enumerate(batches):
         group_offset = batch_index % gradient_accumulation_steps
         if group_offset == 0:
             optimizer.zero_grad(set_to_none=True)
@@ -378,7 +373,6 @@ def _train_epoch(
     result = {
         "loss": float(torch.stack(loss_terms).double().sum()) / count,
         "mixed_accuracy": int(torch.stack(correct_terms).sum()) / count,
-        "host_input_wait_seconds": host_input_wait_seconds,
     }
     # The common harness records only the two canonical keys in history.  Keep
     # the latest auxiliary values on the model so W&B diagnostics can still
