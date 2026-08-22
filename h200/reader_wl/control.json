@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-reader-wl-s501-v1",
-  "target_commit": "0000000000000000000000000000000000000000",
-  "generation": 1,
-  "action": "stop",
-  "updated_at": "2026-08-22T00:00:00+09:00",
-  "reason": "safe default before the first reviewed deployment"
+  "target_commit": "6d9085709d0776f0b20414e3cf2ab0a1e7747b29",
+  "generation": 2,
+  "action": "run",
+  "updated_at": "2026-08-22T09:32:34+09:00",
+  "reason": "owner start for the optimized strict-versus-WL Reader comparison"
 }
