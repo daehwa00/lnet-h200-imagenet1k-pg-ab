@@ -5,7 +5,7 @@ export const CAMPAIGN = {
     "running",
     "finished"
   ],
-  "authorizationManifestSha256": "cfc3d30b63da483eb7482cc19b2df1b3839b4e09582b77317ca3130a0f096bd9",
+  "authorizationManifestSha256": "3b35599229a087d6d069478a695e55a1ae1238132978d5a39eec7a330b4888d3",
   "campaignId": "h200-imagenet100-stage-allocation-s501-v3",
   "entity": "daehwa",
   "graphqlEnvelopeKeys": {
@@ -192,6 +192,18 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "8d3c78a5a6b9a525": {
+      "displayName": "H200-I100-Reader-WL-relay-canary-v1",
+      "group": "h200-imagenet100-reader-wl-s501-v1",
+      "program": "h200/run_imagenet100_reader_wl.sh",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "Reader-study",
+        "strict-vs-WL",
+        "relay-canary"
+      ]
+    },
     "92b202e12ca21a96": {
       "displayName": "H200-I100-S501-09-K96-P128x4-D2222",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
@@ -200,6 +212,19 @@ export const CAMPAIGN = {
         "H200",
         "ImageNet-100",
         "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "94b93f2be45b84e7": {
+      "displayName": "H200-I100-S501-01-StrictReader-K96-128-128-128-P128-192-192-128-D2262",
+      "group": "h200-imagenet100-reader-wl-s501-v1",
+      "program": "h200/run_imagenet100_reader_wl.sh",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "Reader-study",
+        "strict-vs-WL",
         "seed501",
         "authenticated"
       ]
@@ -321,6 +346,19 @@ export const CAMPAIGN = {
         "H200",
         "ImageNet-100",
         "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "f7c55ca5b25880b7": {
+      "displayName": "H200-I100-S501-02-WLReader-K96-128-128-128-P128-192-192-128-D2262",
+      "group": "h200-imagenet100-reader-wl-s501-v1",
+      "program": "h200/run_imagenet100_reader_wl.sh",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "Reader-study",
+        "strict-vs-WL",
         "seed501",
         "authenticated"
       ]

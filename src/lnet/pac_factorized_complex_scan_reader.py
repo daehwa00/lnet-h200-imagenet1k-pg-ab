@@ -309,14 +309,13 @@ class FactorizedComplexConv2dReader(nn.Module):
             message = "factorized complex reader input has an incompatible mode dimension"
             raise ValueError(message)
 
-    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
-        self._validate_input(real, imag)
-        if self.input_norm is not None:
-            real, imag = self.input_norm(real, imag)
-        kernel_real, kernel_imag = self.unit_energy_kernel()
-        kernel_top = torch.cat((kernel_real, -kernel_imag), dim=1)
-        kernel_bottom = torch.cat((kernel_imag, kernel_real), dim=1)
-        packed_kernel = torch.cat((kernel_top, kernel_bottom), dim=0)
+    def _apply_packed_kernel(
+        self,
+        real: Tensor,
+        imag: Tensor,
+        packed_kernel: Tensor,
+    ) -> ComplexField:
+        """Apply one packed Cartesian convolution and the optional RMS match."""
         packed_input = torch.cat(
             (real.movedim(-1, 1), imag.movedim(-1, 1)),
             dim=1,
@@ -339,8 +338,7 @@ class FactorizedComplexConv2dReader(nn.Module):
                     self.output_modes,
                     output.shape[2],
                     output.shape[3],
-                )
-                [:, :, : self.rms_reference_modes]
+                )[:, :, : self.rms_reference_modes]
                 .square()
                 .sum(dim=(1, 2), keepdim=False)
                 .unsqueeze(1)
@@ -358,5 +356,137 @@ class FactorizedComplexConv2dReader(nn.Module):
             output[:, self.output_modes :].movedim(1, -1).contiguous(),
         )
 
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        self._validate_input(real, imag)
+        if self.input_norm is not None:
+            real, imag = self.input_norm(real, imag)
+        kernel_real, kernel_imag = self.unit_energy_kernel()
+        kernel_top = torch.cat((kernel_real, -kernel_imag), dim=1)
+        kernel_bottom = torch.cat((kernel_imag, kernel_real), dim=1)
+        packed_kernel = torch.cat((kernel_top, kernel_bottom), dim=0)
+        return self._apply_packed_kernel(real, imag, packed_kernel)
 
-__all__ = ["FactorizedComplexConv2dReader"]
+
+class GatedWidelyLinearFactorizedComplexConv2dReader(nn.Module):
+    """Add a zero-gated factorized conjugate branch to a strict reader.
+
+    The effective map is ``Wz + tanh(beta) V*conj(z)``.  ``W`` remains the
+    nested strict reader, while ``V`` has the same low-rank spatial
+    factorization.  Copy-initializing the conjugate factors makes the gate
+    trainable on the first step; the exactly-zero gate nevertheless preserves
+    the source function bit-for-bit at construction.
+    """
+
+    def __init__(self, strict_reader: FactorizedComplexConv2dReader) -> None:
+        super().__init__()
+        if type(strict_reader) is not FactorizedComplexConv2dReader:
+            message = "gated widely-linear reader requires a factorized strict reader"
+            raise TypeError(message)
+        self.strict_reader = strict_reader
+        self.conjugate_point_weight_real = nn.Parameter(
+            torch.empty_like(strict_reader.point_weight_real)
+        )
+        self.conjugate_point_weight_imag = nn.Parameter(
+            torch.empty_like(strict_reader.point_weight_imag)
+        )
+        self.conjugate_spatial_weight_real = nn.Parameter(
+            torch.empty_like(strict_reader.spatial_weight_real)
+        )
+        self.conjugate_spatial_weight_imag = nn.Parameter(
+            torch.empty_like(strict_reader.spatial_weight_imag)
+        )
+        self.conjugate_gate = nn.Parameter(torch.zeros(strict_reader.output_modes))
+        with torch.no_grad():
+            self.conjugate_point_weight_real.copy_(strict_reader.point_weight_real)
+            self.conjugate_point_weight_imag.copy_(strict_reader.point_weight_imag)
+            self.conjugate_spatial_weight_real.copy_(strict_reader.spatial_weight_real)
+            self.conjugate_spatial_weight_imag.copy_(strict_reader.spatial_weight_imag)
+
+    @classmethod
+    def from_strict(
+        cls,
+        source: FactorizedComplexConv2dReader,
+    ) -> GatedWidelyLinearFactorizedComplexConv2dReader:
+        """Wrap ``source`` without changing or copying its strict parameters."""
+        return cls(source)
+
+    @property
+    def input_modes(self) -> int:
+        return self.strict_reader.input_modes
+
+    @property
+    def output_modes(self) -> int:
+        return self.strict_reader.output_modes
+
+    @property
+    def rank(self) -> int:
+        return self.strict_reader.rank
+
+    @property
+    def kernel_size(self) -> int:
+        return self.strict_reader.kernel_size
+
+    def synthesized_conjugate_kernel(self) -> ComplexField:
+        """Synthesize the ungated conjugate kernel represented by ``V``."""
+        point_real = self.conjugate_point_weight_real.float()
+        point_imag = self.conjugate_point_weight_imag.float()
+        spatial_real = self.conjugate_spatial_weight_real.float()
+        spatial_imag = self.conjugate_spatial_weight_imag.float()
+        full_real = torch.einsum("prij,prk->pkij", spatial_real, point_real)
+        full_real = full_real - torch.einsum("prij,prk->pkij", spatial_imag, point_imag)
+        full_imag = torch.einsum("prij,prk->pkij", spatial_real, point_imag)
+        full_imag = full_imag + torch.einsum("prij,prk->pkij", spatial_imag, point_real)
+        return full_real, full_imag
+
+    def joint_unit_energy_kernels(self) -> tuple[ComplexField, ComplexField]:
+        """Return ``W`` and gated ``V`` with joint unit output-row energy."""
+        weight_real, weight_imag = self.strict_reader.synthesized_kernel()
+        conjugate_real, conjugate_imag = self.synthesized_conjugate_kernel()
+        gate = torch.tanh(self.conjugate_gate.float()).view(-1, 1, 1, 1)
+        conjugate_real = conjugate_real * gate
+        conjugate_imag = conjugate_imag * gate
+        inverse_rms = torch.rsqrt(
+            weight_real.square()
+            .add(weight_imag.square())
+            .add(conjugate_real.square())
+            .add(conjugate_imag.square())
+            .sum(dim=(1, 2, 3), keepdim=True)
+            .clamp_min(self.strict_reader.variance_epsilon)
+        )
+        return (
+            (weight_real * inverse_rms, weight_imag * inverse_rms),
+            (conjugate_real * inverse_rms, conjugate_imag * inverse_rms),
+        )
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        strict = self.strict_reader
+        strict._validate_input(real, imag)  # noqa: SLF001 - same-module composition
+        if strict.input_norm is not None:
+            real, imag = strict.input_norm(real, imag)
+        (weight_real, weight_imag), (conjugate_real, conjugate_imag) = (
+            self.joint_unit_energy_kernels()
+        )
+        # Match packed_widely_linear_weight and GatedWidelyLinearConv2d:
+        # [[Wr + Vr, Vi - Wi], [Wi + Vi, Wr - Vr]].
+        top_left = weight_real + conjugate_real
+        top_right = conjugate_imag - weight_imag
+        bottom_left = weight_imag + conjugate_imag
+        bottom_right = weight_real - conjugate_real
+        packed_kernel = torch.cat(
+            (
+                torch.cat((top_left, top_right), dim=1),
+                torch.cat((bottom_left, bottom_right), dim=1),
+            ),
+            dim=0,
+        )
+        return strict._apply_packed_kernel(  # noqa: SLF001 - same-module composition
+            real,
+            imag,
+            packed_kernel,
+        )
+
+
+__all__ = [
+    "FactorizedComplexConv2dReader",
+    "GatedWidelyLinearFactorizedComplexConv2dReader",
+]

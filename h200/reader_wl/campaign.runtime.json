@@ -1,0 +1,76 @@
+{
+  "campaign_id": "h200-imagenet100-reader-wl-s501-v1",
+  "campaign_manifest_sha256": "0b59a35888f8d2f4affd4bae6c315973e2c8e1d112878a84a3c4e48c45a337f5",
+  "canary": {
+    "display_name": "H200-I100-Reader-WL-relay-canary-v1",
+    "id": "8d3c78a5a6b9a525",
+    "tags": [
+      "H200",
+      "ImageNet-100",
+      "Reader-study",
+      "strict-vs-WL",
+      "relay-canary"
+    ]
+  },
+  "console": "off",
+  "dataset": {
+    "classes": 100,
+    "first_synset": "n01440764",
+    "last_synset": "n02077923",
+    "selection": "lexicographically first 100 synset directories",
+    "source": "ImageNet-1K ILSVRC2012 train/val",
+    "train_images": 130000,
+    "validation_images": 5000
+  },
+  "entity": "daehwa",
+  "group": "h200-imagenet100-reader-wl-s501-v1",
+  "output_namespace": "lnet-h200-imagenet100-reader-wl-v1",
+  "program": "h200/run_imagenet100_reader_wl.sh",
+  "project": "alphabet2d-imagenet100-h200",
+  "relay_protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v3",
+  "runs": {
+    "StrictReader-K96-128-128-128-P128-192-192-128-D2262": {
+      "501": {
+        "display_name": "H200-I100-S501-01-StrictReader-K96-128-128-128-P128-192-192-128-D2262",
+        "id": "94b93f2be45b84e7",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "Reader-study",
+          "strict-vs-WL",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "WLReader-K96-128-128-128-P128-192-192-128-D2262": {
+      "501": {
+        "display_name": "H200-I100-S501-02-WLReader-K96-128-128-128-P128-192-192-128-D2262",
+        "id": "f7c55ca5b25880b7",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "Reader-study",
+          "strict-vs-WL",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    }
+  },
+  "schema": "lnet.h200.imagenet100.reader_wl.runtime.v1",
+  "training": {
+    "batch_size": 128,
+    "epochs": 100,
+    "execution": "one_model_to_epoch_100_then_next",
+    "precision": "bfloat16",
+    "seed": 501,
+    "variants": [
+      "StrictReader-K96-128-128-128-P128-192-192-128-D2262",
+      "WLReader-K96-128-128-128-P128-192-192-128-D2262"
+    ]
+  },
+  "wandb_app_url": "https://wandb.ai",
+  "wandb_base_url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+  "wandb_sdk_version": "0.22.3"
+}
