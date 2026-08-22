@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-k64-p-allocation-d2262-s501-v1",
-  "target_commit": "0000000000000000000000000000000000000000",
-  "generation": 1,
-  "action": "stop",
-  "updated_at": "2026-08-22T00:00:00+09:00",
-  "reason": "safe default before the first reviewed deployment"
+  "target_commit": "b2b005febaf52f38f20e940c2d026055abe43b23",
+  "generation": 2,
+  "action": "run",
+  "updated_at": "2026-08-22T18:37:14+09:00",
+  "reason": "owner start for the reviewed K64 P-allocation D2262 queue"
 }
