@@ -2,8 +2,8 @@
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-d2262-p-schedule-s501-v2",
   "target_commit": "5cf3614ea54470bf121cc161f9091a7a72372be0",
-  "generation": 2,
-  "action": "run",
-  "updated_at": "2026-08-22T00:23:05+09:00",
-  "reason": "owner start for the fresh worker-12 D2262 P-schedule v2 campaign"
+  "generation": 3,
+  "action": "stop",
+  "updated_at": "2026-08-22T09:06:16+09:00",
+  "reason": "owner stop to replace width scheduling with a strict-versus-WL reader study"
 }
