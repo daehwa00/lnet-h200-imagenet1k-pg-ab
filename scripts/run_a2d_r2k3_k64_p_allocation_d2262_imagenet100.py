@@ -22,19 +22,19 @@ if TYPE_CHECKING:
     from lnet.complex_scan import ComplexScanBackbone, ComplexScanConfig
 
 
-MAIN = "K64-P96-160-160-96-D2262"
-P1_128 = "K64-P128-160-160-96-D2262"
-P2_128 = "K64-P96-128-160-96-D2262"
-P3_128 = "K64-P96-160-128-96-D2262"
-P4_128 = "K64-P96-160-160-128-D2262"
-P3_192 = "K64-P96-160-192-96-D2262"
-QLAB_VARIANTS = (MAIN, P1_128, P2_128, P3_128)
-H200_VARIANTS = (P4_128, P3_192)
+MAIN = "K64-P96-128-128-96-D2262"
+P1_64 = "K64-P64-128-128-96-D2262"
+P1_128 = "K64-P128-128-128-96-D2262"
+P2_96 = "K64-P96-96-128-96-D2262"
+P3_96 = "K64-P96-128-96-96-D2262"
+P4_64 = "K64-P96-128-128-64-D2262"
+QLAB_VARIANTS = (MAIN, P1_64, P1_128, P2_96)
+H200_VARIANTS = (P3_96, P4_64)
 VARIANTS = (*QLAB_VARIANTS, *H200_VARIANTS)
 VARIANT = MAIN
 JOBS_BY_GPU = {
-    0: (MAIN, P2_128),
-    1: (P1_128, P3_128),
+    0: (MAIN, P1_128),
+    1: (P1_64, P2_96),
 }
 SEEDS = runtime.DEFAULT_SEEDS
 RESOLUTIONS = capacity.RESOLUTIONS
@@ -43,12 +43,12 @@ SameResolutionFactorialBackbone = capacity.SameResolutionFactorialBackbone
 POST_HIDDEN_RATIO = capacity.POST_HIDDEN_RATIO
 EXTRA_BLOCKS = capacity.EXTRA_BLOCKS
 POLE_SCHEDULES = {
-    MAIN: (96, 160, 160, 96),
-    P1_128: (128, 160, 160, 96),
-    P2_128: (96, 128, 160, 96),
-    P3_128: (96, 160, 128, 96),
-    P4_128: (96, 160, 160, 128),
-    P3_192: (96, 160, 192, 96),
+    MAIN: (96, 128, 128, 96),
+    P1_64: (64, 128, 128, 96),
+    P1_128: (128, 128, 128, 96),
+    P2_96: (96, 96, 128, 96),
+    P3_96: (96, 128, 96, 96),
+    P4_64: (96, 128, 128, 64),
 }
 SPECS = {
     variant: allocation.StageAllocationSpec(
@@ -120,7 +120,7 @@ def _variant_config(variant: str) -> dict[str, Any]:
     )
     payload["experiment"] = {
         "family": "k64_pole_allocation",
-        "question": "where should P128-plus memory capacity be allocated when K64 is fixed",
+        "question": "which P in {64,96,128} is sufficient at each stage when K64 is fixed",
         "excitation_modes": [64, 64, 64, 64],
         "pole_modes": list(spec.pole_modes),
         "paired_initialization": (
@@ -164,6 +164,7 @@ def _contract(args: Namespace) -> dict[str, Any]:
             "accuracy_anchor": "K128-P160x4-D2262-FullSR14x4",
             "P_mid_allocation": "K128-P128-192-192-128-D2242",
             "terminal_P96": "K128-PF15K-SR56-28-14-7-WLPost-PathH4-TermP96",
+            "discarded_overcomplete_control": "K64-P96-160-160-96-D2262",
         },
     )
     payload["jobs_by_gpu"] = {str(gpu): list(variants) for gpu, variants in JOBS_BY_GPU.items()}

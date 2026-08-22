@@ -18,6 +18,7 @@ MANIFEST_PATH = ROOT / "h200/stage_allocation/campaign.json"
 SUPPLEMENTAL_MANIFEST_PATH = ROOT / "h200/d2262_p_schedule/campaign.json"
 READER_WL_MANIFEST_PATH = ROOT / "h200/reader_wl/campaign.json"
 K64_P_ALLOCATION_MANIFEST_PATH = ROOT / "h200/k64_p_allocation/campaign.json"
+K64_P_SMALL_FACTORIAL_MANIFEST_PATH = ROOT / "h200/k64_p_small_factorial/campaign.json"
 PROTOCOL_PATH = ROOT / "h200/campaign.json"
 RUNTIME_PATH = ROOT / "h200/stage_allocation/campaign.runtime.json"
 RELAY_CONSTANTS_PATH = ROOT / "cloudflare/stage-allocation-relay/src/campaign.generated.ts"
@@ -38,6 +39,10 @@ READER_WL_VARIANTS = (
 K64_P_ALLOCATION_VARIANTS = (
     "K64-P96-160-160-128-D2262",
     "K64-P96-160-192-96-D2262",
+)
+K64_P_SMALL_FACTORIAL_VARIANTS = (
+    "K64-P96-128-96-96-D2262",
+    "K64-P96-128-128-64-D2262",
 )
 
 
@@ -300,6 +305,77 @@ def _validate_k64_p_allocation(primary: dict[str, Any], manifest: dict[str, Any]
         raise ValueError("invalid supplemental K64 P-allocation relay contract")
 
 
+def _k64_p_small_factorial_records(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    campaign_id = manifest["campaign_id"]
+    records = [
+        {
+            "id": _run_id(campaign_id, f"{variant}:seed501"),
+            "display_name": f"H200-I100-S501-{index:02d}-{variant}",
+            "group": manifest["wandb"]["group"],
+            "project": manifest["wandb"]["project"],
+            "program": "h200/run_imagenet100_k64_p_small_factorial.sh",
+            "tags": [
+                "H200",
+                "ImageNet-100",
+                "K64",
+                "P-small-factorial",
+                "D2262",
+                "seed501",
+                "authenticated",
+            ],
+        }
+        for index, variant in enumerate(manifest["training"]["variants"], start=1)
+    ]
+    records.append(
+        {
+            "id": _run_id(campaign_id, "permanent-canary"),
+            "display_name": "H200-I100-K64-P-small-factorial-D2262-relay-canary-v1",
+            "group": manifest["wandb"]["group"],
+            "project": manifest["wandb"]["project"],
+            "program": "h200/run_imagenet100_k64_p_small_factorial.sh",
+            "tags": [
+                "H200",
+                "ImageNet-100",
+                "K64",
+                "P-small-factorial",
+                "D2262",
+                "relay-canary",
+            ],
+        }
+    )
+    return records
+
+
+def _validate_k64_p_small_factorial(
+    primary: dict[str, Any],
+    manifest: dict[str, Any],
+) -> None:
+    training = manifest.get("training", {})
+    wandb = manifest.get("wandb", {})
+    relay = manifest.get("relay", {})
+    if (
+        manifest.get("schema") != "lnet.h200.imagenet100.k64_p_small_factorial.v1"
+        or manifest.get("campaign_id")
+        != "h200-imagenet100-k64-p-small-factorial-d2262-s501-v1"
+        or manifest.get("output_namespace")
+        != "lnet-h200-imagenet100-k64-p-small-factorial-d2262-v1"
+        or tuple(training.get("variants", ())) != K64_P_SMALL_FACTORIAL_VARIANTS
+        or training.get("seed") != 501
+        or training.get("epochs") != 100
+        or training.get("batch_size") != 128
+        or training.get("precision") != "bfloat16"
+        or training.get("execution") != "one_model_to_epoch_100_then_next"
+        or wandb.get("entity") != primary["wandb"]["entity"]
+        or wandb.get("project") != "alphabet2d-imagenet100"
+        or wandb.get("group") != "R2K3-K64-PSmallFactorial-D2262-H200-S501"
+        or wandb.get("base_url") != primary["wandb"]["base_url"]
+        or relay.get("url") != primary["relay"]["url"]
+        or relay.get("worker_name") != primary["relay"]["worker_name"]
+        or relay.get("protocol_version") != primary["relay"]["protocol_version"]
+    ):
+        raise ValueError("invalid supplemental K64 P-small-factorial relay contract")
+
+
 def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -> None:
     if manifest.get("schema") != "lnet.h200.imagenet100.stage_allocation.v1":
         raise ValueError("invalid stage-allocation campaign schema")
@@ -349,9 +425,14 @@ def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -
         K64_P_ALLOCATION_MANIFEST_PATH.read_text(encoding="utf-8")
     )
     _validate_k64_p_allocation(manifest, k64_p_allocation)
+    k64_p_small_factorial = json.loads(
+        K64_P_SMALL_FACTORIAL_MANIFEST_PATH.read_text(encoding="utf-8")
+    )
+    _validate_k64_p_small_factorial(manifest, k64_p_small_factorial)
     all_records = [*records, *_supplemental_records(supplemental)]
     all_records.extend(_reader_wl_records(reader_wl))
     all_records.extend(_k64_p_allocation_records(k64_p_allocation))
+    all_records.extend(_k64_p_small_factorial_records(k64_p_small_factorial))
     if len({record["id"] for record in all_records}) != len(all_records):
         raise ValueError("combined relay run IDs are not unique")
 
@@ -390,6 +471,9 @@ def _relay(
         *_k64_p_allocation_records(
             json.loads(K64_P_ALLOCATION_MANIFEST_PATH.read_text(encoding="utf-8"))
         ),
+        *_k64_p_small_factorial_records(
+            json.loads(K64_P_SMALL_FACTORIAL_MANIFEST_PATH.read_text(encoding="utf-8"))
+        ),
     ]
     source = protocol["protocol"]
     authorization_digest = hashlib.sha256(
@@ -400,6 +484,8 @@ def _relay(
         + READER_WL_MANIFEST_PATH.read_bytes()
         + b"\0"
         + K64_P_ALLOCATION_MANIFEST_PATH.read_bytes()
+        + b"\0"
+        + K64_P_SMALL_FACTORIAL_MANIFEST_PATH.read_bytes()
         + b"\0"
         + json.dumps(protocol, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()

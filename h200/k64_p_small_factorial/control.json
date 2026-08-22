@@ -1,0 +1,9 @@
+{
+  "schema": "lnet.remote_run_control.v1",
+  "campaign_id": "h200-imagenet100-k64-p-small-factorial-d2262-s501-v1",
+  "target_commit": "0000000000000000000000000000000000000000",
+  "generation": 1,
+  "action": "stop",
+  "updated_at": "2026-08-22T00:00:00+09:00",
+  "reason": "safe default before the first reviewed deployment"
+}

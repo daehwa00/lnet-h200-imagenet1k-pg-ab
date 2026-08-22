@@ -10,22 +10,22 @@ from scripts import run_a2d_r2k3_k64_p_allocation_d2262_imagenet100 as runner
 
 def test_pole_allocation_campaign_partitions_qlab_and_h200() -> None:
     assert runner.JOBS_BY_GPU == {
-        0: (runner.MAIN, runner.P2_128),
-        1: (runner.P1_128, runner.P3_128),
+        0: (runner.MAIN, runner.P1_128),
+        1: (runner.P1_64, runner.P2_96),
     }
-    assert runner.H200_VARIANTS == (runner.P4_128, runner.P3_192)
+    assert runner.H200_VARIANTS == (runner.P3_96, runner.P4_64)
     assert set(runner.QLAB_VARIANTS).isdisjoint(runner.H200_VARIANTS)
     assert set(runner.VARIANTS) == set(runner.SPECS)
 
 
 def test_every_candidate_fixes_k64_d2262_and_only_changes_p() -> None:
     expected_parameters = {
-        runner.MAIN: 1_638_628,
-        runner.P1_128: 1_671_524,
-        runner.P2_128: 1_605_732,
-        runner.P3_128: 1_539_940,
-        runner.P4_128: 1_677_348,
-        runner.P3_192: 1_737_316,
+        runner.MAIN: 1_507_044,
+        runner.P1_64: 1_457_764,
+        runner.P1_128: 1_539_940,
+        runner.P2_96: 1_474_148,
+        runner.P3_96: 1_408_356,
+        runner.P4_64: 1_460_132,
     }
     for variant in runner.VARIANTS:
         torch.manual_seed(501)

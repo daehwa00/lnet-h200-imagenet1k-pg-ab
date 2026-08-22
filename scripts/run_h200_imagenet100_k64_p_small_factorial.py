@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one canonical K64 P-allocation model with H200 control and relay identities."""
+"""Run one canonical K64 P-small-factorial model with H200 control and relay identities."""
 
 from __future__ import annotations
 
@@ -29,26 +29,22 @@ _ACTIVE_VARIANT: str | None = None
 _BATCH_BOUNDARIES_SEEN = 0
 _ORIGINAL_BUILD = experiment._build
 _ORIGINAL_AFTER_BATCH = heads._after_training_batch
-RETIRED_VARIANTS = (
-    "K64-P96-160-160-128-D2262",
-    "K64-P96-160-192-96-D2262",
-)
 
 
 def _runtime() -> dict[str, Any]:
-    value = os.environ.get("H200_K64_P_ALLOCATION_WANDB_RUNTIME")
+    value = os.environ.get("H200_K64_P_SMALL_FACTORIAL_WANDB_RUNTIME")
     if not value:
-        raise RuntimeError("H200_K64_P_ALLOCATION_WANDB_RUNTIME is required")
+        raise RuntimeError("H200_K64_P_SMALL_FACTORIAL_WANDB_RUNTIME is required")
     payload = json.loads(Path(value).read_text(encoding="utf-8"))
-    if payload.get("schema") != "lnet.h200.imagenet100.k64_p_allocation.runtime.v1":
-        raise RuntimeError("invalid H200 K64 P-allocation W&B runtime")
+    if payload.get("schema") != "lnet.h200.imagenet100.k64_p_small_factorial.runtime.v1":
+        raise RuntimeError("invalid H200 K64 P-small-factorial W&B runtime")
     return cast("dict[str, Any]", payload)
 
 
 def _metadata(variant: str, seed: int) -> dict[str, Any]:
     payload = _runtime()
     if variant not in payload["training"]["variants"] or seed != payload["training"]["seed"]:
-        raise RuntimeError(f"unregistered H200 K64-P-allocation run: {variant}/seed{seed}")
+        raise RuntimeError(f"unregistered H200 K64-P-small-factorial run: {variant}/seed{seed}")
     record = payload["runs"][variant][str(seed)]
     expected = {
         "WANDB_API_KEY": "0" * 40,
@@ -60,7 +56,7 @@ def _metadata(variant: str, seed: int) -> dict[str, Any]:
         "WANDB_CONSOLE": payload["console"],
     }
     if any(os.environ.get(name) != value for name, value in expected.items()):
-        raise RuntimeError("H200 K64-P-allocation W&B environment changed")
+        raise RuntimeError("H200 K64-P-small-factorial W&B environment changed")
     return cast("dict[str, Any]", record)
 
 
@@ -116,10 +112,10 @@ def _initialize_required_wandb_run(
             },
         )
     except Exception as error:
-        print(f"H200_K64_P_ALLOCATION_WANDB_DEGRADED={type(error).__name__}", flush=True)
+        print(f"H200_K64_P_SMALL_FACTORIAL_WANDB_DEGRADED={type(error).__name__}", flush=True)
         return None
     if run is None or not run.url:
-        print("H200_K64_P_ALLOCATION_WANDB_DEGRADED=missing_run_url", flush=True)
+        print("H200_K64_P_SMALL_FACTORIAL_WANDB_DEGRADED=missing_run_url", flush=True)
         return None
     print(f"WANDB_RUN_URL={run.url}", flush=True)
     return run
@@ -182,7 +178,7 @@ def _write_heartbeat() -> None:
     _atomic_json(
         _argument_path("--root") / "control-heartbeat.json",
         {
-            "schema": "lnet.h200.imagenet100.k64_p_allocation.heartbeat.v1",
+            "schema": "lnet.h200.imagenet100.k64_p_small_factorial.heartbeat.v1",
             "campaign_id": _runtime()["campaign_id"],
             "target_commit": os.environ["H200_EXPECTED_COMMIT"],
             "variant": _ACTIVE_VARIANT,
@@ -222,14 +218,14 @@ def _selected_variant() -> str:
     try:
         start = sys.argv.index("--variants") + 1
     except ValueError as error:
-        raise RuntimeError("H200 K64-P-allocation worker requires --variants") from error
+        raise RuntimeError("H200 K64-P-small-factorial worker requires --variants") from error
     values: list[str] = []
     for value in sys.argv[start:]:
         if value.startswith("--"):
             break
         values.append(value)
-    if len(values) != 1 or values[0] not in RETIRED_VARIANTS:
-        raise RuntimeError("H200 worker requires exactly one registered K64 P-allocation variant")
+    if len(values) != 1 or values[0] not in experiment.H200_VARIANTS:
+        raise RuntimeError("H200 worker requires exactly one registered K64 P-small-factorial variant")
     return values[0]
 
 
@@ -276,7 +272,7 @@ def main() -> None:
         marker = _write_stop_marker(remote_run_control.StopRequestedError(initial_stop))
         print(f"H200_KILL_SWITCH_STOPPED={marker}", flush=True)
         return
-    print(f"H200_K64_P_ALLOCATION_MODEL_START={selected}", flush=True)
+    print(f"H200_K64_P_SMALL_FACTORIAL_MODEL_START={selected}", flush=True)
     try:
         experiment.main()
     except remote_run_control.StopRequestedError as error:

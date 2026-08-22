@@ -11,24 +11,24 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-import run_h200_imagenet100_k64_p_allocation as h200_runner
-import run_h200_k64_p_allocation_queue as queue
+import run_a2d_r2k3_k64_p_allocation_d2262_imagenet100 as experiment
+import run_h200_imagenet100_k64_p_small_factorial as h200_runner
+import run_h200_k64_p_small_factorial_queue as queue
 
 if TYPE_CHECKING:
     from types import ModuleType
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNTIME_PATH = ROOT / "h200/k64_p_allocation/campaign.runtime.json"
-RETIRED_VARIANTS = (
-    "K64-P96-160-160-128-D2262",
-    "K64-P96-160-192-96-D2262",
-)
+RUNTIME_PATH = ROOT / "h200/k64_p_small_factorial/campaign.runtime.json"
 
 
 def _relay_generator() -> ModuleType:
     path = ROOT / "h200/stage_allocation/generate_contract.py"
-    spec = importlib.util.spec_from_file_location("stage_relay_generator_k64_p_allocation", path)
+    spec = importlib.util.spec_from_file_location(
+        "stage_relay_generator_k64_p_small_factorial",
+        path,
+    )
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -36,28 +36,28 @@ def _relay_generator() -> ModuleType:
     return module
 
 
-def test_generated_campaign_freezes_two_k64_p_allocation_runs() -> None:
+def test_generated_campaign_freezes_two_k64_p_small_factorial_runs() -> None:
     subprocess.run(
-        ["python", "h200/k64_p_allocation/generate_contract.py", "--check"],
+        ["python", "h200/k64_p_small_factorial/generate_contract.py", "--check"],
         cwd=ROOT,
         check=True,
     )
     runtime = json.loads(RUNTIME_PATH.read_text())
-    assert runtime["schema"] == "lnet.h200.imagenet100.k64_p_allocation.runtime.v1"
-    assert runtime["campaign_id"] == "h200-imagenet100-k64-p-allocation-d2262-s501-v1"
-    assert runtime["output_namespace"] == "lnet-h200-imagenet100-k64-p-allocation-d2262-v1"
+    assert runtime["schema"] == "lnet.h200.imagenet100.k64_p_small_factorial.runtime.v1"
+    assert runtime["campaign_id"] == "h200-imagenet100-k64-p-small-factorial-d2262-s501-v1"
+    assert runtime["output_namespace"] == "lnet-h200-imagenet100-k64-p-small-factorial-d2262-v1"
     assert runtime["training"] == {
         "batch_size": 128,
         "epochs": 100,
         "execution": "one_model_to_epoch_100_then_next",
         "precision": "bfloat16",
         "seed": 501,
-        "variants": list(RETIRED_VARIANTS),
+        "variants": list(experiment.H200_VARIANTS),
     }
     assert runtime["project"] == "alphabet2d-imagenet100"
-    assert runtime["group"] == "R2K3-K64-PAllocation-D2262-H200-S501"
-    assert runtime["program"] == "h200/run_imagenet100_k64_p_allocation.sh"
-    records = [runtime["runs"][variant]["501"] for variant in RETIRED_VARIANTS]
+    assert runtime["group"] == "R2K3-K64-PSmallFactorial-D2262-H200-S501"
+    assert runtime["program"] == "h200/run_imagenet100_k64_p_small_factorial.sh"
+    records = [runtime["runs"][variant]["501"] for variant in experiment.H200_VARIANTS]
     assert len({record["id"] for record in records}) == 2
     assert runtime["canary"]["id"] not in {record["id"] for record in records}
     generated = (ROOT / "cloudflare/stage-allocation-relay/src/campaign.generated.ts").read_text()
@@ -67,27 +67,27 @@ def test_generated_campaign_freezes_two_k64_p_allocation_runs() -> None:
 
 
 def test_h200_shell_runs_restart_safe_persistent_sequential_queue() -> None:
-    script_path = ROOT / "h200/run_imagenet100_k64_p_allocation.sh"
+    script_path = ROOT / "h200/run_imagenet100_k64_p_small_factorial.sh"
     script = script_path.read_text()
     subprocess.run(["bash", "-n", str(script_path)], cwd=ROOT, check=True)
     assert "H200_EXPECTED_COMMIT" in script
-    assert "h200/k64_p_allocation/generate_contract.py --check" in script
-    assert "lnet.h200.imagenet100.k64_p_allocation.runtime.v1" in script
-    assert "canary_k64_p_allocation.py" in script
-    assert "scripts/run_h200_k64_p_allocation_queue.py" in script
-    assert "scripts/smoke_h200_k64_p_allocation.py" in script
+    assert "h200/k64_p_small_factorial/generate_contract.py --check" in script
+    assert "lnet.h200.imagenet100.k64_p_small_factorial.runtime.v1" in script
+    assert "canary_k64_p_small_factorial.py" in script
+    assert "scripts/run_h200_k64_p_small_factorial_queue.py" in script
+    assert "scripts/smoke_h200_k64_p_small_factorial.py" in script
     assert "--batch-size 128" in script
     assert "WORKERS=8" in script
     assert "LNET_PERSISTENT_WORKERS=1" in script
     assert "--managed-canonical-receipt h200/imagenet1k_canonical_receipt.json" in script
-    assert "H200_K64_P_ALLOCATION_RESULTS_COMPLETE" in script
+    assert "H200_K64_P_SMALL_FACTORIAL_RESULTS_COMPLETE" in script
     assert script.index('CPU_COUNT="$(nproc)"') < script.index("export OMP_NUM_THREADS=1")
 
 
 def test_h200_wrapper_accepts_exactly_one_registered_variant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    first, second = RETIRED_VARIANTS
+    first, second = experiment.H200_VARIANTS
     monkeypatch.setattr(sys, "argv", ["runner", "--variants", first])
     assert h200_runner._selected_variant() == first
     monkeypatch.setattr(
@@ -103,10 +103,10 @@ def test_queue_continues_to_second_variant_after_first_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    first, second = RETIRED_VARIANTS
+    first, second = experiment.H200_VARIANTS
     runtime = {
-        "schema": "lnet.h200.imagenet100.k64_p_allocation.runtime.v1",
-        "campaign_id": "h200-imagenet100-k64-p-allocation-d2262-s501-v1",
+        "schema": "lnet.h200.imagenet100.k64_p_small_factorial.runtime.v1",
+        "campaign_id": "h200-imagenet100-k64-p-small-factorial-d2262-s501-v1",
         "training": {
             "batch_size": 128,
             "epochs": 100,
@@ -115,7 +115,6 @@ def test_queue_continues_to_second_variant_after_first_failure(
             "variants": [first, second],
         },
     }
-    monkeypatch.setattr(queue, "VARIANTS", RETIRED_VARIANTS)
     monkeypatch.setattr(queue, "_runtime", lambda: runtime)
     completions = iter((False, False, False, True))
     monkeypatch.setattr(queue, "_complete_result", lambda *_args: next(completions))
@@ -144,7 +143,7 @@ def test_queue_continues_to_second_variant_after_first_failure(
     )
     assert queue.main() == 1
     assert len(calls) == 2
-    status = json.loads((tmp_path / "run/k64-p-allocation-queue.json").read_text())
+    status = json.loads((tmp_path / "run/k64-p-small-factorial-queue.json").read_text())
     assert status["status"] == "COMPLETE_WITH_FAILURES"
     assert status["jobs"][first]["status"] == "FAILED"
     assert status["jobs"][second]["status"] == "COMPLETED"
@@ -153,7 +152,7 @@ def test_queue_continues_to_second_variant_after_first_failure(
 @pytest.mark.parametrize(
     ("section", "key", "value"),
     [
-        ("training", "variants", list(reversed(RETIRED_VARIANTS))),
+        ("training", "variants", list(reversed(experiment.H200_VARIANTS))),
         ("training", "precision", "float32"),
         ("training", "execution", "parallel"),
         ("wandb", "group", "h200-imagenet100-stage-allocation-s501-v3"),
@@ -166,9 +165,9 @@ def test_shared_relay_fails_closed_on_k64_campaign_changes(
 ) -> None:
     generator = _relay_generator()
     primary = json.loads((ROOT / "h200/stage_allocation/campaign.json").read_text())
-    campaign = json.loads((ROOT / "h200/k64_p_allocation/campaign.json").read_text())
-    generator._validate_k64_p_allocation(primary, campaign)
+    campaign = json.loads((ROOT / "h200/k64_p_small_factorial/campaign.json").read_text())
+    generator._validate_k64_p_small_factorial(primary, campaign)
     mutated = copy.deepcopy(campaign)
     mutated[section][key] = value
-    with pytest.raises(ValueError, match="K64 P-allocation"):
-        generator._validate_k64_p_allocation(primary, mutated)
+    with pytest.raises(ValueError, match="K64 P-small-factorial"):
+        generator._validate_k64_p_small_factorial(primary, mutated)
