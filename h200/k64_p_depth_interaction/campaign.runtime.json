@@ -1,0 +1,79 @@
+{
+  "campaign_id": "h200-imagenet100-k64-p-depth-interaction-s501-v1",
+  "campaign_manifest_sha256": "e198244ecb4e932e4a917b1fc412eced2d9d1560134a95ee57175d1c2204a228",
+  "canary": {
+    "display_name": "H200-I100-K64-P-depth-interaction-relay-canary-v1",
+    "id": "d15b9b3bd68d6c9c",
+    "tags": [
+      "H200",
+      "ImageNet-100",
+      "K64",
+      "P-depth-interaction",
+      "DepthInteraction",
+      "relay-canary"
+    ]
+  },
+  "console": "off",
+  "dataset": {
+    "classes": 100,
+    "first_synset": "n01440764",
+    "last_synset": "n02077923",
+    "selection": "lexicographically first 100 synset directories",
+    "source": "ImageNet-1K ILSVRC2012 train/val",
+    "train_images": 130000,
+    "validation_images": 5000
+  },
+  "entity": "daehwa",
+  "group": "R2K3-K64-PDepthInteraction-H200-S501",
+  "output_namespace": "lnet-h200-imagenet100-k64-p-depth-interaction-v1",
+  "program": "h200/run_imagenet100_k64_p_depth_interaction.sh",
+  "project": "alphabet2d-imagenet100",
+  "relay_protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v3",
+  "runs": {
+    "K64-P96-128-128-96-D2283": {
+      "501": {
+        "display_name": "H200-I100-S501-02-K64-P96-128-128-96-D2283",
+        "id": "6bdea5b0c2a0ee6a",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K64",
+          "P-depth-interaction",
+          "DepthInteraction",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "K64-P96-128-96-96-D2263": {
+      "501": {
+        "display_name": "H200-I100-S501-01-K64-P96-128-96-96-D2263",
+        "id": "ae6ce4374b8ea076",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K64",
+          "P-depth-interaction",
+          "DepthInteraction",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    }
+  },
+  "schema": "lnet.h200.imagenet100.k64_p_depth_interaction.runtime.v1",
+  "training": {
+    "batch_size": 128,
+    "epochs": 100,
+    "execution": "one_model_to_epoch_100_then_next",
+    "precision": "bfloat16",
+    "seed": 501,
+    "variants": [
+      "K64-P96-128-96-96-D2263",
+      "K64-P96-128-128-96-D2283"
+    ]
+  },
+  "wandb_app_url": "https://wandb.ai",
+  "wandb_base_url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+  "wandb_sdk_version": "0.22.3"
+}
