@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-k64-p-depth-interaction-s501-v2",
-  "target_commit": "0000000000000000000000000000000000000000",
+  "target_commit": "d3abadcf03bd1e435b3d1cda65e244a009ec8ce5",
   "generation": 1,
-  "action": "stop",
-  "updated_at": "2026-08-22T00:00:00+09:00",
-  "reason": "safe default before the first reviewed deployment"
+  "action": "run",
+  "updated_at": "2026-08-23T12:19:16+09:00",
+  "reason": "arm the fresh v2 H200 depth-interaction campaign from epoch one"
 }
