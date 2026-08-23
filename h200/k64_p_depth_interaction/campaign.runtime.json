@@ -1,18 +1,6 @@
 {
   "campaign_id": "h200-imagenet100-k64-p-depth-interaction-s501-v1",
   "campaign_manifest_sha256": "e198244ecb4e932e4a917b1fc412eced2d9d1560134a95ee57175d1c2204a228",
-  "canary": {
-    "display_name": "H200-I100-K64-P-depth-interaction-relay-canary-v1",
-    "id": "d15b9b3bd68d6c9c",
-    "tags": [
-      "H200",
-      "ImageNet-100",
-      "K64",
-      "P-depth-interaction",
-      "DepthInteraction",
-      "relay-canary"
-    ]
-  },
   "console": "off",
   "dataset": {
     "classes": 100,

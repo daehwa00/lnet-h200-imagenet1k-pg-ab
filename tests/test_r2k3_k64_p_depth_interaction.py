@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 # pyright: reportAttributeAccessIssue=false, reportPrivateUsage=false
+import json
+from pathlib import Path
+
 import torch
 
 from lnet.pac_gated_post_fusion import GatedPoleExcitationS2DTransition
 from scripts import a2d_r2k3_runtime as runtime
 from scripts import run_a2d_r2k3_k64_p_depth_interaction_imagenet100 as runner
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_interaction_grid_contains_four_nonseed_variants() -> None:
@@ -20,6 +25,17 @@ def test_interaction_grid_contains_four_nonseed_variants() -> None:
     assert runner.SPECS[runner.P3_D2282].depth == (2, 2, 8, 2)
     assert runner.SPECS[runner.P3_D2283].depth == (2, 2, 8, 3)
     assert runner.SPECS[runner.P3_D2263].depth == (2, 2, 6, 3)
+
+
+def test_h200_runtime_contains_only_real_training_runs() -> None:
+    payload = json.loads(
+        (ROOT / "h200/k64_p_depth_interaction/campaign.runtime.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert "canary" not in payload
+    assert tuple(payload["training"]["variants"]) == runner.H200_VARIANTS
+    assert set(payload["runs"]) == set(runner.H200_VARIANTS)
 
 
 def test_interaction_models_preserve_k64_identity_carries() -> None:

@@ -5,7 +5,7 @@ export const CAMPAIGN = {
     "running",
     "finished"
   ],
-  "authorizationManifestSha256": "2531186380c536a5cf2e77f6555945862fc6f053b6f3ea96b2e953c5e62c7f84",
+  "authorizationManifestSha256": "a404da29077b1e1f0341fbba31458b2f37d0493efb801261688ea4f41d3ce25b",
   "campaignId": "h200-imagenet100-stage-allocation-s501-v3",
   "entity": "daehwa",
   "graphqlEnvelopeKeys": {
@@ -218,6 +218,21 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "6bdea5b0c2a0ee6a": {
+      "displayName": "H200-I100-S501-02-K64-P96-128-128-96-D2283",
+      "group": "R2K3-K64-PDepthInteraction-H200-S501",
+      "program": "h200/run_imagenet100_k64_p_depth_interaction.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K64",
+        "P-depth-interaction",
+        "DepthInteraction",
+        "seed501",
+        "authenticated"
+      ]
+    },
     "793acdf9c5264018": {
       "displayName": "H200-I100-S501-03-C-K128-P160-192-160-128-D2262",
       "group": "h200-imagenet100-d2262-p-schedule-s501-v2",
@@ -368,6 +383,21 @@ export const CAMPAIGN = {
         "D2262",
         "P-schedule",
         "relay-canary"
+      ]
+    },
+    "ae6ce4374b8ea076": {
+      "displayName": "H200-I100-S501-01-K64-P96-128-96-96-D2263",
+      "group": "R2K3-K64-PDepthInteraction-H200-S501",
+      "program": "h200/run_imagenet100_k64_p_depth_interaction.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K64",
+        "P-depth-interaction",
+        "DepthInteraction",
+        "seed501",
+        "authenticated"
       ]
     },
     "c0a2a6340bac8bf8": {

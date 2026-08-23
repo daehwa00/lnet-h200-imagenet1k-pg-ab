@@ -66,21 +66,6 @@ def _records(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return records
 
 
-def _canary(manifest: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": _run_id(manifest["campaign_id"], "permanent-canary"),
-        "display_name": "H200-I100-K64-P-depth-interaction-relay-canary-v1",
-        "tags": [
-            "H200",
-            "ImageNet-100",
-            "K64",
-            "P-depth-interaction",
-            "DepthInteraction",
-            "relay-canary",
-        ],
-    }
-
-
 def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -> None:
     if manifest.get("schema") != "lnet.h200.imagenet100.k64_p_depth_interaction.v1":
         raise ValueError("invalid K64 P-depth-interaction campaign schema")
@@ -126,7 +111,7 @@ def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -
     operations = protocol["graphql_operations"]
     if len(operations) != 7 or any(not HEX_64.fullmatch(value) for value in operations.values()):
         raise ValueError("invalid traced GraphQL operations")
-    records = [*_records(manifest).values(), _canary(manifest)]
+    records = list(_records(manifest).values())
     if len({record["id"] for record in records}) != len(records):
         raise ValueError("derived W&B run IDs are not unique")
     if len({record["display_name"] for record in records}) != len(records):
@@ -150,7 +135,6 @@ def _runtime(manifest: dict[str, Any], digest: str) -> dict[str, Any]:
         "program": "h200/run_imagenet100_k64_p_depth_interaction.sh",
         "console": manifest["wandb"]["console"],
         "relay_protocol_version": manifest["relay"]["protocol_version"],
-        "canary": _canary(manifest),
         "runs": {variant: {"501": record} for variant, record in _records(manifest).items()},
     }
 

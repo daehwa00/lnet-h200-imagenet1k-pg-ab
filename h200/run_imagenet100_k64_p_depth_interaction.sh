@@ -11,7 +11,7 @@ readonly UV_VERSION="0.9.26"
 readonly DUMMY_WANDB_API_KEY="0000000000000000000000000000000000000000"
 readonly IMAGENET100_CANONICAL_MANIFEST_SHA256="6871da811224d961422ae8fe68339c81180e40d06983ce950189f5470add5db9"
 readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab.git"
-readonly CONTROL_REF="refs/heads/control/imagenet100-k64-p-depth-interaction"
+readonly CONTROL_REF="refs/heads/control/imagenet100-k64-p-depth-interaction-v2"
 readonly CONTROL_PATH="h200/k64_p_depth_interaction/control.json"
 
 cd "${PROJECT_ROOT}"
@@ -335,10 +335,7 @@ payload = {
 print("H200_ENV=" + json.dumps(payload, sort_keys=True), flush=True)
 PY
 
-# Model smoke was completed before submission; avoid repeating it on allocated H200 time.
-timeout --signal=TERM --kill-after=30s 3m \
-  "${ENV_ROOT}/bin/python" cloudflare/stage-allocation-relay/canary_k64_p_depth_interaction.py
-
+# Model and relay smoke were completed before submission; use allocated H200 time for training.
 "${ENV_ROOT}/bin/python" h200/validate_imagenet1k.py \
   --root "${DATA_ROOT}" \
   --output "${DATASET_MANIFEST}" \
