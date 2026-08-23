@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-k64-p-depth-interaction-s501-v1",
-  "target_commit": "0000000000000000000000000000000000000000",
+  "target_commit": "be8ed73ac1c5417c3bcd2956980e70fd39dc81ac",
   "generation": 1,
-  "action": "stop",
-  "updated_at": "2026-08-22T00:00:00+09:00",
-  "reason": "safe default before the first reviewed deployment"
+  "action": "run",
+  "updated_at": "2026-08-23T11:27:11+09:00",
+  "reason": "arm the reviewed relay-authorized H200 depth-interaction execution"
 }
