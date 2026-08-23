@@ -1,0 +1,131 @@
+{
+  "campaign_id": "h200-imagenet100-k-family-xl-s501-v1",
+  "campaign_manifest_sha256": "b4ea71ae26a3d6f72c683289099918138ee15a14aa445654661f571b51b9e885",
+  "console": "off",
+  "dataset": {
+    "classes": 100,
+    "first_synset": "n01440764",
+    "last_synset": "n02077923",
+    "selection": "lexicographically first 100 synset directories",
+    "source": "ImageNet-1K ILSVRC2012 train/val",
+    "train_images": 130000,
+    "validation_images": 5000
+  },
+  "entity": "daehwa",
+  "group": "R2K3-KFamily-XL-H200-S501",
+  "output_namespace": "lnet-h200-imagenet100-k-family-xl-v1",
+  "parameter_counts": {
+    "XL-K96-Rich": 3200068,
+    "XL-K96-Shaped": 2996740,
+    "XL-K96-U1": 2313892,
+    "XL-K96-U125": 2791524
+  },
+  "pole_schedules": {
+    "XL-K96-Rich": [
+      144,
+      192,
+      192,
+      144
+    ],
+    "XL-K96-Shaped": [
+      144,
+      192,
+      144,
+      144
+    ],
+    "XL-K96-U1": [
+      96,
+      96,
+      96,
+      96
+    ],
+    "XL-K96-U125": [
+      128,
+      128,
+      128,
+      128
+    ]
+  },
+  "program": "h200/run_imagenet100_k_family_xl.sh",
+  "project": "alphabet2d-imagenet100",
+  "relay_protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v3",
+  "runs": {
+    "XL-K96-Rich": {
+      "501": {
+        "display_name": "H200-I100-S501-04-XL-K96-Rich",
+        "id": "14000aaadd786a84",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K96",
+          "XL-family",
+          "P-schedule",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "XL-K96-Shaped": {
+      "501": {
+        "display_name": "H200-I100-S501-03-XL-K96-Shaped",
+        "id": "b1328c66a789d2a1",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K96",
+          "XL-family",
+          "P-schedule",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "XL-K96-U1": {
+      "501": {
+        "display_name": "H200-I100-S501-01-XL-K96-U1",
+        "id": "baf09e91f1b0cf25",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K96",
+          "XL-family",
+          "P-schedule",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "XL-K96-U125": {
+      "501": {
+        "display_name": "H200-I100-S501-02-XL-K96-U125",
+        "id": "ea0a8a0e72d323c3",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K96",
+          "XL-family",
+          "P-schedule",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    }
+  },
+  "schema": "lnet.h200.imagenet100.k_family_xl.runtime.v1",
+  "training": {
+    "batch_size": 128,
+    "epochs": 100,
+    "execution": "one_model_to_epoch_100_then_next",
+    "precision": "bfloat16",
+    "seed": 501,
+    "variants": [
+      "XL-K96-U1",
+      "XL-K96-U125",
+      "XL-K96-Shaped",
+      "XL-K96-Rich"
+    ]
+  },
+  "wandb_app_url": "https://wandb.ai",
+  "wandb_base_url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+  "wandb_sdk_version": "0.22.3"
+}

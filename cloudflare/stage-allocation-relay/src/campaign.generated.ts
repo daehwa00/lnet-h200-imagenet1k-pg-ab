@@ -5,7 +5,7 @@ export const CAMPAIGN = {
     "running",
     "finished"
   ],
-  "authorizationManifestSha256": "848ef2161650e76150040a1f232bdacd01bb675a7d43eede902c70e51eee1064",
+  "authorizationManifestSha256": "203f1138963fef89441764fbe1fbfc6001b82aaa1a93b3214ef08edcfd26ed39",
   "campaignId": "h200-imagenet100-stage-allocation-s501-v3",
   "entity": "daehwa",
   "graphqlEnvelopeKeys": {
@@ -106,6 +106,21 @@ export const CAMPAIGN = {
         "K64",
         "P-allocation",
         "D2262",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "14000aaadd786a84": {
+      "displayName": "H200-I100-S501-04-XL-K96-Rich",
+      "group": "R2K3-KFamily-XL-H200-S501",
+      "program": "h200/run_imagenet100_k_family_xl.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K96",
+        "XL-family",
+        "P-schedule",
         "seed501",
         "authenticated"
       ]
@@ -430,6 +445,36 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "b1328c66a789d2a1": {
+      "displayName": "H200-I100-S501-03-XL-K96-Shaped",
+      "group": "R2K3-KFamily-XL-H200-S501",
+      "program": "h200/run_imagenet100_k_family_xl.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K96",
+        "XL-family",
+        "P-schedule",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "baf09e91f1b0cf25": {
+      "displayName": "H200-I100-S501-01-XL-K96-U1",
+      "group": "R2K3-KFamily-XL-H200-S501",
+      "program": "h200/run_imagenet100_k_family_xl.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K96",
+        "XL-family",
+        "P-schedule",
+        "seed501",
+        "authenticated"
+      ]
+    },
     "c0a2a6340bac8bf8": {
       "displayName": "H200-I100-stage-relay-permanent-canary-v3",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
@@ -504,6 +549,21 @@ export const CAMPAIGN = {
         "H200",
         "ImageNet-100",
         "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "ea0a8a0e72d323c3": {
+      "displayName": "H200-I100-S501-02-XL-K96-U125",
+      "group": "R2K3-KFamily-XL-H200-S501",
+      "program": "h200/run_imagenet100_k_family_xl.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K96",
+        "XL-family",
+        "P-schedule",
         "seed501",
         "authenticated"
       ]

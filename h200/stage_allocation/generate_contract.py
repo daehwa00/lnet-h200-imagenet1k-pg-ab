@@ -23,6 +23,7 @@ K64_P_DEPTH_INTERACTION_LEGACY_MANIFEST_PATH = (
     ROOT / "h200/k64_p_depth_interaction/campaign.v1.json"
 )
 K64_P_DEPTH_INTERACTION_MANIFEST_PATH = ROOT / "h200/k64_p_depth_interaction/campaign.json"
+K_FAMILY_XL_MANIFEST_PATH = ROOT / "h200/k_family_xl/campaign.json"
 PROTOCOL_PATH = ROOT / "h200/campaign.json"
 RUNTIME_PATH = ROOT / "h200/stage_allocation/campaign.runtime.json"
 RELAY_CONSTANTS_PATH = ROOT / "cloudflare/stage-allocation-relay/src/campaign.generated.ts"
@@ -51,6 +52,12 @@ K64_P_SMALL_FACTORIAL_VARIANTS = (
 K64_P_DEPTH_INTERACTION_VARIANTS = (
     "K64-P96-128-96-96-D2263",
     "K64-P96-128-128-96-D2283",
+)
+K_FAMILY_XL_VARIANTS = (
+    "XL-K96-U1",
+    "XL-K96-U125",
+    "XL-K96-Shaped",
+    "XL-K96-Rich",
 )
 
 
@@ -446,6 +453,54 @@ def _validate_k64_p_depth_interaction(
         raise ValueError("invalid supplemental K64 P-depth-interaction relay contract")
 
 
+def _k_family_xl_records(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    campaign_id = manifest["campaign_id"]
+    return [
+        {
+            "id": _run_id(campaign_id, f"{variant}:seed501"),
+            "display_name": f"H200-I100-S501-{index:02d}-{variant}",
+            "group": manifest["wandb"]["group"],
+            "project": manifest["wandb"]["project"],
+            "program": "h200/run_imagenet100_k_family_xl.sh",
+            "tags": [
+                "H200",
+                "ImageNet-100",
+                "K96",
+                "XL-family",
+                "P-schedule",
+                "seed501",
+                "authenticated",
+            ],
+        }
+        for index, variant in enumerate(manifest["training"]["variants"], start=1)
+    ]
+
+
+def _validate_k_family_xl(primary: dict[str, Any], manifest: dict[str, Any]) -> None:
+    training = manifest.get("training", {})
+    wandb = manifest.get("wandb", {})
+    relay = manifest.get("relay", {})
+    if (
+        manifest.get("schema") != "lnet.h200.imagenet100.k_family_xl.v1"
+        or manifest.get("campaign_id") != "h200-imagenet100-k-family-xl-s501-v1"
+        or manifest.get("output_namespace") != "lnet-h200-imagenet100-k-family-xl-v1"
+        or tuple(training.get("variants", ())) != K_FAMILY_XL_VARIANTS
+        or training.get("seed") != 501
+        or training.get("epochs") != 100
+        or training.get("batch_size") != 128
+        or training.get("precision") != "bfloat16"
+        or training.get("execution") != "one_model_to_epoch_100_then_next"
+        or wandb.get("entity") != primary["wandb"]["entity"]
+        or wandb.get("project") != "alphabet2d-imagenet100"
+        or wandb.get("group") != "R2K3-KFamily-XL-H200-S501"
+        or wandb.get("base_url") != primary["wandb"]["base_url"]
+        or relay.get("url") != primary["relay"]["url"]
+        or relay.get("worker_name") != primary["relay"]["worker_name"]
+        or relay.get("protocol_version") != primary["relay"]["protocol_version"]
+    ):
+        raise ValueError("invalid supplemental K96/XL family relay contract")
+
+
 def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -> None:
     if manifest.get("schema") != "lnet.h200.imagenet100.stage_allocation.v1":
         raise ValueError("invalid stage-allocation campaign schema")
@@ -511,12 +566,15 @@ def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -
         K64_P_DEPTH_INTERACTION_MANIFEST_PATH.read_text(encoding="utf-8")
     )
     _validate_k64_p_depth_interaction(manifest, k64_p_depth_interaction, legacy=False)
+    k_family_xl = json.loads(K_FAMILY_XL_MANIFEST_PATH.read_text(encoding="utf-8"))
+    _validate_k_family_xl(manifest, k_family_xl)
     all_records = [*records, *_supplemental_records(supplemental)]
     all_records.extend(_reader_wl_records(reader_wl))
     all_records.extend(_k64_p_allocation_records(k64_p_allocation))
     all_records.extend(_k64_p_small_factorial_records(k64_p_small_factorial))
     all_records.extend(_k64_p_depth_interaction_records(legacy_k64_p_depth_interaction))
     all_records.extend(_k64_p_depth_interaction_records(k64_p_depth_interaction))
+    all_records.extend(_k_family_xl_records(k_family_xl))
     if len({record["id"] for record in all_records}) != len(all_records):
         raise ValueError("combined relay run IDs are not unique")
 
@@ -566,6 +624,9 @@ def _relay(
         *_k64_p_depth_interaction_records(
             json.loads(K64_P_DEPTH_INTERACTION_MANIFEST_PATH.read_text(encoding="utf-8"))
         ),
+        *_k_family_xl_records(
+            json.loads(K_FAMILY_XL_MANIFEST_PATH.read_text(encoding="utf-8"))
+        ),
     ]
     source = protocol["protocol"]
     authorization_digest = hashlib.sha256(
@@ -582,6 +643,8 @@ def _relay(
         + K64_P_DEPTH_INTERACTION_LEGACY_MANIFEST_PATH.read_bytes()
         + b"\0"
         + K64_P_DEPTH_INTERACTION_MANIFEST_PATH.read_bytes()
+        + b"\0"
+        + K_FAMILY_XL_MANIFEST_PATH.read_bytes()
         + b"\0"
         + json.dumps(protocol, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()

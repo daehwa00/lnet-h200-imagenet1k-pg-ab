@@ -218,6 +218,45 @@ describe("H200 W&B relay", () => {
     }
   });
 
+  it("accepts all four frozen K96 XL-family training runs", async () => {
+    for (const runId of [
+      "baf09e91f1b0cf25",
+      "ea0a8a0e72d323c3",
+      "b1328c66a789d2a1",
+      "14000aaadd786a84",
+    ] as const) {
+      const run = CAMPAIGN.runsById[runId];
+      expect(run.group).toBe("R2K3-KFamily-XL-H200-S501");
+      const response = await worker.fetch(post("/graphql", {
+        operationName: "UpsertBucket",
+        query: UPSERT_QUERY,
+        variables: {
+          commit: null,
+          config: "{}",
+          debug: false,
+          description: null,
+          displayName: run.displayName,
+          entity: CAMPAIGN.entity,
+          groupName: run.group,
+          host: null,
+          id: null,
+          jobType: null,
+          name: runId,
+          notes: null,
+          program: null,
+          project: run.project,
+          repo: null,
+          state: "running",
+          summaryMetrics: null,
+          sweep: null,
+          tags: [...run.tags],
+        },
+      }), testEnv());
+      expect(response.status).toBe(200);
+      expect(lastForwardedPayload().variables.program).toBe(run.program);
+    }
+  });
+
   it("accepts the frozen K64 campaign in its canonical non-H200 project", async () => {
     const entry = Object.entries(CAMPAIGN.runsById)
       .find(([, run]) => run.project !== CAMPAIGN.project);
