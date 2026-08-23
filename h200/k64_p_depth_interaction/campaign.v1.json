@@ -1,7 +1,7 @@
 {
-  "schema": "lnet.h200.imagenet100.k64_p_depth_interaction.v2",
-  "campaign_id": "h200-imagenet100-k64-p-depth-interaction-s501-v2",
-  "output_namespace": "lnet-h200-imagenet100-k64-p-depth-interaction-v2",
+  "schema": "lnet.h200.imagenet100.k64_p_depth_interaction.v1",
+  "campaign_id": "h200-imagenet100-k64-p-depth-interaction-s501-v1",
+  "output_namespace": "lnet-h200-imagenet100-k64-p-depth-interaction-v1",
   "dataset": {
     "source": "ImageNet-1K ILSVRC2012 train/val",
     "selection": "lexicographically first 100 synset directories",
@@ -28,7 +28,7 @@
     "app_url": "https://wandb.ai",
     "entity": "daehwa",
     "project": "alphabet2d-imagenet100",
-    "group": "R2K3-K64-PDepthInteraction-H200-S501-v2",
+    "group": "R2K3-K64-PDepthInteraction-H200-S501",
     "console": "off"
   },
   "relay": {

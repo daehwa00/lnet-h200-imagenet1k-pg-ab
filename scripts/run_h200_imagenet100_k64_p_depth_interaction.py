@@ -36,7 +36,7 @@ def _runtime() -> dict[str, Any]:
     if not value:
         raise RuntimeError("H200_K64_P_DEPTH_INTERACTION_WANDB_RUNTIME is required")
     payload = json.loads(Path(value).read_text(encoding="utf-8"))
-    if payload.get("schema") != "lnet.h200.imagenet100.k64_p_depth_interaction.runtime.v1":
+    if payload.get("schema") != "lnet.h200.imagenet100.k64_p_depth_interaction.runtime.v2":
         raise RuntimeError("invalid H200 K64 P-depth-interaction W&B runtime")
     return cast("dict[str, Any]", payload)
 

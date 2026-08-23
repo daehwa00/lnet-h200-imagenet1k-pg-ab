@@ -1,6 +1,6 @@
 {
-  "campaign_id": "h200-imagenet100-k64-p-depth-interaction-s501-v1",
-  "campaign_manifest_sha256": "e198244ecb4e932e4a917b1fc412eced2d9d1560134a95ee57175d1c2204a228",
+  "campaign_id": "h200-imagenet100-k64-p-depth-interaction-s501-v2",
+  "campaign_manifest_sha256": "25bfabf83315e7d52a6e064f3e814099b6ee6887a7dc84f97ed137dc83fe9ff9",
   "console": "off",
   "dataset": {
     "classes": 100,
@@ -12,8 +12,8 @@
     "validation_images": 5000
   },
   "entity": "daehwa",
-  "group": "R2K3-K64-PDepthInteraction-H200-S501",
-  "output_namespace": "lnet-h200-imagenet100-k64-p-depth-interaction-v1",
+  "group": "R2K3-K64-PDepthInteraction-H200-S501-v2",
+  "output_namespace": "lnet-h200-imagenet100-k64-p-depth-interaction-v2",
   "program": "h200/run_imagenet100_k64_p_depth_interaction.sh",
   "project": "alphabet2d-imagenet100",
   "relay_protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v3",
@@ -21,7 +21,7 @@
     "K64-P96-128-128-96-D2283": {
       "501": {
         "display_name": "H200-I100-S501-02-K64-P96-128-128-96-D2283",
-        "id": "6bdea5b0c2a0ee6a",
+        "id": "84fa3d3ab8329e56",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -36,7 +36,7 @@
     "K64-P96-128-96-96-D2263": {
       "501": {
         "display_name": "H200-I100-S501-01-K64-P96-128-96-96-D2263",
-        "id": "ae6ce4374b8ea076",
+        "id": "33206c6e881c01c2",
         "tags": [
           "H200",
           "ImageNet-100",
@@ -49,7 +49,7 @@
       }
     }
   },
-  "schema": "lnet.h200.imagenet100.k64_p_depth_interaction.runtime.v1",
+  "schema": "lnet.h200.imagenet100.k64_p_depth_interaction.runtime.v2",
   "training": {
     "batch_size": 128,
     "epochs": 100,

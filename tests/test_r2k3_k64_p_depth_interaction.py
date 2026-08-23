@@ -33,9 +33,15 @@ def test_h200_runtime_contains_only_real_training_runs() -> None:
             encoding="utf-8"
         )
     )
+    assert payload["schema"] == "lnet.h200.imagenet100.k64_p_depth_interaction.runtime.v2"
+    assert payload["campaign_id"] == "h200-imagenet100-k64-p-depth-interaction-s501-v2"
+    assert payload["output_namespace"] == "lnet-h200-imagenet100-k64-p-depth-interaction-v2"
     assert "canary" not in payload
     assert tuple(payload["training"]["variants"]) == runner.H200_VARIANTS
     assert set(payload["runs"]) == set(runner.H200_VARIANTS)
+    assert {
+        seeds["501"]["id"] for seeds in payload["runs"].values()
+    } == {"33206c6e881c01c2", "84fa3d3ab8329e56"}
 
 
 def test_interaction_models_preserve_k64_identity_carries() -> None:

@@ -19,6 +19,9 @@ SUPPLEMENTAL_MANIFEST_PATH = ROOT / "h200/d2262_p_schedule/campaign.json"
 READER_WL_MANIFEST_PATH = ROOT / "h200/reader_wl/campaign.json"
 K64_P_ALLOCATION_MANIFEST_PATH = ROOT / "h200/k64_p_allocation/campaign.json"
 K64_P_SMALL_FACTORIAL_MANIFEST_PATH = ROOT / "h200/k64_p_small_factorial/campaign.json"
+K64_P_DEPTH_INTERACTION_LEGACY_MANIFEST_PATH = (
+    ROOT / "h200/k64_p_depth_interaction/campaign.v1.json"
+)
 K64_P_DEPTH_INTERACTION_MANIFEST_PATH = ROOT / "h200/k64_p_depth_interaction/campaign.json"
 PROTOCOL_PATH = ROOT / "h200/campaign.json"
 RUNTIME_PATH = ROOT / "h200/stage_allocation/campaign.runtime.json"
@@ -407,16 +410,25 @@ def _k64_p_depth_interaction_records(manifest: dict[str, Any]) -> list[dict[str,
 def _validate_k64_p_depth_interaction(
     primary: dict[str, Any],
     manifest: dict[str, Any],
+    *,
+    legacy: bool,
 ) -> None:
     training = manifest.get("training", {})
     wandb = manifest.get("wandb", {})
     relay = manifest.get("relay", {})
+    suffix = "v1" if legacy else "v2"
+    expected_group = (
+        "R2K3-K64-PDepthInteraction-H200-S501"
+        if legacy
+        else "R2K3-K64-PDepthInteraction-H200-S501-v2"
+    )
     if (
-        manifest.get("schema") != "lnet.h200.imagenet100.k64_p_depth_interaction.v1"
+        manifest.get("schema")
+        != f"lnet.h200.imagenet100.k64_p_depth_interaction.{suffix}"
         or manifest.get("campaign_id")
-        != "h200-imagenet100-k64-p-depth-interaction-s501-v1"
+        != f"h200-imagenet100-k64-p-depth-interaction-s501-{suffix}"
         or manifest.get("output_namespace")
-        != "lnet-h200-imagenet100-k64-p-depth-interaction-v1"
+        != f"lnet-h200-imagenet100-k64-p-depth-interaction-{suffix}"
         or tuple(training.get("variants", ())) != K64_P_DEPTH_INTERACTION_VARIANTS
         or training.get("seed") != 501
         or training.get("epochs") != 100
@@ -425,7 +437,7 @@ def _validate_k64_p_depth_interaction(
         or training.get("execution") != "one_model_to_epoch_100_then_next"
         or wandb.get("entity") != primary["wandb"]["entity"]
         or wandb.get("project") != "alphabet2d-imagenet100"
-        or wandb.get("group") != "R2K3-K64-PDepthInteraction-H200-S501"
+        or wandb.get("group") != expected_group
         or wandb.get("base_url") != primary["wandb"]["base_url"]
         or relay.get("url") != primary["relay"]["url"]
         or relay.get("worker_name") != primary["relay"]["worker_name"]
@@ -487,14 +499,23 @@ def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -
         K64_P_SMALL_FACTORIAL_MANIFEST_PATH.read_text(encoding="utf-8")
     )
     _validate_k64_p_small_factorial(manifest, k64_p_small_factorial)
+    legacy_k64_p_depth_interaction = json.loads(
+        K64_P_DEPTH_INTERACTION_LEGACY_MANIFEST_PATH.read_text(encoding="utf-8")
+    )
+    _validate_k64_p_depth_interaction(
+        manifest,
+        legacy_k64_p_depth_interaction,
+        legacy=True,
+    )
     k64_p_depth_interaction = json.loads(
         K64_P_DEPTH_INTERACTION_MANIFEST_PATH.read_text(encoding="utf-8")
     )
-    _validate_k64_p_depth_interaction(manifest, k64_p_depth_interaction)
+    _validate_k64_p_depth_interaction(manifest, k64_p_depth_interaction, legacy=False)
     all_records = [*records, *_supplemental_records(supplemental)]
     all_records.extend(_reader_wl_records(reader_wl))
     all_records.extend(_k64_p_allocation_records(k64_p_allocation))
     all_records.extend(_k64_p_small_factorial_records(k64_p_small_factorial))
+    all_records.extend(_k64_p_depth_interaction_records(legacy_k64_p_depth_interaction))
     all_records.extend(_k64_p_depth_interaction_records(k64_p_depth_interaction))
     if len({record["id"] for record in all_records}) != len(all_records):
         raise ValueError("combined relay run IDs are not unique")
@@ -538,6 +559,11 @@ def _relay(
             json.loads(K64_P_SMALL_FACTORIAL_MANIFEST_PATH.read_text(encoding="utf-8"))
         ),
         *_k64_p_depth_interaction_records(
+            json.loads(
+                K64_P_DEPTH_INTERACTION_LEGACY_MANIFEST_PATH.read_text(encoding="utf-8")
+            )
+        ),
+        *_k64_p_depth_interaction_records(
             json.loads(K64_P_DEPTH_INTERACTION_MANIFEST_PATH.read_text(encoding="utf-8"))
         ),
     ]
@@ -552,6 +578,8 @@ def _relay(
         + K64_P_ALLOCATION_MANIFEST_PATH.read_bytes()
         + b"\0"
         + K64_P_SMALL_FACTORIAL_MANIFEST_PATH.read_bytes()
+        + b"\0"
+        + K64_P_DEPTH_INTERACTION_LEGACY_MANIFEST_PATH.read_bytes()
         + b"\0"
         + K64_P_DEPTH_INTERACTION_MANIFEST_PATH.read_bytes()
         + b"\0"

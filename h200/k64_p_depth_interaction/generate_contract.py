@@ -67,7 +67,7 @@ def _records(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -> None:
-    if manifest.get("schema") != "lnet.h200.imagenet100.k64_p_depth_interaction.v1":
+    if manifest.get("schema") != "lnet.h200.imagenet100.k64_p_depth_interaction.v2":
         raise ValueError("invalid K64 P-depth-interaction campaign schema")
     if not HEX_64.fullmatch(digest):
         raise ValueError("invalid combined campaign digest")
@@ -91,8 +91,8 @@ def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -
     ):
         raise ValueError("K64 P-depth-interaction training matrix changed")
     if (
-        manifest.get("campaign_id") != "h200-imagenet100-k64-p-depth-interaction-s501-v1"
-        or manifest.get("output_namespace") != "lnet-h200-imagenet100-k64-p-depth-interaction-v1"
+        manifest.get("campaign_id") != "h200-imagenet100-k64-p-depth-interaction-s501-v2"
+        or manifest.get("output_namespace") != "lnet-h200-imagenet100-k64-p-depth-interaction-v2"
         or training.get("precision") != "bfloat16"
     ):
         raise ValueError("K64 P-depth-interaction campaign identity changed")
@@ -103,7 +103,7 @@ def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -
         or wandb["console"] != "off"
         or wandb["entity"] != "daehwa"
         or wandb["project"] != "alphabet2d-imagenet100"
-        or wandb["group"] != "R2K3-K64-PDepthInteraction-H200-S501"
+        or wandb["group"] != "R2K3-K64-PDepthInteraction-H200-S501-v2"
         or relay["url"] != wandb["base_url"]
         or relay["upstream_origin"] != "https://api.wandb.ai"
     ):
@@ -120,7 +120,7 @@ def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -
 
 def _runtime(manifest: dict[str, Any], digest: str) -> dict[str, Any]:
     return {
-        "schema": "lnet.h200.imagenet100.k64_p_depth_interaction.runtime.v1",
+        "schema": "lnet.h200.imagenet100.k64_p_depth_interaction.runtime.v2",
         "campaign_id": manifest["campaign_id"],
         "output_namespace": manifest["output_namespace"],
         "campaign_manifest_sha256": digest,

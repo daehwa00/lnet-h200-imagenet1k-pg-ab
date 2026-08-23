@@ -33,7 +33,7 @@ def _runtime() -> dict[str, Any]:
         raise RuntimeError("H200 K64 P-depth-interaction runtime is missing")
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if (
-        payload.get("schema") != "lnet.h200.imagenet100.k64_p_depth_interaction.runtime.v1"
+        payload.get("schema") != "lnet.h200.imagenet100.k64_p_depth_interaction.runtime.v2"
         or tuple(payload.get("training", {}).get("variants", ())) != VARIANTS
     ):
         raise RuntimeError("H200 K64 P-depth-interaction runtime changed")

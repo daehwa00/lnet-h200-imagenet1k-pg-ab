@@ -172,11 +172,22 @@ describe("H200 W&B relay", () => {
     expect(lastForwardedPayload().variables.program).toBe(run.program);
   });
 
-  it("accepts both frozen K64 P-depth-interaction training runs", async () => {
-    for (const runId of ["ae6ce4374b8ea076", "6bdea5b0c2a0ee6a"] as const) {
-      const run = CAMPAIGN.runsById[runId];
-      expect(run.group).toBe("R2K3-K64-PDepthInteraction-H200-S501");
-      const response = await worker.fetch(post("/graphql", {
+  it("accepts the legacy and fresh K64 P-depth-interaction training runs", async () => {
+    const campaigns = [
+      {
+        group: "R2K3-K64-PDepthInteraction-H200-S501",
+        runIds: ["ae6ce4374b8ea076", "6bdea5b0c2a0ee6a"],
+      },
+      {
+        group: "R2K3-K64-PDepthInteraction-H200-S501-v2",
+        runIds: ["33206c6e881c01c2", "84fa3d3ab8329e56"],
+      },
+    ] as const;
+    for (const campaign of campaigns) {
+      for (const runId of campaign.runIds) {
+        const run = CAMPAIGN.runsById[runId];
+        expect(run.group).toBe(campaign.group);
+        const response = await worker.fetch(post("/graphql", {
         operationName: "UpsertBucket",
         query: UPSERT_QUERY,
         variables: {
@@ -200,9 +211,10 @@ describe("H200 W&B relay", () => {
           sweep: null,
           tags: [...run.tags],
         },
-      }), testEnv());
-      expect(response.status).toBe(200);
-      expect(lastForwardedPayload().variables.program).toBe(run.program);
+        }), testEnv());
+        expect(response.status).toBe(200);
+        expect(lastForwardedPayload().variables.program).toBe(run.program);
+      }
     }
   });
 

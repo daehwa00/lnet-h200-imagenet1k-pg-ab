@@ -11,7 +11,7 @@ readonly UV_VERSION="0.9.26"
 readonly DUMMY_WANDB_API_KEY="0000000000000000000000000000000000000000"
 readonly IMAGENET100_CANONICAL_MANIFEST_SHA256="6871da811224d961422ae8fe68339c81180e40d06983ce950189f5470add5db9"
 readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab.git"
-readonly CONTROL_REF="refs/heads/control/imagenet100-k64-p-depth-interaction-v2"
+readonly CONTROL_REF="refs/heads/control/imagenet100-k64-p-depth-interaction-v3"
 readonly CONTROL_PATH="h200/k64_p_depth_interaction/control.json"
 
 cd "${PROJECT_ROOT}"
@@ -103,7 +103,7 @@ required = (
     "console",
     "relay_protocol_version",
 )
-if runtime.get("schema") != "lnet.h200.imagenet100.k64_p_depth_interaction.runtime.v1":
+if runtime.get("schema") != "lnet.h200.imagenet100.k64_p_depth_interaction.runtime.v2":
     raise SystemExit("invalid K64-P-depth-interaction runtime schema")
 missing = [key for key in required if not isinstance(runtime.get(key), str) or not runtime[key]]
 if missing:
