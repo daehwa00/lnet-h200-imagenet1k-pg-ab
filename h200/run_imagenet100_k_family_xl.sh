@@ -202,8 +202,15 @@ export LNET_COMPILE_MODE=default
 export LNET_PERSISTENT_WORKERS=1
 export LNET_DATALOADER_PREFETCH_FACTOR=2
 export LNET_DATALOADER_WORKERS=8
+CPU_COUNT="$(nproc)"
+readonly CPU_COUNT
+if (( CPU_COUNT < 8 )); then
+  echo "ERROR: XL campaign requires at least 8 CPU workers, found ${CPU_COUNT}" >&2
+  exit 2
+fi
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
+echo "H200_XL_INPUT_PIPELINE=cpus:${CPU_COUNT},workers:8,prefetch:2"
 unset WANDB_CONFIG_PATHS WANDB_IDENTITY_TOKEN_FILE WANDB_JOB_TYPE WANDB_NAME \
   WANDB_RESUME WANDB_RUN_ID WANDB_TAGS WANDB_USER_EMAIL WANDB_USERNAME
 export WANDB_MODE=online
@@ -254,10 +261,6 @@ if [[ "${H200_XL_SMOKE_ONLY:-0}" == "1" ]]; then
   exit 0
 fi
 
-if (( $(nproc) < 8 )); then
-  echo "ERROR: XL campaign requires at least 8 CPU workers" >&2
-  exit 2
-fi
 "${ENV_ROOT}/bin/python" h200/validate_imagenet1k.py \
   --root "${DATA_ROOT}" --output "${DATASET_MANIFEST}" --reuse-existing \
   --managed-canonical-receipt h200/imagenet1k_canonical_receipt.json

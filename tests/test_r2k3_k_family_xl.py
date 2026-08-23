@@ -73,6 +73,12 @@ def test_xl_control_is_stopped_before_representative_smoke() -> None:
     assert payload["action"] == "stop"
 
 
+def test_xl_launcher_captures_cpu_capacity_before_limiting_omp() -> None:
+    source = (ROOT / "h200/run_imagenet100_k_family_xl.sh").read_text(encoding="utf-8")
+    assert source.count('CPU_COUNT="$(nproc)"') == 1
+    assert source.index('CPU_COUNT="$(nproc)"') < source.index("export OMP_NUM_THREADS=1")
+
+
 def test_xl_queue_continues_after_one_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
