@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-k-family-xl-s501-v1",
-  "target_commit": "3f6aed6fbde7347ee5dc9dc1139968dec0d49352",
-  "generation": 2,
+  "target_commit": "606315a571a04c43b59c201bbc7e0682008d3128",
+  "generation": 3,
   "action": "run",
-  "updated_at": "2026-08-24T00:50:33+09:00",
-  "reason": "arm the immutable XL campaign after representative H200 smoke passed"
+  "updated_at": "2026-08-24T00:59:08+09:00",
+  "reason": "run the XL campaign from the CPU-gate-corrected immutable commit"
 }
