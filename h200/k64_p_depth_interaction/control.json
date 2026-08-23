@@ -2,8 +2,8 @@
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-k64-p-depth-interaction-s501-v1",
   "target_commit": "be8ed73ac1c5417c3bcd2956980e70fd39dc81ac",
-  "generation": 1,
-  "action": "run",
-  "updated_at": "2026-08-23T11:27:11+09:00",
-  "reason": "arm the reviewed relay-authorized H200 depth-interaction execution"
+  "generation": 2,
+  "action": "stop",
+  "updated_at": "2026-08-23T12:11:25+09:00",
+  "reason": "cancel H200 follow-up after the family scaling queue moved to qlab GPU0 and GPU1"
 }
