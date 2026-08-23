@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-k-family-xl-s501-v1",
-  "target_commit": "0000000000000000000000000000000000000000",
+  "target_commit": "3f6aed6fbde7347ee5dc9dc1139968dec0d49352",
   "generation": 1,
   "action": "stop",
-  "updated_at": "2026-08-24T00:00:00+09:00",
-  "reason": "safe default before representative H200 smoke passes"
+  "updated_at": "2026-08-24T00:21:28+09:00",
+  "reason": "hold the immutable XL campaign stopped until representative H200 smoke passes"
 }
