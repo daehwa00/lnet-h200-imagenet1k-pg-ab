@@ -1,0 +1,154 @@
+{
+  "campaign_id": "h200-imagenet100-k-family-p-refinement-s501-v1",
+  "campaign_manifest_sha256": "0ea8b5c092a732f381d7bc16e39805b388a0fc92a80137c1bdbd190fb29f6f8e",
+  "console": "off",
+  "dataset": {
+    "classes": 100,
+    "first_synset": "n01440764",
+    "last_synset": "n02077923",
+    "selection": "lexicographically first 100 synset directories",
+    "source": "ImageNet-1K ILSVRC2012 train/val",
+    "train_images": 130000,
+    "validation_images": 5000
+  },
+  "entity": "daehwa",
+  "group": "R2K3-KFamily-PRefinement-H200-S501",
+  "output_namespace": "lnet-h200-imagenet100-k-family-p-refinement-v1",
+  "parameter_counts": {
+    "L-K64-P80-96-80-80": 1290308,
+    "L-K64-P80-96-96-80": 1339652,
+    "M-K48-P80-80-80-80": 857124,
+    "S-K32-P48-48-64-48": 430404,
+    "XL-K96-P128-144-128-128": 2814116
+  },
+  "pole_schedules": {
+    "L-K64-P80-96-80-80": [
+      80,
+      96,
+      80,
+      80
+    ],
+    "L-K64-P80-96-96-80": [
+      80,
+      96,
+      96,
+      80
+    ],
+    "M-K48-P80-80-80-80": [
+      80,
+      80,
+      80,
+      80
+    ],
+    "S-K32-P48-48-64-48": [
+      48,
+      48,
+      64,
+      48
+    ],
+    "XL-K96-P128-144-128-128": [
+      128,
+      144,
+      128,
+      128
+    ]
+  },
+  "program": "h200/run_imagenet100_k_family_p_refinement.sh",
+  "project": "alphabet2d-imagenet100",
+  "relay_protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v3",
+  "runs": {
+    "L-K64-P80-96-80-80": {
+      "501": {
+        "display_name": "H200-I100-S501-02-L-K64-P80-96-80-80",
+        "id": "7d9e3d591ea2081f",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K-family",
+          "P-refinement",
+          "D2262",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "L-K64-P80-96-96-80": {
+      "501": {
+        "display_name": "H200-I100-S501-03-L-K64-P80-96-96-80",
+        "id": "e37237cce614704b",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K-family",
+          "P-refinement",
+          "D2262",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "M-K48-P80-80-80-80": {
+      "501": {
+        "display_name": "H200-I100-S501-01-M-K48-P80-80-80-80",
+        "id": "ad0212fc586e0ee1",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K-family",
+          "P-refinement",
+          "D2262",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "S-K32-P48-48-64-48": {
+      "501": {
+        "display_name": "H200-I100-S501-04-S-K32-P48-48-64-48",
+        "id": "30a262a513661e12",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K-family",
+          "P-refinement",
+          "D2262",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "XL-K96-P128-144-128-128": {
+      "501": {
+        "display_name": "H200-I100-S501-05-XL-K96-P128-144-128-128",
+        "id": "5f4e05906b50dd3d",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K-family",
+          "P-refinement",
+          "D2262",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    }
+  },
+  "schema": "lnet.h200.imagenet100.k_family_p_refinement.runtime.v1",
+  "training": {
+    "batch_size": 128,
+    "epochs": 100,
+    "execution": "one_model_to_epoch_100_then_next",
+    "precision": "bfloat16",
+    "seed": 501,
+    "variants": [
+      "M-K48-P80-80-80-80",
+      "L-K64-P80-96-80-80",
+      "L-K64-P80-96-96-80",
+      "S-K32-P48-48-64-48",
+      "XL-K96-P128-144-128-128"
+    ]
+  },
+  "wandb_app_url": "https://wandb.ai",
+  "wandb_base_url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+  "wandb_sdk_version": "0.22.3"
+}

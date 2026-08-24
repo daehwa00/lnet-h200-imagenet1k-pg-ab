@@ -5,7 +5,7 @@ export const CAMPAIGN = {
     "running",
     "finished"
   ],
-  "authorizationManifestSha256": "203f1138963fef89441764fbe1fbfc6001b82aaa1a93b3214ef08edcfd26ed39",
+  "authorizationManifestSha256": "809423f320870b3a5b863c96a81102a3c138b2e56201fedee0b11763e2f0eeec",
   "campaignId": "h200-imagenet100-stage-allocation-s501-v3",
   "entity": "daehwa",
   "graphqlEnvelopeKeys": {
@@ -191,6 +191,21 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "30a262a513661e12": {
+      "displayName": "H200-I100-S501-04-S-K32-P48-48-64-48",
+      "group": "R2K3-KFamily-PRefinement-H200-S501",
+      "program": "h200/run_imagenet100_k_family_p_refinement.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K-family",
+        "P-refinement",
+        "D2262",
+        "seed501",
+        "authenticated"
+      ]
+    },
     "33206c6e881c01c2": {
       "displayName": "H200-I100-S501-01-K64-P96-128-96-96-D2263",
       "group": "R2K3-K64-PDepthInteraction-H200-S501-v2",
@@ -248,6 +263,21 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "5f4e05906b50dd3d": {
+      "displayName": "H200-I100-S501-05-XL-K96-P128-144-128-128",
+      "group": "R2K3-KFamily-PRefinement-H200-S501",
+      "program": "h200/run_imagenet100_k_family_p_refinement.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K-family",
+        "P-refinement",
+        "D2262",
+        "seed501",
+        "authenticated"
+      ]
+    },
     "6bdea5b0c2a0ee6a": {
       "displayName": "H200-I100-S501-02-K64-P96-128-128-96-D2283",
       "group": "R2K3-K64-PDepthInteraction-H200-S501",
@@ -289,6 +319,21 @@ export const CAMPAIGN = {
         "P-allocation",
         "D2262",
         "relay-canary"
+      ]
+    },
+    "7d9e3d591ea2081f": {
+      "displayName": "H200-I100-S501-02-L-K64-P80-96-80-80",
+      "group": "R2K3-KFamily-PRefinement-H200-S501",
+      "program": "h200/run_imagenet100_k_family_p_refinement.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K-family",
+        "P-refinement",
+        "D2262",
+        "seed501",
+        "authenticated"
       ]
     },
     "84fa3d3ab8329e56": {
@@ -430,6 +475,21 @@ export const CAMPAIGN = {
         "relay-canary"
       ]
     },
+    "ad0212fc586e0ee1": {
+      "displayName": "H200-I100-S501-01-M-K48-P80-80-80-80",
+      "group": "R2K3-KFamily-PRefinement-H200-S501",
+      "program": "h200/run_imagenet100_k_family_p_refinement.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K-family",
+        "P-refinement",
+        "D2262",
+        "seed501",
+        "authenticated"
+      ]
+    },
     "ae6ce4374b8ea076": {
       "displayName": "H200-I100-S501-01-K64-P96-128-96-96-D2263",
       "group": "R2K3-K64-PDepthInteraction-H200-S501",
@@ -549,6 +609,21 @@ export const CAMPAIGN = {
         "H200",
         "ImageNet-100",
         "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "e37237cce614704b": {
+      "displayName": "H200-I100-S501-03-L-K64-P80-96-96-80",
+      "group": "R2K3-KFamily-PRefinement-H200-S501",
+      "program": "h200/run_imagenet100_k_family_p_refinement.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K-family",
+        "P-refinement",
+        "D2262",
         "seed501",
         "authenticated"
       ]

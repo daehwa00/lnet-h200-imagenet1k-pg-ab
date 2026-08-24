@@ -257,6 +257,32 @@ describe("H200 W&B relay", () => {
     }
   });
 
+  it("accepts all five frozen K-family P-refinement runs", async () => {
+    for (const runId of [
+      "ad0212fc586e0ee1",
+      "7d9e3d591ea2081f",
+      "e37237cce614704b",
+      "30a262a513661e12",
+      "5f4e05906b50dd3d",
+    ] as const) {
+      const run = CAMPAIGN.runsById[runId];
+      expect(run.group).toBe("R2K3-KFamily-PRefinement-H200-S501");
+      const response = await worker.fetch(post("/graphql", {
+        operationName: "UpsertBucket",
+        query: UPSERT_QUERY,
+        variables: {
+          commit: null, config: "{}", debug: false, description: null,
+          displayName: run.displayName, entity: CAMPAIGN.entity,
+          groupName: run.group, host: null, id: null, jobType: null,
+          name: runId, notes: null, program: null, project: run.project,
+          repo: null, state: "running", summaryMetrics: null, sweep: null,
+          tags: [...run.tags],
+        },
+      }), testEnv());
+      expect(response.status).toBe(200);
+    }
+  });
+
   it("accepts the frozen K64 campaign in its canonical non-H200 project", async () => {
     const entry = Object.entries(CAMPAIGN.runsById)
       .find(([, run]) => run.project !== CAMPAIGN.project);

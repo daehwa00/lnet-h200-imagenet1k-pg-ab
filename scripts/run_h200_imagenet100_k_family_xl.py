@@ -26,6 +26,8 @@ if TYPE_CHECKING:
 
 
 RUNTIME_SCHEMA = "lnet.h200.imagenet100.k_family_xl.runtime.v1"
+RUNTIME_ENV_VAR = "H200_K_FAMILY_XL_WANDB_RUNTIME"
+HEARTBEAT_SCHEMA = "lnet.h200.imagenet100.k_family_xl.heartbeat.v1"
 VARIANTS = experiment.VARIANTS
 PARAMETER_COUNTS = {
     "XL-K96-U1": 2_313_892,
@@ -41,9 +43,9 @@ _ORIGINAL_AFTER_BATCH = heads._after_training_batch
 
 
 def _runtime() -> dict[str, Any]:
-    value = os.environ.get("H200_K_FAMILY_XL_WANDB_RUNTIME")
+    value = os.environ.get(RUNTIME_ENV_VAR)
     if not value:
-        raise RuntimeError("H200_K_FAMILY_XL_WANDB_RUNTIME is required")
+        raise RuntimeError(f"{RUNTIME_ENV_VAR} is required")
     payload = json.loads(Path(value).read_text(encoding="utf-8"))
     training = payload.get("training", {})
     if (
@@ -250,7 +252,7 @@ def _write_heartbeat() -> None:
     _atomic_json(
         _argument_path("--root") / "control-heartbeat.json",
         {
-            "schema": "lnet.h200.imagenet100.k_family_xl.heartbeat.v1",
+            "schema": HEARTBEAT_SCHEMA,
             "campaign_id": _runtime()["campaign_id"],
             "target_commit": os.environ["H200_EXPECTED_COMMIT"],
             "variant": _active_variant,
