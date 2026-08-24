@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-k-family-p-refinement-s501-v1",
-  "target_commit": "0000000000000000000000000000000000000000",
+  "target_commit": "3385e58d6a0ff62442946738d0c78276acee9c58",
   "generation": 1,
-  "action": "stop",
-  "updated_at": "2026-08-24T00:00:00+09:00",
-  "reason": "safe default before immutable activation"
+  "action": "run",
+  "updated_at": "2026-08-24T13:33:44+09:00",
+  "reason": "arm the five-cell refinement queue after XL completion and reusable smoke evidence"
 }
