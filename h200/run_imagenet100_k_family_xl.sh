@@ -20,6 +20,7 @@ readonly CONTROL_REF="${H200_K_FAMILY_CONTROL_REF:-refs/heads/control/imagenet10
 readonly CONTROL_PATH="${H200_K_FAMILY_CONTROL_PATH:-h200/k_family_xl/control.json}"
 readonly WANDB_RUNTIME_ENV_NAME="${H200_K_FAMILY_WANDB_RUNTIME_ENV:-H200_K_FAMILY_XL_WANDB_RUNTIME}"
 readonly QUEUE_SCRIPT="${H200_K_FAMILY_QUEUE_SCRIPT:-scripts/run_h200_k_family_xl_queue.py}"
+readonly SMOKE_SCRIPT="${H200_K_FAMILY_SMOKE_SCRIPT:-scripts/smoke_h200_k_family_xl.py}"
 
 cd "${PROJECT_ROOT}"
 
@@ -262,9 +263,9 @@ if major != 9 or "H200" not in name.upper():
 print("H200_XL_ENV=" + json.dumps({"gpu": name, "packages": actual}, sort_keys=True))
 PY
 
-if [[ "${H200_XL_SMOKE_ONLY:-0}" == "1" ]]; then
+if [[ "${H200_K_FAMILY_SMOKE_ONLY:-${H200_XL_SMOKE_ONLY:-0}}" == "1" ]]; then
   readonly SMOKE_ROOT="${OUTPUT_BASE}/representative-smoke-${ACTUAL_COMMIT:0:16}"
-  "${ENV_ROOT}/bin/python" scripts/smoke_h200_k_family_xl.py \
+  "${ENV_ROOT}/bin/python" "${SMOKE_SCRIPT}" \
     --root "${SMOKE_ROOT}" --batch-size 128 --repeat-steps 3
   echo "H200_XL_REPRESENTATIVE_SMOKE_COMPLETE=${SMOKE_ROOT}/smoke.json"
   exit 0

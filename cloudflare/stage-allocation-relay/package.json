@@ -5,7 +5,7 @@
   "type": "module",
   "engines": {"node": ">=22"},
   "scripts": {
-    "campaign:check": "python ../../h200/stage_allocation/generate_contract.py --check && python ../../h200/d2262_p_schedule/generate_contract.py --check && python ../../h200/reader_wl/generate_contract.py --check && python ../../h200/k64_p_allocation/generate_contract.py --check && python ../../h200/k64_p_small_factorial/generate_contract.py --check && python ../../h200/k64_p_depth_interaction/generate_contract.py --check && python ../../h200/k_family_xl/generate_contract.py --check && python ../../h200/k_family_p_refinement/generate_contract.py --check",
+    "campaign:check": "python ../../h200/stage_allocation/generate_contract.py --check && python ../../h200/d2262_p_schedule/generate_contract.py --check && python ../../h200/reader_wl/generate_contract.py --check && python ../../h200/k64_p_allocation/generate_contract.py --check && python ../../h200/k64_p_small_factorial/generate_contract.py --check && python ../../h200/k64_p_depth_interaction/generate_contract.py --check && python ../../h200/k_family_xl/generate_contract.py --check && python ../../h200/k_family_p_refinement/generate_contract.py --check && python ../../h200/k_family_depth_controls/generate_contract.py --check",
     "check": "npm run campaign:check && npm run types:check && tsc --noEmit && tsc -p test/tsconfig.json --noEmit && npm test",
     "deploy:dry": "wrangler deploy --dry-run",
     "test": "vitest run",

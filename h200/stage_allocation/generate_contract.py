@@ -25,6 +25,7 @@ K64_P_DEPTH_INTERACTION_LEGACY_MANIFEST_PATH = (
 K64_P_DEPTH_INTERACTION_MANIFEST_PATH = ROOT / "h200/k64_p_depth_interaction/campaign.json"
 K_FAMILY_XL_MANIFEST_PATH = ROOT / "h200/k_family_xl/campaign.json"
 K_FAMILY_P_REFINEMENT_MANIFEST_PATH = ROOT / "h200/k_family_p_refinement/campaign.json"
+K_FAMILY_DEPTH_CONTROLS_MANIFEST_PATH = ROOT / "h200/k_family_depth_controls/campaign.json"
 PROTOCOL_PATH = ROOT / "h200/campaign.json"
 RUNTIME_PATH = ROOT / "h200/stage_allocation/campaign.runtime.json"
 RELAY_CONSTANTS_PATH = ROOT / "cloudflare/stage-allocation-relay/src/campaign.generated.ts"
@@ -66,6 +67,10 @@ K_FAMILY_P_REFINEMENT_VARIANTS = (
     "L-K64-P80-96-96-80",
     "S-K32-P48-48-64-48",
     "XL-K96-P128-144-128-128",
+)
+K_FAMILY_DEPTH_CONTROLS_VARIANTS = (
+    "S-K32-P48x4-D2262", "S-K32-P48x4-D2242",
+    "L-K64-P80x4-D2262", "L-K64-P80x4-D2282", "XL-K96-P128x4-D2282",
 )
 
 
@@ -555,7 +560,52 @@ def _validate_k_family_p_refinement(
         raise ValueError("invalid supplemental K-family P-refinement relay contract")
 
 
-def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -> None:
+def _k_family_depth_controls_records(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": _run_id(manifest["campaign_id"], f"{variant}:seed501"),
+            "display_name": f"H200-I100-S501-{index:02d}-{variant}",
+            "group": manifest["wandb"]["group"],
+            "project": manifest["wandb"]["project"],
+            "program": "h200/run_imagenet100_k_family_depth_controls.sh",
+            "tags": [
+                "H200", "ImageNet-100", "K-family", "depth-control",
+                "uniform-P", "terminal-depth2", "seed501", "authenticated",
+            ],
+        }
+        for index, variant in enumerate(manifest["training"]["variants"], start=1)
+    ]
+
+
+def _validate_k_family_depth_controls(
+    primary: dict[str, Any], manifest: dict[str, Any]
+) -> None:
+    training = manifest.get("training", {})
+    wandb = manifest.get("wandb", {})
+    relay = manifest.get("relay", {})
+    if (
+        manifest.get("schema") != "lnet.h200.imagenet100.k_family_depth_controls.v1"
+        or manifest.get("campaign_id")
+        != "h200-imagenet100-k-family-depth-controls-s501-v1"
+        or manifest.get("output_namespace")
+        != "lnet-h200-imagenet100-k-family-depth-controls-v1"
+        or tuple(training.get("variants", ())) != K_FAMILY_DEPTH_CONTROLS_VARIANTS
+        or training.get("seed") != 501 or training.get("epochs") != 100
+        or training.get("batch_size") != 128 or training.get("precision") != "bfloat16"
+        or wandb.get("entity") != primary["wandb"]["entity"]
+        or wandb.get("project") != "alphabet2d-imagenet100"
+        or wandb.get("group") != "R2K3-KFamily-DepthControls-H200-S501"
+        or wandb.get("base_url") != primary["wandb"]["base_url"]
+        or relay.get("url") != primary["relay"]["url"]
+        or relay.get("worker_name") != primary["relay"]["worker_name"]
+        or relay.get("protocol_version") != primary["relay"]["protocol_version"]
+    ):
+        raise ValueError("invalid supplemental K-family depth-control relay contract")
+
+
+def _validate(  # noqa: PLR0915
+    manifest: dict[str, Any], protocol: dict[str, Any], digest: str
+) -> None:
     if manifest.get("schema") != "lnet.h200.imagenet100.stage_allocation.v1":
         raise ValueError("invalid stage-allocation campaign schema")
     if not HEX_64.fullmatch(digest):
@@ -626,6 +676,10 @@ def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -
         K_FAMILY_P_REFINEMENT_MANIFEST_PATH.read_text(encoding="utf-8")
     )
     _validate_k_family_p_refinement(manifest, k_family_p_refinement)
+    k_family_depth_controls = json.loads(
+        K_FAMILY_DEPTH_CONTROLS_MANIFEST_PATH.read_text(encoding="utf-8")
+    )
+    _validate_k_family_depth_controls(manifest, k_family_depth_controls)
     all_records = [*records, *_supplemental_records(supplemental)]
     all_records.extend(_reader_wl_records(reader_wl))
     all_records.extend(_k64_p_allocation_records(k64_p_allocation))
@@ -634,6 +688,7 @@ def _validate(manifest: dict[str, Any], protocol: dict[str, Any], digest: str) -
     all_records.extend(_k64_p_depth_interaction_records(k64_p_depth_interaction))
     all_records.extend(_k_family_xl_records(k_family_xl))
     all_records.extend(_k_family_p_refinement_records(k_family_p_refinement))
+    all_records.extend(_k_family_depth_controls_records(k_family_depth_controls))
     if len({record["id"] for record in all_records}) != len(all_records):
         raise ValueError("combined relay run IDs are not unique")
 
@@ -689,6 +744,9 @@ def _relay(
         *_k_family_p_refinement_records(
             json.loads(K_FAMILY_P_REFINEMENT_MANIFEST_PATH.read_text(encoding="utf-8"))
         ),
+        *_k_family_depth_controls_records(
+            json.loads(K_FAMILY_DEPTH_CONTROLS_MANIFEST_PATH.read_text(encoding="utf-8"))
+        ),
     ]
     source = protocol["protocol"]
     authorization_digest = hashlib.sha256(
@@ -709,6 +767,8 @@ def _relay(
         + K_FAMILY_XL_MANIFEST_PATH.read_bytes()
         + b"\0"
         + K_FAMILY_P_REFINEMENT_MANIFEST_PATH.read_bytes()
+        + b"\0"
+        + K_FAMILY_DEPTH_CONTROLS_MANIFEST_PATH.read_bytes()
         + b"\0"
         + json.dumps(protocol, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()

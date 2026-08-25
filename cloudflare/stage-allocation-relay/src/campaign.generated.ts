@@ -5,7 +5,7 @@ export const CAMPAIGN = {
     "running",
     "finished"
   ],
-  "authorizationManifestSha256": "809423f320870b3a5b863c96a81102a3c138b2e56201fedee0b11763e2f0eeec",
+  "authorizationManifestSha256": "b3a3675f1d8f04e661040250b15d2514df954ce923dd9a4fa0b41195ff1fc8e3",
   "campaignId": "h200-imagenet100-stage-allocation-s501-v3",
   "entity": "daehwa",
   "graphqlEnvelopeKeys": {
@@ -134,6 +134,22 @@ export const CAMPAIGN = {
         "H200",
         "ImageNet-100",
         "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "1976e239074f0a4c": {
+      "displayName": "H200-I100-S501-02-S-K32-P48x4-D2242",
+      "group": "R2K3-KFamily-DepthControls-H200-S501",
+      "program": "h200/run_imagenet100_k_family_depth_controls.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K-family",
+        "depth-control",
+        "uniform-P",
+        "terminal-depth2",
         "seed501",
         "authenticated"
       ]
@@ -332,6 +348,22 @@ export const CAMPAIGN = {
         "K-family",
         "P-refinement",
         "D2262",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "8359cfa6f1cfac97": {
+      "displayName": "H200-I100-S501-04-L-K64-P80x4-D2282",
+      "group": "R2K3-KFamily-DepthControls-H200-S501",
+      "program": "h200/run_imagenet100_k_family_depth_controls.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K-family",
+        "depth-control",
+        "uniform-P",
+        "terminal-depth2",
         "seed501",
         "authenticated"
       ]
@@ -535,6 +567,38 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "bcfd6ba8ff117c7f": {
+      "displayName": "H200-I100-S501-03-L-K64-P80x4-D2262",
+      "group": "R2K3-KFamily-DepthControls-H200-S501",
+      "program": "h200/run_imagenet100_k_family_depth_controls.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K-family",
+        "depth-control",
+        "uniform-P",
+        "terminal-depth2",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "bffc6cc43cb29ada": {
+      "displayName": "H200-I100-S501-05-XL-K96-P128x4-D2282",
+      "group": "R2K3-KFamily-DepthControls-H200-S501",
+      "program": "h200/run_imagenet100_k_family_depth_controls.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K-family",
+        "depth-control",
+        "uniform-P",
+        "terminal-depth2",
+        "seed501",
+        "authenticated"
+      ]
+    },
     "c0a2a6340bac8bf8": {
       "displayName": "H200-I100-stage-relay-permanent-canary-v3",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
@@ -652,6 +716,22 @@ export const CAMPAIGN = {
         "H200",
         "ImageNet-100",
         "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "f3edf4e837a0551f": {
+      "displayName": "H200-I100-S501-01-S-K32-P48x4-D2262",
+      "group": "R2K3-KFamily-DepthControls-H200-S501",
+      "program": "h200/run_imagenet100_k_family_depth_controls.sh",
+      "project": "alphabet2d-imagenet100",
+      "tags": [
+        "H200",
+        "ImageNet-100",
+        "K-family",
+        "depth-control",
+        "uniform-P",
+        "terminal-depth2",
         "seed501",
         "authenticated"
       ]

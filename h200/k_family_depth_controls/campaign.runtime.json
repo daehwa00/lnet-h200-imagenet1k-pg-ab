@@ -1,0 +1,238 @@
+{
+  "campaign_id": "h200-imagenet100-k-family-depth-controls-s501-v1",
+  "campaign_manifest_sha256": "d7e260e265b4ed532f92cc323b030c70cbb97936bc21c62212c169fdfdd1f97f",
+  "console": "off",
+  "dataset": {
+    "classes": 100,
+    "first_synset": "n01440764",
+    "last_synset": "n02077923",
+    "selection": "lexicographically first 100 synset directories",
+    "source": "ImageNet-1K ILSVRC2012 train/val",
+    "train_images": 130000,
+    "validation_images": 5000
+  },
+  "entity": "daehwa",
+  "group": "R2K3-KFamily-DepthControls-H200-S501",
+  "output_namespace": "lnet-h200-imagenet100-k-family-depth-controls-v1",
+  "parameter_counts": {
+    "L-K64-P80x4-D2262": 1273860,
+    "L-K64-P80x4-D2282": 1479236,
+    "S-K32-P48x4-D2242": 337732,
+    "S-K32-P48x4-D2262": 399492,
+    "XL-K96-P128x4-D2282": 3249124
+  },
+  "program": "h200/run_imagenet100_k_family_depth_controls.sh",
+  "project": "alphabet2d-imagenet100",
+  "relay_protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v3",
+  "reused_controls": {
+    "XL-K96-P128x4-D2262": {
+      "action": "exclude_from_queue",
+      "best_validation_accuracy": 0.875,
+      "hardware": "same H200 pool",
+      "parameter_count": 2791524,
+      "wandb_run_id": "ea0a8a0e72d323c3"
+    }
+  },
+  "runs": {
+    "L-K64-P80x4-D2262": {
+      "501": {
+        "display_name": "H200-I100-S501-03-L-K64-P80x4-D2262",
+        "id": "bcfd6ba8ff117c7f",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K-family",
+          "depth-control",
+          "uniform-P",
+          "terminal-depth2",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "L-K64-P80x4-D2282": {
+      "501": {
+        "display_name": "H200-I100-S501-04-L-K64-P80x4-D2282",
+        "id": "8359cfa6f1cfac97",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K-family",
+          "depth-control",
+          "uniform-P",
+          "terminal-depth2",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "S-K32-P48x4-D2242": {
+      "501": {
+        "display_name": "H200-I100-S501-02-S-K32-P48x4-D2242",
+        "id": "1976e239074f0a4c",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K-family",
+          "depth-control",
+          "uniform-P",
+          "terminal-depth2",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "S-K32-P48x4-D2262": {
+      "501": {
+        "display_name": "H200-I100-S501-01-S-K32-P48x4-D2262",
+        "id": "f3edf4e837a0551f",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K-family",
+          "depth-control",
+          "uniform-P",
+          "terminal-depth2",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    },
+    "XL-K96-P128x4-D2282": {
+      "501": {
+        "display_name": "H200-I100-S501-05-XL-K96-P128x4-D2282",
+        "id": "bffc6cc43cb29ada",
+        "tags": [
+          "H200",
+          "ImageNet-100",
+          "K-family",
+          "depth-control",
+          "uniform-P",
+          "terminal-depth2",
+          "seed501",
+          "authenticated"
+        ]
+      }
+    }
+  },
+  "schema": "lnet.h200.imagenet100.k_family_depth_controls.runtime.v1",
+  "specs": {
+    "L-K64-P80x4-D2262": {
+      "D": [
+        2,
+        2,
+        6,
+        2
+      ],
+      "K": [
+        64,
+        64,
+        64,
+        64
+      ],
+      "P": [
+        80,
+        80,
+        80,
+        80
+      ]
+    },
+    "L-K64-P80x4-D2282": {
+      "D": [
+        2,
+        2,
+        8,
+        2
+      ],
+      "K": [
+        64,
+        64,
+        64,
+        64
+      ],
+      "P": [
+        80,
+        80,
+        80,
+        80
+      ]
+    },
+    "S-K32-P48x4-D2242": {
+      "D": [
+        2,
+        2,
+        4,
+        2
+      ],
+      "K": [
+        32,
+        32,
+        32,
+        32
+      ],
+      "P": [
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    "S-K32-P48x4-D2262": {
+      "D": [
+        2,
+        2,
+        6,
+        2
+      ],
+      "K": [
+        32,
+        32,
+        32,
+        32
+      ],
+      "P": [
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    "XL-K96-P128x4-D2282": {
+      "D": [
+        2,
+        2,
+        8,
+        2
+      ],
+      "K": [
+        96,
+        96,
+        96,
+        96
+      ],
+      "P": [
+        128,
+        128,
+        128,
+        128
+      ]
+    }
+  },
+  "training": {
+    "batch_size": 128,
+    "epochs": 100,
+    "execution": "one_model_to_epoch_100_then_next",
+    "precision": "bfloat16",
+    "seed": 501,
+    "variants": [
+      "S-K32-P48x4-D2262",
+      "S-K32-P48x4-D2242",
+      "L-K64-P80x4-D2262",
+      "L-K64-P80x4-D2282",
+      "XL-K96-P128x4-D2282"
+    ]
+  },
+  "wandb_app_url": "https://wandb.ai",
+  "wandb_base_url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+  "wandb_sdk_version": "0.22.3"
+}

@@ -21,6 +21,7 @@ import torch
 
 VARIANT = "XL-K96-Rich"
 EXPECTED_PARAMETERS = 3_200_068
+SMOKE_SCHEMA = "lnet.h200.imagenet100.k_family_xl.smoke.v1"
 RECIPE = {
     "fused_optimizer": True,
     "learning_rate": 3.0e-3,
@@ -172,7 +173,7 @@ def main() -> None:
     )
     evidence["optimizer_resume"] = _optimizer_resume_roundtrip(args.root, args.batch_size)
     payload = {
-        "schema": "lnet.h200.imagenet100.k_family_xl.smoke.v1",
+        "schema": SMOKE_SCHEMA,
         "device": gpu_name,
         "variant": VARIANT,
         "parameters": EXPECTED_PARAMETERS,

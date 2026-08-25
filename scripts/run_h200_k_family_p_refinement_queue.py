@@ -19,6 +19,8 @@ import run_a2d_r2k3_k_family_p_refinement_imagenet100 as experiment
 SCHEMA = "lnet.h200.imagenet100.k_family_p_refinement.queue.v1"
 RUNTIME_SCHEMA = "lnet.h200.imagenet100.k_family_p_refinement.runtime.v1"
 RUNTIME_ENV_VAR = "H200_K_FAMILY_P_REFINEMENT_WANDB_RUNTIME"
+WORKER_SCRIPT = "scripts/run_h200_imagenet100_k_family_p_refinement.py"
+STATUS_FILENAME = "k-family-p-refinement-queue.json"
 VARIANTS = experiment.VARIANTS
 PARAMETER_COUNTS = {
     "M-K48-P80-80-80-80": 857_124,
@@ -112,7 +114,7 @@ def main() -> int:
     if len(target_commit) != 40 or args.workers != 8:
         raise RuntimeError("H200 P-refinement queue requires a frozen commit and 8 workers")
     args.root.mkdir(parents=True, exist_ok=True)
-    status_path = args.root / "k-family-p-refinement-queue.json"
+    status_path = args.root / STATUS_FILENAME
     status = _load_status(status_path, runtime, target_commit)
     failures = 0
     for variant in VARIANTS:
@@ -125,7 +127,7 @@ def main() -> int:
         _atomic_json(status_path, status)
         command = [
             sys.executable,
-            "scripts/run_h200_imagenet100_k_family_p_refinement.py",
+            WORKER_SCRIPT,
             "--root", str(args.root), "--data-root", str(args.data_root),
             "--variants", variant, "--run-seeds", "501", "--epochs", "100",
             "--batch-size", "128", "--gradient-accumulation-steps", "1",
