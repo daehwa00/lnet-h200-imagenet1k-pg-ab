@@ -2,8 +2,8 @@
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet100-k-family-depth-controls-s501-v1",
   "target_commit": "fa7a988f85a6c7359c2f0e132c038a7abe9ed5c7",
-  "generation": 1,
-  "action": "stop",
-  "updated_at": "2026-08-25T11:08:10+09:00",
-  "reason": "hold the immutable depth-control campaign until representative H200 smoke passes"
+  "generation": 2,
+  "action": "run",
+  "updated_at": "2026-08-25T11:41:02+09:00",
+  "reason": "arm the five-cell depth-control queue after representative H200 smoke passed"
 }
