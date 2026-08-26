@@ -719,10 +719,10 @@ def _opaque_recurrence_backward_fake(  # pyright: ignore[reportUnusedFunction]
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     del decay_real, decay_imag, states_real, states_imag, reverse
     return (
-        torch.empty_like(grad_states_real),
-        torch.empty_like(grad_states_imag),
-        torch.empty_like(grad_states_real),
-        torch.empty_like(grad_states_imag),
+        torch.empty_like(grad_states_real, memory_format=torch.contiguous_format),
+        torch.empty_like(grad_states_imag, memory_format=torch.contiguous_format),
+        torch.empty_like(grad_states_real, memory_format=torch.contiguous_format),
+        torch.empty_like(grad_states_imag, memory_format=torch.contiguous_format),
     )
 
 
@@ -756,7 +756,10 @@ def _opaque_recurrence_fake(  # pyright: ignore[reportUnusedFunction]
     reverse: bool,
 ) -> tuple[Tensor, Tensor]:
     del decay_real, decay_imag, reverse
-    return torch.empty_like(input_real), torch.empty_like(input_imag)
+    return (
+        torch.empty_like(input_real, memory_format=torch.contiguous_format),
+        torch.empty_like(input_imag, memory_format=torch.contiguous_format),
+    )
 
 
 def _opaque_backward(

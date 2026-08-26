@@ -5,6 +5,7 @@ from pathlib import Path
 import torch
 
 from lnet.alphabet_lm import AlphabetLM, AlphabetLMConfig
+from lnet.pac_triton_recurrence_op import pac_triton_recurrence_opaque_op
 
 
 def _small() -> AlphabetLMConfig:
@@ -73,3 +74,51 @@ def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:
         assert transitive in lock
     assert "transformers==5." not in requirements
     assert "transformers==5." not in lock
+
+
+def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:
+    batch, steps, modes = 2, 7, 5
+
+    def inputs() -> tuple[torch.Tensor, torch.Tensor]:
+        real = torch.randn(batch, modes, steps).transpose(1, 2).detach().requires_grad_()
+        imag = torch.randn(batch, modes, steps).transpose(1, 2).detach().requires_grad_()
+        assert real.stride() == (steps * modes, 1, steps)
+        return real, imag
+
+    def target(input_real: torch.Tensor, input_imag: torch.Tensor) -> torch.Tensor:
+        shape = (1, 1, modes)
+        decay_real = torch.full(shape, 0.8).expand_as(input_real)
+        decay_imag = torch.full(shape, 0.1).expand_as(input_imag)
+        states_real, states_imag = pac_triton_recurrence_opaque_op(
+            decay_real, decay_imag, input_real, input_imag
+        )
+        assert states_real.is_contiguous()
+        assert states_imag.is_contiguous()
+        return states_real.square().mean() + states_imag.square().mean()
+
+    expected_inputs = inputs()
+    expected_loss = target(*expected_inputs)
+    expected_grads = torch.autograd.grad(expected_loss, expected_inputs)
+    actual_inputs = tuple(
+        tensor.detach().clone(memory_format=torch.preserve_format).requires_grad_()
+        for tensor in expected_inputs
+    )
+    compiled_loss = torch.compile(target, fullgraph=True, dynamic=False)(*actual_inputs)
+    actual_grads = torch.autograd.grad(compiled_loss, actual_inputs)
+    torch.testing.assert_close(compiled_loss, expected_loss)
+    torch.testing.assert_close(actual_grads, expected_grads)
+
+    real, imag = inputs()
+    shape = (1, 1, modes)
+    opcheck = torch.library.opcheck(
+        torch.ops.lnet.pac_real2d_recurrence_opaque.default,
+        (
+            torch.full(shape, 0.8).expand_as(real),
+            torch.full(shape, 0.1).expand_as(imag),
+            real,
+            imag,
+            False,
+        ),
+        raise_exception=True,
+    )
+    assert all(value == "SUCCESS" for value in opcheck.values())

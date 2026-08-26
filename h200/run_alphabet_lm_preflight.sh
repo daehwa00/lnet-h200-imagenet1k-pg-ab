@@ -63,14 +63,16 @@ if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
 fi
 
 readonly OUTPUT_BASE="/app/output/daehwa00/alphabet-lm-preflight-v1-${H200_EXPECTED_COMMIT:0:16}"
+readonly TOOLCHAIN_ROOT="/app/output/daehwa00/alphabet-lm-preflight-v1-f691a93f50c01122"
+readonly TOOLCHAIN_CACHE_ROOT="${TOOLCHAIN_ROOT}/cache"
 readonly CACHE_ROOT="${OUTPUT_BASE}/cache"
-readonly ENV_ROOT="${OUTPUT_BASE}/environment-py${PYTHON_VERSION}"
-readonly SOURCE_ROOT="${OUTPUT_BASE}/third-party"
+readonly ENV_ROOT="${TOOLCHAIN_ROOT}/environment-py${PYTHON_VERSION}"
+readonly SOURCE_ROOT="${TOOLCHAIN_ROOT}/third-party"
 readonly RESULT_ROOT="${OUTPUT_BASE}/result"
-readonly UV_BOOTSTRAP="${OUTPUT_BASE}/uv-bootstrap-${UV_VERSION}"
-mkdir -p "${CACHE_ROOT}" "${SOURCE_ROOT}" "${RESULT_ROOT}"
-export UV_PYTHON_INSTALL_DIR="${OUTPUT_BASE}/uv-python"
-export UV_CACHE_DIR="${CACHE_ROOT}/uv"
+readonly UV_BOOTSTRAP="${TOOLCHAIN_ROOT}/uv-bootstrap-${UV_VERSION}"
+mkdir -p "${CACHE_ROOT}" "${TOOLCHAIN_CACHE_ROOT}" "${SOURCE_ROOT}" "${RESULT_ROOT}"
+export UV_PYTHON_INSTALL_DIR="${TOOLCHAIN_ROOT}/uv-python"
+export UV_CACHE_DIR="${TOOLCHAIN_CACHE_ROOT}/uv"
 
 uv_bootstrap_version() {
   PYTHONPATH="${UV_BOOTSTRAP}" python3 -m uv --version 2>/dev/null || true
@@ -86,9 +88,6 @@ fi
 uv_command() { PYTHONPATH="${UV_BOOTSTRAP}" python3 -m uv "$@"; }
 uv_command python install "${PYTHON_VERSION}"
 [[ -x "${ENV_ROOT}/bin/python" ]] || uv_command venv --python "${PYTHON_VERSION}" "${ENV_ROOT}"
-uv_command pip sync \
-  --python "${ENV_ROOT}/bin/python" --index-strategy unsafe-best-match \
-  --require-hashes --strict h200/alphabet_lm_preflight/requirements.lock
 
 checkout_source() {
   local name="$1" url="$2" commit="$3" target="${SOURCE_ROOT}/$1"
@@ -99,19 +98,59 @@ checkout_source() {
   git -C "${target}" checkout --detach "${commit}"
   [[ "$(git -C "${target}" rev-parse HEAD)" == "${commit}" ]]
 }
-checkout_source causal-conv1d https://github.com/Dao-AILab/causal-conv1d.git "${CAUSAL_CONV_COMMIT}"
-checkout_source mamba https://github.com/state-spaces/mamba.git "${MAMBA_COMMIT}"
 
-export MAX_JOBS=8
-export TORCH_CUDA_ARCH_LIST=9.0
-export CAUSAL_CONV1D_FORCE_BUILD=TRUE
-export MAMBA_FORCE_BUILD=TRUE
-uv_command pip install \
-  --python "${ENV_ROOT}/bin/python" --no-build-isolation --no-deps \
-  "${SOURCE_ROOT}/causal-conv1d"
-uv_command pip install \
-  --python "${ENV_ROOT}/bin/python" --no-build-isolation --no-deps \
-  "${SOURCE_ROOT}/mamba"
+toolchain_ready() {
+  [[ -x "${ENV_ROOT}/bin/python" ]] || return 1
+  [[ -d "${SOURCE_ROOT}/causal-conv1d/.git" ]] || return 1
+  [[ -d "${SOURCE_ROOT}/mamba/.git" ]] || return 1
+  [[ "$(git -C "${SOURCE_ROOT}/causal-conv1d" rev-parse HEAD 2>/dev/null)" == "${CAUSAL_CONV_COMMIT}" ]] || return 1
+  [[ "$(git -C "${SOURCE_ROOT}/mamba" rev-parse HEAD 2>/dev/null)" == "${MAMBA_COMMIT}" ]] || return 1
+  "${ENV_ROOT}/bin/python" - <<'PY'
+from importlib.metadata import version
+
+import causal_conv1d
+import mamba_ssm
+import torch
+
+expected = {
+    "causal-conv1d": "1.7.0",
+    "einops": "0.8.1",
+    "huggingface-hub": "0.36.2",
+    "mamba-ssm": "2.2.6.post3",
+    "tokenizers": "0.22.2",
+    "torch": "2.9.1+cu130",
+    "transformers": "4.57.1",
+    "triton": "3.5.1",
+    "wandb": "0.22.3",
+    "wheel": "0.46.2",
+}
+actual = {name: version(name) for name in expected}
+if actual != expected or torch.version.cuda != "13.0":
+    raise SystemExit(1)
+del causal_conv1d, mamba_ssm
+PY
+}
+
+if toolchain_ready; then
+  echo "ALPHABET_LM_TOOLCHAIN_REUSED=${TOOLCHAIN_ROOT}"
+else
+  uv_command pip sync \
+    --python "${ENV_ROOT}/bin/python" --index-strategy unsafe-best-match \
+    --require-hashes --strict h200/alphabet_lm_preflight/requirements.lock
+  checkout_source causal-conv1d https://github.com/Dao-AILab/causal-conv1d.git "${CAUSAL_CONV_COMMIT}"
+  checkout_source mamba https://github.com/state-spaces/mamba.git "${MAMBA_COMMIT}"
+
+  export MAX_JOBS=8
+  export TORCH_CUDA_ARCH_LIST=9.0
+  export CAUSAL_CONV1D_FORCE_BUILD=TRUE
+  export MAMBA_FORCE_BUILD=TRUE
+  uv_command pip install \
+    --python "${ENV_ROOT}/bin/python" --no-build-isolation --no-deps \
+    "${SOURCE_ROOT}/causal-conv1d"
+  uv_command pip install \
+    --python "${ENV_ROOT}/bin/python" --no-build-isolation --no-deps \
+    "${SOURCE_ROOT}/mamba"
+fi
 
 export PYTHONPATH="${PROJECT_ROOT}/src:${PROJECT_ROOT}/scripts"
 export CUDA_VISIBLE_DEVICES=0
