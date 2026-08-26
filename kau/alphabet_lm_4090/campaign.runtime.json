@@ -1,6 +1,6 @@
 {
   "campaign_id": "kau-alphabet-lm-pole-init-10m-s501-v1",
-  "campaign_manifest_sha256": "f87683050d64f30cb566309a75476ef87ab51e1c7e6f67db7689bb70916f67cb",
+  "campaign_manifest_sha256": "2d727d8345dbd4b48d0e178a57975efee614e1e1d0f5f7237e64273fce0229dd",
   "dataset": {
     "context_length": 2048,
     "cross_document_packing": false,
@@ -19,7 +19,7 @@
   },
   "entity": "daehwa",
   "environment": {
-    "causal_conv1d": "1.6.2.post1",
+    "causal_conv1d": null,
     "gpu": "NVIDIA GeForce RTX 4090",
     "mamba_ssm": "2.3.2.post1",
     "torch": "2.9.1+cu128",

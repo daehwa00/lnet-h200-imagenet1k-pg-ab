@@ -53,7 +53,6 @@ expected = {
     "torch": "2.9.1+cu128",
     "triton": "3.5.1",
     "mamba-ssm": "2.3.2.post1",
-    "causal-conv1d": "1.6.2.post1",
     "pyarrow": "23.0.1",
 }
 actual = {name: version(name) for name in expected}
