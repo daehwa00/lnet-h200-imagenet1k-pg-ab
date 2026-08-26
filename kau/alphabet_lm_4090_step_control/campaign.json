@@ -1,0 +1,41 @@
+{
+  "schema": "lnet.kau.alphabet_lm.step_control_2m.v1",
+  "campaign_id": "kau-alphabet-lm-step-control-2m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-step-control-2m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "version": "v1",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051"
+  },
+  "experiment": {
+    "model": "Legacy R2K3 P320",
+    "question": "Does four times more optimizer updates at the same token budget move the plateau?",
+    "reference_global_sequences": 32,
+    "active_global_sequences": 8,
+    "expected_updates_approx": 292,
+    "parameters": 34794496
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 2000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 8,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": ["alphabet-legacy-step4x"]
+  },
+  "parameter_counts": {"alphabet-legacy-step4x": 34794496},
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-StepControl-2M-S501-v1"
+  }
+}

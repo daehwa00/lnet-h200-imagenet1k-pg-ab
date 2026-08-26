@@ -30,6 +30,7 @@ KAU_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.pole_init_10m.runtime.v1"
 KAU_GROUPED_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.grouped_h8p128_10m.runtime.v1"
 KAU_DENSE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dense_k3_p320_10m.runtime.v1"
 KAU_ROUTING_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dynamic_routing_2m.runtime.v1"
+KAU_STEP_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.step_control_2m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -296,6 +297,7 @@ def main() -> None:
         KAU_GROUPED_RUNTIME_SCHEMA,
         KAU_DENSE_RUNTIME_SCHEMA,
         KAU_ROUTING_RUNTIME_SCHEMA,
+        KAU_STEP_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
