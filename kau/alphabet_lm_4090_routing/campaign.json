@@ -1,0 +1,48 @@
+{
+  "schema": "lnet.kau.alphabet_lm.dynamic_routing_2m.v1",
+  "campaign_id": "kau-alphabet-lm-dynamic-routing-2m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-dynamic-routing-2m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "version": "v1",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051"
+  },
+  "architecture": {
+    "K": 256,
+    "P": 320,
+    "layers": 12,
+    "reader": "R2K3",
+    "pole_initialization": "legacy",
+    "router_hidden": 32,
+    "gate": "one_plus_tanh",
+    "gate_initialization": "neutral_exact_one",
+    "fixed_lifetimes": true,
+    "global_post_hidden": 384
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 2000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": ["alphabet-dynamic-write", "alphabet-dynamic-write-read"]
+  },
+  "parameter_counts": {
+    "alphabet-dynamic-write": 35117056,
+    "alphabet-dynamic-write-read": 35239936
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-DynamicRouting-2M-S501-v1"
+  }
+}

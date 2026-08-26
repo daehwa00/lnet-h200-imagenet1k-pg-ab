@@ -33,6 +33,8 @@ class AlphabetLMConfig:
     rms_epsilon: float = 1.0e-6
     pole_initialization: Literal["legacy", "lifetime_palette"] = "legacy"
     reader_type: Literal["r2k3", "dense_k3"] = "r2k3"
+    pole_routing: Literal["static", "dynamic_write", "dynamic_write_read"] = "static"
+    router_hidden: int = 32
     minimum_half_life: float = 2.0
     maximum_half_life: float = 8_192.0
     decay_dominant_fraction: float = 0.5
@@ -43,7 +45,7 @@ class AlphabetLMConfig:
         values = (
             self.vocab_size, self.modes, self.pole_modes, self.layers, self.reader_rank,
             self.reader_kernel, self.post_hidden, self.context_length,
-            self.memory_banks, self.bank_pole_modes,
+            self.memory_banks, self.bank_pole_modes, self.router_hidden,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -57,6 +59,10 @@ class AlphabetLMConfig:
             raise ValueError("ALPHABET-LM modes must divide evenly across memory banks")
         if self.reader_type == "dense_k3" and self.memory_banks != 1:
             raise ValueError("dense K3 reader requires the single-bank configuration")
+        if self.pole_routing != "static" and self.memory_banks != 1:
+            raise ValueError("dynamic pole routing currently requires a single memory bank")
+        if self.pole_routing not in {"static", "dynamic_write", "dynamic_write_read"}:
+            raise ValueError("invalid ALPHABET-LM pole routing")
 
     @property
     def model_width(self) -> int:
@@ -393,6 +399,35 @@ class FixedComplexPoleMemory1D(nn.Module):
         return state_real.to(drive_real.dtype), state_imag.to(drive_imag.dtype)
 
 
+class LowRankPoleRouter(nn.Module):
+    def __init__(
+        self,
+        modes: int,
+        pole_modes: int,
+        *,
+        hidden_modes: int,
+        read_gate: bool,
+    ) -> None:
+        super().__init__()
+        self.pole_modes = pole_modes
+        self.read_gate = read_gate
+        self.norm = ComplexRMSNorm(modes)
+        self.input = nn.Linear(2 * modes, hidden_modes, bias=False)
+        outputs = pole_modes * (2 if read_gate else 1)
+        self.output = nn.Linear(hidden_modes, outputs, bias=False)
+        nn.init.xavier_uniform_(self.input.weight)
+        nn.init.zeros_(self.output.weight)
+
+    def forward(self, real: Tensor, imag: Tensor) -> tuple[Tensor, Tensor | None]:
+        unit_real, unit_imag = self.norm(real, imag)
+        hidden = functional.silu(self.input(torch.cat((unit_real, unit_imag), dim=-1)))
+        gates = 1.0 + torch.tanh(self.output(hidden))
+        if self.read_gate:
+            write_gate, read_gate = gates.split(self.pole_modes, dim=-1)
+            return write_gate, read_gate
+        return gates, None
+
+
 class AlphabetLMBlock(nn.Module):
     def __init__(self, config: AlphabetLMConfig) -> None:
         super().__init__()
@@ -429,10 +464,26 @@ class AlphabetLMBlock(nn.Module):
             banks=config.memory_banks,
         )
         self.post_fusion = GatedComplexPostFusion(config.modes, config.post_hidden)
+        if config.pole_routing == "static":
+            self.router = None
+        else:
+            with torch.random.fork_rng(devices=[]):
+                self.router = LowRankPoleRouter(
+                    config.modes,
+                    config.total_pole_modes,
+                    hidden_modes=config.router_hidden,
+                    read_gate=config.pole_routing == "dynamic_write_read",
+                )
 
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         drive = self.reader(real, imag)
+        read_gate = None
+        if self.router is not None:
+            write_gate, read_gate = self.router(real, imag)
+            drive = drive[0] * write_gate, drive[1] * write_gate
         state = self.memory(*drive)
+        if read_gate is not None:
+            state = state[0] * read_gate, state[1] * read_gate
         memory = self.writer(*state)
         return self.post_fusion(real + memory[0], imag + memory[1])
 
@@ -463,5 +514,5 @@ __all__ = [
     "AlphabetLM", "AlphabetLMBlock", "AlphabetLMConfig",
     "CausalFactorizedComplexConv1dReader", "DenseComplexConv1dReader",
     "FixedComplexPoleMemory1D", "GroupedCausalFactorizedComplexConv1dReader",
-    "GroupedPackedComplexLinear",
+    "GroupedPackedComplexLinear", "LowRankPoleRouter",
 ]

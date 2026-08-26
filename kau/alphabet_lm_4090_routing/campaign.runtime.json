@@ -1,0 +1,78 @@
+{
+  "architecture": {
+    "K": 256,
+    "P": 320,
+    "fixed_lifetimes": true,
+    "gate": "one_plus_tanh",
+    "gate_initialization": "neutral_exact_one",
+    "global_post_hidden": 384,
+    "layers": 12,
+    "pole_initialization": "legacy",
+    "reader": "R2K3",
+    "router_hidden": 32
+  },
+  "campaign_id": "kau-alphabet-lm-dynamic-routing-2m-s501-v1",
+  "campaign_manifest_sha256": "4afe2227853221047802b5a7cd9b527dd5596ddaae62a96fce201bb6e8f64485",
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-DynamicRouting-2M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-dynamic-routing-2m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051",
+    "version": "v1"
+  },
+  "parameter_counts": {
+    "alphabet-dynamic-write": 35117056,
+    "alphabet-dynamic-write-read": 35239936
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet-dynamic-write": {
+      "display_name": "RTX4090-S501-ALPHABET-DynamicWrite-2M",
+      "id": "da09d878aeb51abc",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "2M",
+        "alphabet-dynamic-write",
+        "fixed-lifetime",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    },
+    "alphabet-dynamic-write-read": {
+      "display_name": "RTX4090-S501-ALPHABET-DynamicWriteRead-2M",
+      "id": "1e8c99645e2e83b7",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "2M",
+        "alphabet-dynamic-write-read",
+        "fixed-lifetime",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.dynamic_routing_2m.runtime.v1",
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-dynamic-write",
+      "alphabet-dynamic-write-read"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 2000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

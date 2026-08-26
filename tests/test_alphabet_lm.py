@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+from typing import Literal, cast
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -132,6 +133,30 @@ def test_dense_k3_starts_from_the_same_function_as_r2k3() -> None:
     torch.testing.assert_close(actual, expected, atol=2.0e-5, rtol=2.0e-5)
     full = AlphabetLM(AlphabetLMConfig(reader_type="dense_k3"))
     assert sum(parameter.numel() for parameter in full.parameters()) == 36_714_496
+
+
+def test_dynamic_pole_routers_are_neutral_at_initialization() -> None:
+    torch.manual_seed(501)
+    baseline = AlphabetLM(AlphabetLMConfig())
+    tokens = torch.randint(32_768, (1, 9))
+    with torch.no_grad():
+        expected = baseline(tokens)
+    for routing, parameters in (
+        ("dynamic_write", 35_117_056),
+        ("dynamic_write_read", 35_239_936),
+    ):
+        torch.manual_seed(501)
+        model = AlphabetLM(
+            AlphabetLMConfig(
+                pole_routing=cast(
+                    "Literal['static', 'dynamic_write', 'dynamic_write_read']", routing
+                )
+            )
+        )
+        with torch.no_grad():
+            actual = model(tokens)
+        torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+        assert sum(parameter.numel() for parameter in model.parameters()) == parameters
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:

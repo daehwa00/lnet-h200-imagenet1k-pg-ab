@@ -50,7 +50,9 @@ def _step(model: nn.Module, tokens: Tensor) -> dict[str, float]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--only", choices=("all", "palette", "grouped", "dense"), default="all"
+        "--only",
+        choices=("all", "palette", "grouped", "dense", "routing"),
+        default="all",
     )
     args = parser.parse_args()
     if not torch.cuda.is_available() or "4090" not in torch.cuda.get_device_name().upper():
@@ -64,7 +66,7 @@ def main() -> None:
     )
     if args.only == "palette":
         alphabet_variants = alphabet_variants[1:]
-    elif args.only in {"grouped", "dense"}:
+    elif args.only in {"grouped", "dense", "routing"}:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
         torch.manual_seed(501)
@@ -96,6 +98,12 @@ def main() -> None:
         if sum(parameter.numel() for parameter in dense.parameters()) != 36_714_496:
             raise RuntimeError("dense K3 P320 parameter contract changed")
         results["alphabet-dense-k3-p320"] = _step(dense, tokens)
+    if args.only == "routing":
+        torch.manual_seed(501)
+        routed = AlphabetLM(AlphabetLMConfig(pole_routing="dynamic_write_read"))
+        if sum(parameter.numel() for parameter in routed.parameters()) != 35_239_936:
+            raise RuntimeError("dynamic write/read parameter contract changed")
+        results["alphabet-dynamic-write-read"] = _step(routed, tokens)
     if args.only == "all":
         torch.manual_seed(501)
         mamba, parameters, relative_error = build_parameter_matched_mamba(
