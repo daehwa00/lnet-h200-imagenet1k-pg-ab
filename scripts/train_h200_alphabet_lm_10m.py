@@ -21,7 +21,11 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional
 
-from lnet.alphabet_lm import AlphabetLM, AlphabetLMConfig
+from lnet.alphabet_lm import (
+    AlphabetLM,
+    AlphabetLMConfig,
+    QueryConditionedLowRankReadout,
+)
 from lnet.alphabet_lm_data import TokenBlockDataset, sha256_file
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 
@@ -31,6 +35,7 @@ KAU_GROUPED_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.grouped_h8p128_10m.runtime.v1
 KAU_DENSE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dense_k3_p320_10m.runtime.v1"
 KAU_ROUTING_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dynamic_routing_2m.runtime.v1"
 KAU_STEP_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.step_control_2m.runtime.v1"
+KAU_DECODER_READOUT_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.decoder_readout_screen_2m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -93,6 +98,30 @@ def _parameter_count(model: nn.Module) -> int:
     return sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad)
 
 
+@torch.no_grad()
+def _copy_matching_legacy_initialization(
+    model: AlphabetLM,
+    *,
+    vocab_size: int,
+    seed: int,
+) -> tuple[int, int]:
+    """Make all shape-compatible parameters identical to the seeded Legacy control."""
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(seed)
+        reference = AlphabetLM(AlphabetLMConfig(vocab_size=vocab_size))
+    source = dict(reference.named_parameters())
+    copied_tensors = 0
+    copied_parameters = 0
+    for name, parameter in model.named_parameters():
+        candidate = source.get(name)
+        if candidate is None or candidate.shape != parameter.shape:
+            continue
+        parameter.copy_(candidate)
+        copied_tensors += 1
+        copied_parameters += parameter.numel()
+    return copied_tensors, copied_parameters
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -114,13 +143,17 @@ def _build(
     bank_pole_modes: int = 128,
     reader_type: str = "r2k3",
     pole_routing: str = "static",
+    post_hidden: int = 384,
+    memory_readout: str = "fixed",
+    query_read_rank: int = 32,
+    query_read_initial_scale: float = 0.05,
 ) -> tuple[nn.Module, dict[str, Any]]:
     alphabet_config = AlphabetLMConfig(
         vocab_size=vocab_size,
         modes=256,
         pole_modes=320,
         layers=12,
-        post_hidden=384,
+        post_hidden=post_hidden,
         context_length=2_048,
         scan_fp32=True,
         pole_initialization=cast("Any", pole_initialization),
@@ -128,6 +161,9 @@ def _build(
         bank_pole_modes=bank_pole_modes,
         reader_type=cast("Any", reader_type),
         pole_routing=cast("Any", pole_routing),
+        memory_readout=cast("Any", memory_readout),
+        query_read_rank=query_read_rank,
+        query_read_initial_scale=query_read_initial_scale,
     )
     if model_name == "alphabet":
         return AlphabetLM(alphabet_config), {
@@ -285,6 +321,11 @@ def main() -> None:
         choices=("static", "dynamic_write", "dynamic_write_read"),
         default="static",
     )
+    parser.add_argument("--post-hidden", type=int, default=384)
+    parser.add_argument("--memory-readout", choices=("fixed", "query_low_rank"), default="fixed")
+    parser.add_argument("--query-read-rank", type=int, default=32)
+    parser.add_argument("--query-read-initial-scale", type=float, default=0.05)
+    parser.add_argument("--paired-legacy-initialization", action="store_true")
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--train-manifest", type=Path, required=True)
     parser.add_argument("--validation-manifest", type=Path, required=True)
@@ -298,6 +339,7 @@ def main() -> None:
         KAU_DENSE_RUNTIME_SCHEMA,
         KAU_ROUTING_RUNTIME_SCHEMA,
         KAU_STEP_RUNTIME_SCHEMA,
+        KAU_DECODER_READOUT_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -331,13 +373,43 @@ def main() -> None:
         bank_pole_modes=args.bank_pole_modes,
         reader_type=args.reader_type,
         pole_routing=args.pole_routing,
+        post_hidden=args.post_hidden,
+        memory_readout=args.memory_readout,
+        query_read_rank=args.query_read_rank,
+        query_read_initial_scale=args.query_read_initial_scale,
     )
+    paired_initialization: dict[str, int | bool] = {"enabled": False}
+    if args.paired_legacy_initialization:
+        if not isinstance(model, AlphabetLM):
+            raise RuntimeError("paired Legacy initialization requires ALPHABET-LM")
+        copied_tensors, copied_parameters = _copy_matching_legacy_initialization(
+            model,
+            vocab_size=train.manifest.vocab_size,
+            seed=seed,
+        )
+        paired_initialization = {
+            "enabled": True,
+            "copied_tensors": copied_tensors,
+            "copied_parameters": copied_parameters,
+        }
+    variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
+    if variant_contract is not None:
+        expected_variant = {
+            "post_hidden": args.post_hidden,
+            "memory_readout": args.memory_readout,
+            "query_read_rank": args.query_read_rank,
+        }
+        if "query_read_initial_scale" in variant_contract:
+            expected_variant["query_read_initial_scale"] = args.query_read_initial_scale
+        if any(variant_contract.get(key) != value for key, value in expected_variant.items()):
+            raise RuntimeError("decoder/readout variant arguments changed")
+        expected_copied = variant_contract.get("paired_legacy_copied_parameters")
+        if paired_initialization.get("copied_parameters") != expected_copied:
+            raise RuntimeError("paired Legacy initialization coverage changed")
     model = model.to(device)
     parameters = _parameter_count(model)
     default_parameters = 34_794_496 if args.model == "alphabet" else 35_425_280
-    expected_parameters = runtime.get("parameter_counts", {}).get(
-        run_label, default_parameters
-    )
+    expected_parameters = runtime.get("parameter_counts", {}).get(run_label, default_parameters)
     if parameters != expected_parameters:
         raise RuntimeError(f"{args.model} parameter contract changed: {parameters}")
     optimizer = torch.optim.AdamW(
@@ -369,6 +441,11 @@ def main() -> None:
         "bank_pole_modes": args.bank_pole_modes,
         "reader_type": args.reader_type,
         "pole_routing": args.pole_routing,
+        "post_hidden": args.post_hidden,
+        "memory_readout": args.memory_readout,
+        "query_read_rank": args.query_read_rank,
+        "query_read_initial_scale": args.query_read_initial_scale,
+        "paired_legacy_initialization": paired_initialization,
         "parameters": parameters,
         "training": training,
         "paper": runtime.get("paper"),
@@ -441,10 +518,20 @@ def main() -> None:
             "peak_memory_bytes": torch.cuda.max_memory_allocated(),
             "gradient_accumulation_steps": grad_steps,
         }
+        if isinstance(model, AlphabetLM):
+            query_scales = []
+            for block in model.blocks:
+                readout = block.query_readout
+                if isinstance(readout, QueryConditionedLowRankReadout):
+                    query_scales.append(float(readout.scale().detach()))
+            if query_scales:
+                row["query_read_scale_mean"] = sum(query_scales) / len(query_scales)
         if update == 1:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
-                raise RuntimeError(f"{args.model} first-update loss is invalid: {row['train_loss']}")
+                raise RuntimeError(
+                    f"{args.model} first-update loss is invalid: {row['train_loss']}"
+                )
         history.append(row)
         checkpoint_due = (
             update % int(training["checkpoint_updates"]) == 0
@@ -464,17 +551,17 @@ def main() -> None:
                 history=history,
             )
             _atomic_json(args.root / "history.json", history)
-        wandb_run.log(
-            {
-                "train/loss": row["train_loss"],
-                "training/tokens": tokens_seen,
-                "training/update": update,
-                "training/learning_rate": row["learning_rate"],
-                "performance/tokens_per_second": row["tokens_per_second"],
-                "performance/peak_memory_bytes": row["peak_memory_bytes"],
-            },
-            step=update,
-        )
+        wandb_metrics = {
+            "train/loss": row["train_loss"],
+            "training/tokens": tokens_seen,
+            "training/update": update,
+            "training/learning_rate": row["learning_rate"],
+            "performance/tokens_per_second": row["tokens_per_second"],
+            "performance/peak_memory_bytes": row["peak_memory_bytes"],
+        }
+        if "query_read_scale_mean" in row:
+            wandb_metrics["model/query_read_scale_mean"] = row["query_read_scale_mean"]
+        wandb_run.log(wandb_metrics, step=update)
         print("ALPHABET_LM_PROGRESS=" + json.dumps(row, sort_keys=True), flush=True)
         if _STOP_EVENT.is_set():
             wandb_run.summary["status"] = "stopped"

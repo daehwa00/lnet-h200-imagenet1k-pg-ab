@@ -34,7 +34,10 @@ class AlphabetLMConfig:
     pole_initialization: Literal["legacy", "lifetime_palette"] = "legacy"
     reader_type: Literal["r2k3", "dense_k3"] = "r2k3"
     pole_routing: Literal["static", "dynamic_write", "dynamic_write_read"] = "static"
+    memory_readout: Literal["fixed", "query_low_rank"] = "fixed"
     router_hidden: int = 32
+    query_read_rank: int = 32
+    query_read_initial_scale: float = 0.05
     minimum_half_life: float = 2.0
     maximum_half_life: float = 8_192.0
     decay_dominant_fraction: float = 0.5
@@ -43,9 +46,18 @@ class AlphabetLMConfig:
 
     def __post_init__(self) -> None:
         values = (
-            self.vocab_size, self.modes, self.pole_modes, self.layers, self.reader_rank,
-            self.reader_kernel, self.post_hidden, self.context_length,
-            self.memory_banks, self.bank_pole_modes, self.router_hidden,
+            self.vocab_size,
+            self.modes,
+            self.pole_modes,
+            self.layers,
+            self.reader_rank,
+            self.reader_kernel,
+            self.post_hidden,
+            self.context_length,
+            self.memory_banks,
+            self.bank_pole_modes,
+            self.router_hidden,
+            self.query_read_rank,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -63,6 +75,10 @@ class AlphabetLMConfig:
             raise ValueError("dynamic pole routing currently requires a single memory bank")
         if self.pole_routing not in {"static", "dynamic_write", "dynamic_write_read"}:
             raise ValueError("invalid ALPHABET-LM pole routing")
+        if self.memory_readout not in {"fixed", "query_low_rank"}:
+            raise ValueError("invalid ALPHABET-LM memory readout")
+        if not 0.0 < self.query_read_initial_scale < 1.0:
+            raise ValueError("query read initial scale must lie strictly between zero and one")
 
     @property
     def model_width(self) -> int:
@@ -124,9 +140,7 @@ class CausalFactorizedComplexConv1dReader(nn.Module):
         def causal(source: Tensor, weight: Tensor) -> Tensor:
             packed = source.permute(0, 2, 3, 1).reshape(batch, channels, steps)
             padded = functional.pad(packed, (self.kernel_size - 1, 0))
-            return functional.conv1d(
-                padded, weight, groups=self.output_modes
-            ).transpose(1, 2)
+            return functional.conv1d(padded, weight, groups=self.output_modes).transpose(1, 2)
 
         return (
             causal(point_real, self.temporal_weight_real)
@@ -179,9 +193,9 @@ class GroupedCausalFactorizedComplexConv1dReader(nn.Module):
         shape = (batch, steps, self.banks, self.input_modes_per_bank)
         grouped_real = real.reshape(shape)
         grouped_imag = imag.reshape(shape)
-        energy = (
-            grouped_real.float().square() + grouped_imag.float().square()
-        ).mean(dim=-1, keepdim=True)
+        energy = (grouped_real.float().square() + grouped_imag.float().square()).mean(
+            dim=-1, keepdim=True
+        )
         scale = torch.rsqrt(energy + 1.0e-6).to(real.dtype)
         weight = self.norm_weight.to(real.dtype).view(1, 1, self.banks, -1)
         grouped_real = grouped_real * scale * weight
@@ -200,9 +214,7 @@ class GroupedCausalFactorizedComplexConv1dReader(nn.Module):
             weights = weight_source.reshape(
                 self.banks * self.poles_per_bank, self.rank, self.kernel_size
             )
-            output = functional.conv1d(
-                padded, weights, groups=self.banks * self.poles_per_bank
-            )
+            output = functional.conv1d(padded, weights, groups=self.banks * self.poles_per_bank)
             return output.transpose(1, 2).reshape(batch, steps, -1)
 
         return (
@@ -240,17 +252,13 @@ class DenseComplexConv1dReader(nn.Module):
         with torch.no_grad():
             dense.input_norm.weight.copy_(source.input_norm.weight)
             dense.weight_real.copy_(
-                torch.einsum(
-                    "prl,prk->pkl", source.temporal_weight_real, source.point_weight_real
-                )
+                torch.einsum("prl,prk->pkl", source.temporal_weight_real, source.point_weight_real)
                 - torch.einsum(
                     "prl,prk->pkl", source.temporal_weight_imag, source.point_weight_imag
                 )
             )
             dense.weight_imag.copy_(
-                torch.einsum(
-                    "prl,prk->pkl", source.temporal_weight_real, source.point_weight_imag
-                )
+                torch.einsum("prl,prk->pkl", source.temporal_weight_real, source.point_weight_imag)
                 + torch.einsum(
                     "prl,prk->pkl", source.temporal_weight_imag, source.point_weight_real
                 )
@@ -344,9 +352,7 @@ class FixedComplexPoleMemory1D(nn.Module):
             octaves = round(math.log2(maximum_half_life / minimum_half_life))
             if not math.isclose(minimum_half_life * 2**octaves, maximum_half_life):
                 raise ValueError("lifetime palette bounds must span complete octaves")
-            anchors = minimum_half_life * 2.0 ** torch.arange(
-                octaves + 1, dtype=torch.float32
-            )
+            anchors = minimum_half_life * 2.0 ** torch.arange(octaves + 1, dtype=torch.float32)
             anchor_indices = torch.arange(modes_per_bank) * anchors.numel() // modes_per_bank
             half_lives = anchors[anchor_indices]
             damping = math.log(2.0) / half_lives
@@ -428,12 +434,74 @@ class LowRankPoleRouter(nn.Module):
         return gates, None
 
 
+class QueryConditionedLowRankReadout(nn.Module):
+    """Add a small content-conditioned bilinear read from pole state.
+
+    The established fixed writer remains the primary readout.  The current
+    token queries a low-rank summary of the recurrent pole state, so the
+    experiment changes state access without changing pole dynamics or the
+    downstream PostFusion decoder.
+    """
+
+    def __init__(
+        self,
+        modes: int,
+        pole_modes: int,
+        *,
+        rank: int,
+        initial_scale: float,
+    ) -> None:
+        super().__init__()
+        if min(modes, pole_modes, rank) <= 0 or not 0.0 < initial_scale < 1.0:
+            raise ValueError("invalid query-conditioned readout configuration")
+        self.modes = int(modes)
+        self.pole_modes = int(pole_modes)
+        self.rank = int(rank)
+        self.query_norm = ComplexRMSNorm(modes)
+        self.query = nn.Linear(2 * modes, rank, bias=False)
+        self.state_projection = PackedComplexLinear(pole_modes, rank)
+        self.output_projection = PackedComplexLinear(rank, modes)
+        initial_logit = math.log(initial_scale / (1.0 - initial_scale))
+        self.raw_scale = nn.Parameter(torch.tensor(initial_logit))
+        nn.init.xavier_uniform_(self.query.weight)
+
+    def scale(self) -> Tensor:
+        return torch.sigmoid(self.raw_scale)
+
+    def forward(
+        self,
+        query_real: Tensor,
+        query_imag: Tensor,
+        state_real: Tensor,
+        state_imag: Tensor,
+        base_real: Tensor,
+        base_imag: Tensor,
+    ) -> ComplexField:
+        if query_real.shape != query_imag.shape or query_real.shape[-1] != self.modes:
+            raise ValueError("query-conditioned readout query has incompatible shapes")
+        if state_real.shape != state_imag.shape or state_real.shape[-1] != self.pole_modes:
+            raise ValueError("query-conditioned readout state has incompatible shapes")
+        if base_real.shape != base_imag.shape or base_real.shape != query_real.shape:
+            raise ValueError("query-conditioned readout base memory has incompatible shapes")
+        unit_real, unit_imag = self.query_norm(query_real, query_imag)
+        query = functional.silu(self.query(torch.cat((unit_real, unit_imag), dim=-1)))
+        summary_real, summary_imag = self.state_projection(state_real, state_imag)
+        dynamic_real, dynamic_imag = self.output_projection(
+            summary_real * query,
+            summary_imag * query,
+        )
+        scale = self.scale().to(dtype=base_real.dtype)
+        return base_real + scale * dynamic_real, base_imag + scale * dynamic_imag
+
+
 class AlphabetLMBlock(nn.Module):
     def __init__(self, config: AlphabetLMConfig) -> None:
         super().__init__()
         if config.memory_banks == 1:
             factorized_reader = CausalFactorizedComplexConv1dReader(
-                config.modes, config.pole_modes, rank=config.reader_rank,
+                config.modes,
+                config.pole_modes,
+                rank=config.reader_rank,
                 kernel_size=config.reader_kernel,
             )
             self.reader = (
@@ -464,6 +532,16 @@ class AlphabetLMBlock(nn.Module):
             banks=config.memory_banks,
         )
         self.post_fusion = GatedComplexPostFusion(config.modes, config.post_hidden)
+        if config.memory_readout == "query_low_rank":
+            with torch.random.fork_rng(devices=[]):
+                self.query_readout = QueryConditionedLowRankReadout(
+                    config.modes,
+                    config.total_pole_modes,
+                    rank=config.query_read_rank,
+                    initial_scale=config.query_read_initial_scale,
+                )
+        else:
+            self.query_readout = None
         if config.pole_routing == "static":
             self.router = None
         else:
@@ -485,6 +563,8 @@ class AlphabetLMBlock(nn.Module):
         if read_gate is not None:
             state = state[0] * read_gate, state[1] * read_gate
         memory = self.writer(*state)
+        if self.query_readout is not None:
+            memory = self.query_readout(real, imag, *state, *memory)
         return self.post_fusion(real + memory[0], imag + memory[1])
 
 
@@ -511,8 +591,14 @@ class AlphabetLM(nn.Module):
 
 
 __all__ = [
-    "AlphabetLM", "AlphabetLMBlock", "AlphabetLMConfig",
-    "CausalFactorizedComplexConv1dReader", "DenseComplexConv1dReader",
-    "FixedComplexPoleMemory1D", "GroupedCausalFactorizedComplexConv1dReader",
-    "GroupedPackedComplexLinear", "LowRankPoleRouter",
+    "AlphabetLM",
+    "AlphabetLMBlock",
+    "AlphabetLMConfig",
+    "CausalFactorizedComplexConv1dReader",
+    "DenseComplexConv1dReader",
+    "FixedComplexPoleMemory1D",
+    "GroupedCausalFactorizedComplexConv1dReader",
+    "GroupedPackedComplexLinear",
+    "LowRankPoleRouter",
+    "QueryConditionedLowRankReadout",
 ]

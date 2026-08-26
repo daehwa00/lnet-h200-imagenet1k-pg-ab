@@ -1,0 +1,78 @@
+{
+  "schema": "lnet.kau.alphabet_lm.decoder_readout_screen_2m.v1",
+  "campaign_id": "kau-alphabet-lm-decoder-readout-screen-2m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-decoder-readout-screen-2m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "version": "v1",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051"
+  },
+  "architecture": {
+    "K": 256,
+    "P": 320,
+    "layers": 12,
+    "reader": "R2K3",
+    "pole_initialization": "legacy",
+    "fixed_lifetimes": true,
+    "variants": {
+      "alphabet-legacy-control": {
+        "post_hidden": 384,
+        "memory_readout": "fixed",
+        "query_read_rank": 32,
+        "paired_legacy_copied_parameters": 34794496
+      },
+      "alphabet-wide-post512": {
+        "post_hidden": 512,
+        "memory_readout": "fixed",
+        "query_read_rank": 32,
+        "paired_legacy_copied_parameters": 22998016
+      },
+      "alphabet-qread-r32": {
+        "post_hidden": 384,
+        "memory_readout": "query_low_rank",
+        "query_read_rank": 32,
+        "paired_legacy_copied_parameters": 34794496,
+        "query_read_initial_scale": 0.15,
+        "target_initial_branch_to_base_rms": 0.05,
+        "query_read_gate": "silu",
+        "query_read_equation": "C0(h)+scale*U(q(x)*V(h))"
+      }
+    }
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 2000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-legacy-control",
+      "alphabet-wide-post512",
+      "alphabet-qread-r32"
+    ]
+  },
+  "parameter_counts": {
+    "alphabet-legacy-control": 34794496,
+    "alphabet-wide-post512": 38726656,
+    "alphabet-qread-r32": 35436556
+  },
+  "diagnostics": {
+    "validation_sequence_limit": 512,
+    "context_segments": [2048, 128, 32, 1],
+    "memory_zero": true
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-DecoderReadout-2M-S501-v1"
+  }
+}

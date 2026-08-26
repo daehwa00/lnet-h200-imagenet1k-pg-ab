@@ -51,7 +51,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--only",
-        choices=("all", "palette", "grouped", "dense", "routing"),
+        choices=("all", "palette", "grouped", "dense", "routing", "qread"),
         default="all",
     )
     args = parser.parse_args()
@@ -66,7 +66,7 @@ def main() -> None:
     )
     if args.only == "palette":
         alphabet_variants = alphabet_variants[1:]
-    elif args.only in {"grouped", "dense", "routing"}:
+    elif args.only in {"grouped", "dense", "routing", "qread"}:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
         torch.manual_seed(501)
@@ -104,6 +104,18 @@ def main() -> None:
         if sum(parameter.numel() for parameter in routed.parameters()) != 35_239_936:
             raise RuntimeError("dynamic write/read parameter contract changed")
         results["alphabet-dynamic-write-read"] = _step(routed, tokens)
+    if args.only == "qread":
+        torch.manual_seed(501)
+        qread = AlphabetLM(
+            AlphabetLMConfig(
+                memory_readout="query_low_rank",
+                query_read_rank=32,
+                query_read_initial_scale=0.15,
+            )
+        )
+        if sum(parameter.numel() for parameter in qread.parameters()) != 35_436_556:
+            raise RuntimeError("query-read R32 parameter contract changed")
+        results["alphabet-qread-r32"] = _step(qread, tokens)
     if args.only == "all":
         torch.manual_seed(501)
         mamba, parameters, relative_error = build_parameter_matched_mamba(

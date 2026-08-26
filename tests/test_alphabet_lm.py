@@ -10,10 +10,16 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
 
-from lnet.alphabet_lm import AlphabetLM, AlphabetLMConfig, FixedComplexPoleMemory1D
+from lnet.alphabet_lm import (
+    AlphabetLM,
+    AlphabetLMConfig,
+    FixedComplexPoleMemory1D,
+    QueryConditionedLowRankReadout,
+)
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 from lnet.pac_triton_recurrence_op import pac_triton_recurrence_opaque_op
 from scripts.prepare_h200_alphabet_lm_data import _parquet_to_jsonl, _split_documents
+from scripts.train_h200_alphabet_lm_10m import _copy_matching_legacy_initialization
 
 
 def _small() -> AlphabetLMConfig:
@@ -159,14 +165,107 @@ def test_dynamic_pole_routers_are_neutral_at_initialization() -> None:
         assert sum(parameter.numel() for parameter in model.parameters()) == parameters
 
 
+def test_query_conditioned_low_rank_readout_is_small_nonzero_and_content_dependent() -> None:
+    torch.manual_seed(501)
+    readout = QueryConditionedLowRankReadout(
+        8,
+        12,
+        rank=4,
+        initial_scale=0.05,
+    )
+    state_real = torch.randn(2, 5, 12)
+    state_imag = torch.randn(2, 5, 12)
+    base_real = torch.randn(2, 5, 8)
+    base_imag = torch.randn(2, 5, 8)
+    query_real = torch.randn(2, 5, 8)
+    query_imag = torch.randn(2, 5, 8)
+    first = readout(
+        query_real,
+        query_imag,
+        state_real,
+        state_imag,
+        base_real,
+        base_imag,
+    )
+    second = readout(
+        -query_real,
+        query_imag,
+        state_real,
+        state_imag,
+        base_real,
+        base_imag,
+    )
+    delta = torch.cat((first[0] - base_real, first[1] - base_imag), dim=-1)
+    base = torch.cat((base_real, base_imag), dim=-1)
+    ratio = (delta.square().mean().sqrt() / base.square().mean().sqrt()).detach()
+    assert 0.0 < float(ratio) < 0.2
+    assert not torch.allclose(first[0], second[0])
+    torch.testing.assert_close(readout.scale(), torch.tensor(0.05))
+
+
+def test_query_read_r32_model_contract_and_gradients() -> None:
+    full = AlphabetLM(AlphabetLMConfig(memory_readout="query_low_rank", query_read_rank=32))
+    assert sum(parameter.numel() for parameter in full.parameters()) == 35_436_556
+    torch.manual_seed(501)
+    model = AlphabetLM(
+        AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=2,
+            post_hidden=12,
+            context_length=16,
+            memory_readout="query_low_rank",
+            query_read_rank=4,
+        )
+    )
+    tokens = torch.randint(64, (2, 17))
+    logits = model(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), tokens[:, 1:].flatten())
+    loss.backward()
+    assert all(
+        parameter.grad is not None and bool(torch.isfinite(parameter.grad).all())
+        for parameter in model.parameters()
+    )
+
+
+def test_decoder_readout_variants_copy_every_shape_compatible_legacy_parameter() -> None:
+    torch.manual_seed(501)
+    reference = AlphabetLM(AlphabetLMConfig())
+    reference_parameters = dict(reference.named_parameters())
+    for config, expected_copied in (
+        (AlphabetLMConfig(post_hidden=512), 22_998_016),
+        (
+            AlphabetLMConfig(
+                memory_readout="query_low_rank",
+                query_read_rank=32,
+                query_read_initial_scale=0.15,
+            ),
+            34_794_496,
+        ),
+    ):
+        torch.manual_seed(501)
+        model = AlphabetLM(config)
+        if config.post_hidden == 512:
+            assert sum(parameter.numel() for parameter in model.parameters()) == 38_726_656
+        _tensors, copied = _copy_matching_legacy_initialization(
+            model,
+            vocab_size=32_768,
+            seed=501,
+        )
+        assert copied == expected_copied
+        for name, parameter in model.named_parameters():
+            source = reference_parameters.get(name)
+            if source is not None and source.shape == parameter.shape:
+                torch.testing.assert_close(parameter, source, atol=0.0, rtol=0.0)
+
+
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:
     root = Path(__file__).resolve().parents[1]
-    requirements = (
-        root / "h200/alphabet_lm_preflight/requirements.txt"
-    ).read_text(encoding="utf-8")
-    lock = (root / "h200/alphabet_lm_preflight/requirements.lock").read_text(
+    requirements = (root / "h200/alphabet_lm_preflight/requirements.txt").read_text(
         encoding="utf-8"
     )
+    lock = (root / "h200/alphabet_lm_preflight/requirements.lock").read_text(encoding="utf-8")
     for requirement in (
         "einops==0.8.1",
         "ninja==1.13.0",
@@ -193,9 +292,7 @@ def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:
 
 def test_parameter_matched_mamba_uses_official_lm_initialization() -> None:
     torch.manual_seed(501)
-    model, parameters, relative_error = build_parameter_matched_mamba(
-        34_794_496, MambaLMConfig()
-    )
+    model, parameters, relative_error = build_parameter_matched_mamba(34_794_496, MambaLMConfig())
     assert parameters == 35_425_280
     assert relative_error < 0.03
     state = model.model.state_dict()
@@ -285,8 +382,6 @@ def test_fineweb_document_conversion_splits_before_tokenization(tmp_path: Path) 
         salt="fixed",
     )
     train_ids = {json.loads(line)["id"] for line in train.read_text().splitlines()}
-    validation_ids = {
-        json.loads(line)["id"] for line in validation.read_text().splitlines()
-    }
+    validation_ids = {json.loads(line)["id"] for line in validation.read_text().splitlines()}
     assert train_ids.isdisjoint(validation_ids)
     assert train_ids | validation_ids == {f"doc-{index}" for index in range(100)}

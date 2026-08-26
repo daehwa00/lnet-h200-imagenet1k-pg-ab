@@ -1,0 +1,123 @@
+{
+  "architecture": {
+    "K": 256,
+    "P": 320,
+    "fixed_lifetimes": true,
+    "layers": 12,
+    "pole_initialization": "legacy",
+    "reader": "R2K3",
+    "variants": {
+      "alphabet-legacy-control": {
+        "memory_readout": "fixed",
+        "paired_legacy_copied_parameters": 34794496,
+        "post_hidden": 384,
+        "query_read_rank": 32
+      },
+      "alphabet-qread-r32": {
+        "memory_readout": "query_low_rank",
+        "paired_legacy_copied_parameters": 34794496,
+        "post_hidden": 384,
+        "query_read_equation": "C0(h)+scale*U(q(x)*V(h))",
+        "query_read_gate": "silu",
+        "query_read_initial_scale": 0.15,
+        "query_read_rank": 32,
+        "target_initial_branch_to_base_rms": 0.05
+      },
+      "alphabet-wide-post512": {
+        "memory_readout": "fixed",
+        "paired_legacy_copied_parameters": 22998016,
+        "post_hidden": 512,
+        "query_read_rank": 32
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-decoder-readout-screen-2m-s501-v1",
+  "campaign_manifest_sha256": "0e226b08db2a36c0d058c50bf0c85850fdc524f72d6e40010e14c78cbd518cd2",
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      128,
+      32,
+      1
+    ],
+    "memory_zero": true,
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-DecoderReadout-2M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-decoder-readout-screen-2m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051",
+    "version": "v1"
+  },
+  "parameter_counts": {
+    "alphabet-legacy-control": 34794496,
+    "alphabet-qread-r32": 35436556,
+    "alphabet-wide-post512": 38726656
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet-legacy-control": {
+      "display_name": "RTX4090-S501-ALPHABET-Legacy-Control-2M",
+      "id": "94e4075377750915",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "2M",
+        "alphabet-legacy-control",
+        "decoder-readout-screen",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    },
+    "alphabet-qread-r32": {
+      "display_name": "RTX4090-S501-ALPHABET-QReadR32-2M",
+      "id": "deea9869ecfcce3a",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "2M",
+        "alphabet-qread-r32",
+        "decoder-readout-screen",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    },
+    "alphabet-wide-post512": {
+      "display_name": "RTX4090-S501-ALPHABET-WidePost512-2M",
+      "id": "61aec6e4c5a080bd",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "2M",
+        "alphabet-wide-post512",
+        "decoder-readout-screen",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.decoder_readout_screen_2m.runtime.v1",
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-legacy-control",
+      "alphabet-wide-post512",
+      "alphabet-qread-r32"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 2000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}
