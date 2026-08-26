@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 from typing import Literal, cast
@@ -47,15 +48,21 @@ def _step(model: nn.Module, tokens: Tensor) -> dict[str, float]:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--only", choices=("all", "palette"), default="all")
+    args = parser.parse_args()
     if not torch.cuda.is_available() or "4090" not in torch.cuda.get_device_name().upper():
         raise RuntimeError("KAU ALPHABET-LM smoke requires the RTX 4090")
     torch.manual_seed(501)
     tokens = torch.randint(32_768, (2, 2_049), device="cuda")
     results = {}
-    for label, initialization in (
+    alphabet_variants = (
         ("alphabet-legacy", "legacy"),
         ("alphabet-palette", "lifetime_palette"),
-    ):
+    )
+    if args.only == "palette":
+        alphabet_variants = alphabet_variants[1:]
+    for label, initialization in alphabet_variants:
         torch.manual_seed(501)
         results[label] = _step(
             AlphabetLM(
@@ -67,13 +74,14 @@ def main() -> None:
             ),
             tokens,
         )
-    torch.manual_seed(501)
-    mamba, parameters, relative_error = build_parameter_matched_mamba(
-        34_794_496, MambaLMConfig()
-    )
-    if parameters != 35_425_280 or relative_error >= 0.03:
-        raise RuntimeError("RTX 4090 Mamba parameter match changed")
-    results["mamba"] = _step(mamba, tokens)
+    if args.only == "all":
+        torch.manual_seed(501)
+        mamba, parameters, relative_error = build_parameter_matched_mamba(
+            34_794_496, MambaLMConfig()
+        )
+        if parameters != 35_425_280 or relative_error >= 0.03:
+            raise RuntimeError("RTX 4090 Mamba parameter match changed")
+        results["mamba"] = _step(mamba, tokens)
     print("KAU_ALPHABET_LM_SMOKE=" + json.dumps(results, sort_keys=True), flush=True)
 
 

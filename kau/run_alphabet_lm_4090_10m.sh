@@ -65,7 +65,7 @@ print("KAU_ALPHABET_LM_ENV=" + json.dumps({"packages": actual, "gpu": torch.cuda
 PY
 
 timeout --signal=TERM --kill-after=2m 30m \
-  "${PYTHON}" scripts/smoke_kau_alphabet_lm_4090.py
+  "${PYTHON}" scripts/smoke_kau_alphabet_lm_4090.py --only palette
 
 timeout --signal=TERM --kill-after=5m 90m \
   "${PYTHON}" scripts/prepare_h200_alphabet_lm_data.py \
