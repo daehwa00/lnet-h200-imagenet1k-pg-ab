@@ -60,7 +60,8 @@ actual = {name: version(name) for name in expected}
 if actual != expected or not torch.cuda.is_available() or "4090" not in torch.cuda.get_device_name():
     raise RuntimeError(f"invalid KAU ALPHABET-LM environment: {actual}")
 viewer = wandb.Api(timeout=15).viewer
-print("KAU_ALPHABET_LM_ENV=" + json.dumps({"packages": actual, "gpu": torch.cuda.get_device_name(), "wandb_user": viewer.get("username")}, sort_keys=True))
+viewer_name = getattr(viewer, "username", str(viewer))
+print("KAU_ALPHABET_LM_ENV=" + json.dumps({"packages": actual, "gpu": torch.cuda.get_device_name(), "wandb_user": viewer_name}, sort_keys=True))
 PY
 
 timeout --signal=TERM --kill-after=2m 30m \
