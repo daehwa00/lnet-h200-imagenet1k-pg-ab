@@ -18,6 +18,7 @@ from lnet.alphabet_lm_data import TokenBlockManifest, sha256_file
 
 SPECIAL_TOKENS = ("<pad>", "<eos>", "<unk>")
 RUNTIME_SCHEMA = "lnet.h200.alphabet_lm.viability_10m.runtime.v1"
+KAU_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.pole_init_10m.runtime.v1"
 
 
 def _atomic_json(path: Path, payload: object) -> None:
@@ -209,7 +210,7 @@ def main() -> None:
     parser.add_argument("--root", type=Path, required=True)
     args = parser.parse_args()
     runtime = json.loads(args.runtime.read_text(encoding="utf-8"))
-    if runtime.get("schema") != RUNTIME_SCHEMA:
+    if runtime.get("schema") not in {RUNTIME_SCHEMA, KAU_RUNTIME_SCHEMA}:
         raise RuntimeError("invalid H200 ALPHABET-LM data runtime")
     contract = cast("dict[str, Any]", runtime["dataset"])
     args.root.mkdir(parents=True, exist_ok=True)

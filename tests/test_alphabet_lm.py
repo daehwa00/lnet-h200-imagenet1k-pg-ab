@@ -2,13 +2,14 @@ from __future__ import annotations
 
 # pyright: reportMissingImports=false, reportPrivateUsage=false
 import json
+import math
 from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
 
-from lnet.alphabet_lm import AlphabetLM, AlphabetLMConfig
+from lnet.alphabet_lm import AlphabetLM, AlphabetLMConfig, FixedComplexPoleMemory1D
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 from lnet.pac_triton_recurrence_op import pac_triton_recurrence_opaque_op
 from scripts.prepare_h200_alphabet_lm_data import _parquet_to_jsonl, _split_documents
@@ -49,6 +50,24 @@ def test_alphabet_lm_is_causal_and_has_finite_gradients() -> None:
         parameter.grad is not None and bool(torch.isfinite(parameter.grad).all())
         for parameter in model.parameters()
     )
+
+
+def test_lifetime_palette_spans_two_to_8192_with_decay_dominant_modes() -> None:
+    config = AlphabetLMConfig(pole_initialization="lifetime_palette")
+    model = AlphabetLM(config)
+    memory = FixedComplexPoleMemory1D(
+        320,
+        context_length=2_048,
+        scan_fp32=True,
+        initialization="lifetime_palette",
+    )
+    half_lives = math.log(2.0) / memory.damping().detach()
+    expected = 2.0 ** torch.arange(1, 14, dtype=torch.float32)
+    torch.testing.assert_close(torch.unique(half_lives).sort().values, expected)
+    assert int((memory.frequency().detach() == 0).sum()) == 160
+    assert memory.raw_damping.requires_grad
+    assert memory.raw_frequency.requires_grad
+    assert sum(parameter.numel() for parameter in model.parameters()) == 34_794_496
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:

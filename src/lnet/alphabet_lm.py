@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Literal
 
 import torch
 from torch import Tensor, nn
@@ -30,6 +31,10 @@ class AlphabetLMConfig:
     context_length: int = 2_048
     scan_fp32: bool = True
     rms_epsilon: float = 1.0e-6
+    pole_initialization: Literal["legacy", "lifetime_palette"] = "legacy"
+    minimum_half_life: float = 2.0
+    maximum_half_life: float = 8_192.0
+    decay_dominant_fraction: float = 0.5
 
     def __post_init__(self) -> None:
         values = (
@@ -38,6 +43,12 @@ class AlphabetLMConfig:
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
+        if (
+            self.pole_initialization not in {"legacy", "lifetime_palette"}
+            or self.minimum_half_life >= self.maximum_half_life
+            or not 0.0 <= self.decay_dominant_fraction <= 1.0
+        ):
+            raise ValueError("invalid ALPHABET-LM pole initialization")
 
     @property
     def model_width(self) -> int:
@@ -108,19 +119,53 @@ class CausalFactorizedComplexConv1dReader(nn.Module):
 class FixedComplexPoleMemory1D(nn.Module):
     minimum_damping = 1.0e-5
 
-    def __init__(self, modes: int, *, context_length: int, scan_fp32: bool) -> None:
+    def __init__(
+        self,
+        modes: int,
+        *,
+        context_length: int,
+        scan_fp32: bool,
+        initialization: Literal["legacy", "lifetime_palette"] = "legacy",
+        minimum_half_life: float = 2.0,
+        maximum_half_life: float = 8_192.0,
+        decay_dominant_fraction: float = 0.5,
+    ) -> None:
         super().__init__()
         self.modes = int(modes)
         self.context_length = int(context_length)
         self.scan_fp32 = bool(scan_fp32)
-        damping = torch.logspace(
-            math.log10(1.0 / context_length), math.log10(0.5), modes
-        )
+        if initialization == "legacy":
+            damping = torch.logspace(
+                math.log10(1.0 / context_length), math.log10(0.5), modes
+            )
+            periods = torch.logspace(
+                math.log10(4.0), math.log10(float(context_length)), modes
+            ).flip(0)
+            frequency = (2.0 * math.pi / periods).clamp_max(0.95 * math.pi)
+        elif initialization == "lifetime_palette":
+            octaves = round(math.log2(maximum_half_life / minimum_half_life))
+            if not math.isclose(minimum_half_life * 2**octaves, maximum_half_life):
+                raise ValueError("lifetime palette bounds must span complete octaves")
+            anchors = minimum_half_life * 2.0 ** torch.arange(
+                octaves + 1, dtype=torch.float32
+            )
+            anchor_indices = torch.arange(modes) * anchors.numel() // modes
+            half_lives = anchors[anchor_indices]
+            damping = math.log(2.0) / half_lives
+            frequency = torch.zeros(modes)
+            decay_modes = round(modes * decay_dominant_fraction)
+            decay_indices = torch.linspace(0, modes - 1, decay_modes).round().long()
+            oscillatory = torch.ones(modes, dtype=torch.bool)
+            oscillatory[decay_indices] = False
+            periods = torch.logspace(
+                math.log10(4.0),
+                math.log10(maximum_half_life),
+                int(oscillatory.sum()),
+            )
+            frequency[oscillatory] = 2.0 * math.pi / periods
+        else:
+            raise ValueError("unknown fixed-pole initialization")
         self.raw_damping = nn.Parameter(torch.log(torch.expm1(damping - self.minimum_damping)))
-        periods = torch.logspace(
-            math.log10(4.0), math.log10(float(context_length)), modes
-        ).flip(0)
-        frequency = (2.0 * math.pi / periods).clamp_max(0.95 * math.pi)
         self.raw_frequency = nn.Parameter(torch.atanh((frequency / math.pi).clamp(-0.999, 0.999)))
 
     def damping(self) -> Tensor:
@@ -164,6 +209,10 @@ class AlphabetLMBlock(nn.Module):
             config.pole_modes,
             context_length=config.context_length,
             scan_fp32=config.scan_fp32,
+            initialization=config.pole_initialization,
+            minimum_half_life=config.minimum_half_life,
+            maximum_half_life=config.maximum_half_life,
+            decay_dominant_fraction=config.decay_dominant_fraction,
         )
         self.writer = PackedComplexLinear(config.pole_modes, config.modes)
         self.post_fusion = GatedComplexPostFusion(config.modes, config.post_hidden)

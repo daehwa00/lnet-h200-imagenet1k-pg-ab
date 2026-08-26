@@ -1,0 +1,116 @@
+{
+  "campaign_id": "kau-alphabet-lm-pole-init-10m-s501-v1",
+  "campaign_manifest_sha256": "f87683050d64f30cb566309a75476ef87ab51e1c7e6f67db7689bb70916f67cb",
+  "dataset": {
+    "context_length": 2048,
+    "cross_document_packing": false,
+    "document_split_salt": "alphabet-lm-fineweb-edu-v1",
+    "filename": "sample/10BT/000_00000.parquet",
+    "repo_id": "HuggingFaceFW/fineweb-edu",
+    "repo_type": "dataset",
+    "revision": "87f09149ef4734204d70ed1d046ddc9ca3f2b8f9",
+    "sha256": "b1ba7b2ce4cb5ea6ef42dca40263eabb85f37700d01693a68e9b30a31d78e871",
+    "size_bytes": 2152819114,
+    "tokenizer": "ByteLevel-BPE",
+    "train_token_limit": 300000000,
+    "validation_fraction": 0.03,
+    "validation_token_limit": 10000000,
+    "vocab_size": 32768
+  },
+  "entity": "daehwa",
+  "environment": {
+    "causal_conv1d": "1.6.2.post1",
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "mamba_ssm": "2.3.2.post1",
+    "torch": "2.9.1+cu128",
+    "triton": "3.5.1"
+  },
+  "group": "ALPHABET-LM-RTX4090-PoleInit-10M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-pole-init-10m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051",
+    "version": "v1"
+  },
+  "pole_palette": {
+    "damping_trainable": true,
+    "decay_dominant_fraction": 0.5,
+    "frequency_trainable": true,
+    "half_life_anchors": [
+      2,
+      4,
+      8,
+      16,
+      32,
+      64,
+      128,
+      256,
+      512,
+      1024,
+      2048,
+      4096,
+      8192
+    ]
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet-legacy": {
+      "display_name": "RTX4090-S501-ALPHABET-LegacyInit-10M",
+      "id": "8348e6503a398aa4",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "10M",
+        "alphabet-legacy",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    },
+    "alphabet-palette": {
+      "display_name": "RTX4090-S501-ALPHABET-LifetimePalette-10M",
+      "id": "392f2eff34eb8618",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "10M",
+        "alphabet-palette",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    },
+    "mamba": {
+      "display_name": "RTX4090-S501-OfficialMamba-10M",
+      "id": "54bfa60106163c27",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "10M",
+        "mamba",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.pole_init_10m.runtime.v1",
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-legacy",
+      "alphabet-palette",
+      "mamba"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 10000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

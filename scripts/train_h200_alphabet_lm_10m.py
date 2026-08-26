@@ -26,6 +26,7 @@ from lnet.alphabet_lm_data import TokenBlockDataset, sha256_file
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 
 RUNTIME_SCHEMA = "lnet.h200.alphabet_lm.viability_10m.runtime.v1"
+KAU_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.pole_init_10m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -100,7 +101,12 @@ def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, in
     return loss, int((labels != pad_id).sum())
 
 
-def _build(model_name: str, vocab_size: int) -> tuple[nn.Module, dict[str, Any]]:
+def _build(
+    model_name: str,
+    vocab_size: int,
+    *,
+    pole_initialization: str = "legacy",
+) -> tuple[nn.Module, dict[str, Any]]:
     alphabet_config = AlphabetLMConfig(
         vocab_size=vocab_size,
         modes=256,
@@ -109,6 +115,7 @@ def _build(model_name: str, vocab_size: int) -> tuple[nn.Module, dict[str, Any]]
         post_hidden=384,
         context_length=2_048,
         scan_fp32=True,
+        pole_initialization=cast("Any", pole_initialization),
     )
     if model_name == "alphabet":
         return AlphabetLM(alphabet_config), {
@@ -166,22 +173,24 @@ def _evaluate(
     return total_loss / total_tokens
 
 
-def _wandb_run(runtime: dict[str, Any], model_name: str, root: Path, contract: dict[str, Any]) -> Any:
+def _wandb_run(
+    runtime: dict[str, Any], run_label: str, root: Path, contract: dict[str, Any]
+) -> Any:
     import wandb
 
-    label = f"{model_name}-10m"
-    record = runtime["runs"][label]
-    expected = {
-        "WANDB_API_KEY": "0" * 40,
-        "WANDB_APP_URL": runtime["wandb_app_url"],
-        "WANDB_BASE_URL": runtime["wandb_base_url"],
-        "WANDB_ENTITY": runtime["entity"],
-        "WANDB_PROJECT": runtime["project"],
-        "WANDB_GROUP": runtime["group"],
-        "WANDB_CONSOLE": runtime["console"],
-    }
-    if any(os.environ.get(name) != value for name, value in expected.items()):
-        raise RuntimeError("H200 LM training W&B environment changed")
+    record = runtime["runs"][run_label]
+    if runtime["schema"] == RUNTIME_SCHEMA:
+        expected = {
+            "WANDB_API_KEY": "0" * 40,
+            "WANDB_APP_URL": runtime["wandb_app_url"],
+            "WANDB_BASE_URL": runtime["wandb_base_url"],
+            "WANDB_ENTITY": runtime["entity"],
+            "WANDB_PROJECT": runtime["project"],
+            "WANDB_GROUP": runtime["group"],
+            "WANDB_CONSOLE": runtime["console"],
+        }
+        if any(os.environ.get(name) != value for name, value in expected.items()):
+            raise RuntimeError("H200 LM training W&B environment changed")
     tracking = root / "wandb"
     tracking.mkdir(parents=True, exist_ok=True)
     run = wandb.init(
@@ -250,13 +259,21 @@ def _save_checkpoint(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", choices=("alphabet", "mamba"), required=True)
+    parser.add_argument("--run-label")
+    parser.add_argument(
+        "--pole-initialization",
+        choices=("legacy", "lifetime_palette"),
+        default="legacy",
+    )
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--train-manifest", type=Path, required=True)
     parser.add_argument("--validation-manifest", type=Path, required=True)
     parser.add_argument("--root", type=Path, required=True)
     args = parser.parse_args()
     runtime = cast("dict[str, Any]", json.loads(args.runtime.read_text(encoding="utf-8")))
-    if runtime.get("schema") != RUNTIME_SCHEMA or runtime["training"]["scan_fp32"] is not True:
+    if runtime.get("schema") not in {RUNTIME_SCHEMA, KAU_RUNTIME_SCHEMA}:
+        raise RuntimeError("invalid H200/KAU LM training runtime")
+    if runtime["training"]["scan_fp32"] is not True:
         raise RuntimeError("invalid or non-FP32 H200 LM training runtime")
     training = runtime["training"]
     args.root.mkdir(parents=True, exist_ok=True)
@@ -278,7 +295,11 @@ def main() -> None:
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     device = torch.device("cuda")
-    model, model_contract = _build(args.model, train.manifest.vocab_size)
+    model, model_contract = _build(
+        args.model,
+        train.manifest.vocab_size,
+        pole_initialization=args.pole_initialization,
+    )
     model = model.to(device)
     parameters = _parameter_count(model)
     expected_parameters = 34_794_496 if args.model == "alphabet" else 35_425_280
@@ -308,8 +329,10 @@ def main() -> None:
         "campaign_manifest_sha256": runtime["campaign_manifest_sha256"],
         "source_commit": os.environ["H200_EXPECTED_COMMIT"],
         "model": model_contract,
+        "pole_initialization": args.pole_initialization,
         "parameters": parameters,
         "training": training,
+        "paper": runtime.get("paper"),
         "train_manifest_sha256": sha256_file(args.train_manifest),
         "validation_manifest_sha256": sha256_file(args.validation_manifest),
     }
@@ -339,7 +362,8 @@ def main() -> None:
         torch.set_rng_state(payload["torch_rng_state"])
         torch.cuda.set_rng_state_all(payload["cuda_rng_state"])
         random.setstate(payload["python_rng_state"])
-    wandb_run = _wandb_run(runtime, args.model, args.root, contract)
+    run_label = args.run_label or f"{args.model}-10m"
+    wandb_run = _wandb_run(runtime, run_label, args.root, contract)
     runtime_model = cast(
         "nn.Module", torch.compile(model, mode="default", fullgraph=False, dynamic=False)
     )

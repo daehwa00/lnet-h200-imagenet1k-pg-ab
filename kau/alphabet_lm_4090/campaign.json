@@ -1,0 +1,61 @@
+{
+  "schema": "lnet.kau.alphabet_lm.pole_init_10m.v1",
+  "campaign_id": "kau-alphabet-lm-pole-init-10m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-pole-init-10m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "version": "v1",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051"
+  },
+  "dataset": {
+    "repo_id": "HuggingFaceFW/fineweb-edu",
+    "repo_type": "dataset",
+    "revision": "87f09149ef4734204d70ed1d046ddc9ca3f2b8f9",
+    "filename": "sample/10BT/000_00000.parquet",
+    "size_bytes": 2152819114,
+    "sha256": "b1ba7b2ce4cb5ea6ef42dca40263eabb85f37700d01693a68e9b30a31d78e871",
+    "document_split_salt": "alphabet-lm-fineweb-edu-v1",
+    "validation_fraction": 0.03,
+    "tokenizer": "ByteLevel-BPE",
+    "vocab_size": 32768,
+    "context_length": 2048,
+    "train_token_limit": 300000000,
+    "validation_token_limit": 10000000,
+    "cross_document_packing": false
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 10000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": ["alphabet-legacy", "alphabet-palette", "mamba"]
+  },
+  "pole_palette": {
+    "half_life_anchors": [2,4,8,16,32,64,128,256,512,1024,2048,4096,8192],
+    "decay_dominant_fraction": 0.5,
+    "damping_trainable": true,
+    "frequency_trainable": true
+  },
+  "environment": {
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "torch": "2.9.1+cu128",
+    "mamba_ssm": "2.3.2.post1",
+    "causal_conv1d": "1.6.2.post1",
+    "triton": "3.5.1"
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-PoleInit-10M-S501-v1"
+  }
+}
