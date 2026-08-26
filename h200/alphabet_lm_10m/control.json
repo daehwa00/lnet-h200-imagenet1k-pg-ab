@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-alphabet-lm-viability-10m-s501-v1",
-  "target_commit": "0000000000000000000000000000000000000000",
-  "generation": 1,
-  "action": "stop",
-  "updated_at": "2026-08-26T00:00:00+09:00",
-  "reason": "safe default until the corrected preflight and 10M queue are armed"
+  "target_commit": "d1bc4a7f04dc8f89083091d346d607d8852584af",
+  "generation": 2,
+  "action": "run",
+  "updated_at": "2026-08-26T14:53:38+09:00",
+  "reason": "arm corrected preflight with automatic paired 10M training handoff"
 }
