@@ -88,7 +88,7 @@ uv_command python install "${PYTHON_VERSION}"
 [[ -x "${ENV_ROOT}/bin/python" ]] || uv_command venv --python "${PYTHON_VERSION}" "${ENV_ROOT}"
 uv_command pip sync \
   --python "${ENV_ROOT}/bin/python" --index-strategy unsafe-best-match \
-  --require-hashes --strict h200/requirements.lock
+  --require-hashes --strict h200/alphabet_lm_preflight/requirements.lock
 uv_command pip install --python "${ENV_ROOT}/bin/python" --no-deps einops==0.8.1
 
 checkout_source() {
@@ -104,6 +104,7 @@ checkout_source causal-conv1d https://github.com/Dao-AILab/causal-conv1d.git "${
 checkout_source mamba https://github.com/state-spaces/mamba.git "${MAMBA_COMMIT}"
 
 export MAX_JOBS=8
+export TORCH_CUDA_ARCH_LIST=9.0
 export CAUSAL_CONV1D_FORCE_BUILD=TRUE
 export MAMBA_FORCE_BUILD=TRUE
 uv_command pip install \
@@ -162,6 +163,8 @@ if platform.python_version() != "3.13.11":
     raise RuntimeError("unexpected Python in ALPHABET-LM preflight")
 if not torch.cuda.is_available() or "H200" not in torch.cuda.get_device_name().upper():
     raise RuntimeError("ALPHABET-LM preflight requires H200")
+if torch.version.cuda != "13.0":
+    raise RuntimeError(f"ALPHABET-LM native build requires PyTorch cu130, got {torch.version.cuda}")
 print(
     "ALPHABET_LM_ENV="
     + json.dumps(

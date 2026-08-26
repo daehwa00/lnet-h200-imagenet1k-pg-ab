@@ -1,0 +1,10 @@
+--extra-index-url https://download.pytorch.org/whl/cu130
+
+numpy==2.4.6
+Pillow==12.1.0
+scipy==1.16.3
+ninja==1.13.0
+torch==2.9.1+cu130
+torchvision==0.24.1+cu130
+triton==3.5.1
+wandb==0.22.3
