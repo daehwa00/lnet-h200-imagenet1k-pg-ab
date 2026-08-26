@@ -27,6 +27,7 @@ from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 
 RUNTIME_SCHEMA = "lnet.h200.alphabet_lm.viability_10m.runtime.v1"
 KAU_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.pole_init_10m.runtime.v1"
+KAU_GROUPED_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.grouped_h8p128_10m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -106,6 +107,8 @@ def _build(
     vocab_size: int,
     *,
     pole_initialization: str = "legacy",
+    memory_banks: int = 1,
+    bank_pole_modes: int = 128,
 ) -> tuple[nn.Module, dict[str, Any]]:
     alphabet_config = AlphabetLMConfig(
         vocab_size=vocab_size,
@@ -116,6 +119,8 @@ def _build(
         context_length=2_048,
         scan_fp32=True,
         pole_initialization=cast("Any", pole_initialization),
+        memory_banks=memory_banks,
+        bank_pole_modes=bank_pole_modes,
     )
     if model_name == "alphabet":
         return AlphabetLM(alphabet_config), {
@@ -265,17 +270,24 @@ def main() -> None:
         choices=("legacy", "lifetime_palette"),
         default="legacy",
     )
+    parser.add_argument("--memory-banks", type=int, default=1)
+    parser.add_argument("--bank-pole-modes", type=int, default=128)
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--train-manifest", type=Path, required=True)
     parser.add_argument("--validation-manifest", type=Path, required=True)
     parser.add_argument("--root", type=Path, required=True)
     args = parser.parse_args()
     runtime = cast("dict[str, Any]", json.loads(args.runtime.read_text(encoding="utf-8")))
-    if runtime.get("schema") not in {RUNTIME_SCHEMA, KAU_RUNTIME_SCHEMA}:
+    if runtime.get("schema") not in {
+        RUNTIME_SCHEMA,
+        KAU_RUNTIME_SCHEMA,
+        KAU_GROUPED_RUNTIME_SCHEMA,
+    }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
         raise RuntimeError("invalid or non-FP32 H200 LM training runtime")
     training = runtime["training"]
+    run_label = args.run_label or f"{args.model}-10m"
     args.root.mkdir(parents=True, exist_ok=True)
     completed = args.root / "completed.json"
     if completed.is_file():
@@ -299,10 +311,15 @@ def main() -> None:
         args.model,
         train.manifest.vocab_size,
         pole_initialization=args.pole_initialization,
+        memory_banks=args.memory_banks,
+        bank_pole_modes=args.bank_pole_modes,
     )
     model = model.to(device)
     parameters = _parameter_count(model)
-    expected_parameters = 34_794_496 if args.model == "alphabet" else 35_425_280
+    default_parameters = 34_794_496 if args.model == "alphabet" else 35_425_280
+    expected_parameters = runtime.get("parameter_counts", {}).get(
+        run_label, default_parameters
+    )
     if parameters != expected_parameters:
         raise RuntimeError(f"{args.model} parameter contract changed: {parameters}")
     optimizer = torch.optim.AdamW(
@@ -330,6 +347,8 @@ def main() -> None:
         "source_commit": os.environ["H200_EXPECTED_COMMIT"],
         "model": model_contract,
         "pole_initialization": args.pole_initialization,
+        "memory_banks": args.memory_banks,
+        "bank_pole_modes": args.bank_pole_modes,
         "parameters": parameters,
         "training": training,
         "paper": runtime.get("paper"),
@@ -362,7 +381,6 @@ def main() -> None:
         torch.set_rng_state(payload["torch_rng_state"])
         torch.cuda.set_rng_state_all(payload["cuda_rng_state"])
         random.setstate(payload["python_rng_state"])
-    run_label = args.run_label or f"{args.model}-10m"
     wandb_run = _wandb_run(runtime, run_label, args.root, contract)
     runtime_model = cast(
         "nn.Module", torch.compile(model, mode="default", fullgraph=False, dynamic=False)

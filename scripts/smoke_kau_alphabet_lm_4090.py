@@ -49,7 +49,7 @@ def _step(model: nn.Module, tokens: Tensor) -> dict[str, float]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--only", choices=("all", "palette"), default="all")
+    parser.add_argument("--only", choices=("all", "palette", "grouped"), default="all")
     args = parser.parse_args()
     if not torch.cuda.is_available() or "4090" not in torch.cuda.get_device_name().upper():
         raise RuntimeError("KAU ALPHABET-LM smoke requires the RTX 4090")
@@ -62,6 +62,8 @@ def main() -> None:
     )
     if args.only == "palette":
         alphabet_variants = alphabet_variants[1:]
+    elif args.only == "grouped":
+        alphabet_variants = ()
     for label, initialization in alphabet_variants:
         torch.manual_seed(501)
         results[label] = _step(
@@ -74,6 +76,18 @@ def main() -> None:
             ),
             tokens,
         )
+    if args.only == "grouped":
+        torch.manual_seed(501)
+        grouped = AlphabetLM(
+            AlphabetLMConfig(
+                pole_initialization="lifetime_palette",
+                memory_banks=8,
+                bank_pole_modes=128,
+            )
+        )
+        if sum(parameter.numel() for parameter in grouped.parameters()) != 31_373_824:
+            raise RuntimeError("grouped H8P128 parameter contract changed")
+        results["alphabet-grouped-h8p128"] = _step(grouped, tokens)
     if args.only == "all":
         torch.manual_seed(501)
         mamba, parameters, relative_error = build_parameter_matched_mamba(

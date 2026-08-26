@@ -70,6 +70,36 @@ def test_lifetime_palette_spans_two_to_8192_with_decay_dominant_modes() -> None:
     assert sum(parameter.numel() for parameter in model.parameters()) == 34_794_496
 
 
+def test_grouped_h8p128_memory_contract() -> None:
+    config = AlphabetLMConfig(
+        pole_initialization="lifetime_palette",
+        memory_banks=8,
+        bank_pole_modes=128,
+    )
+    model = AlphabetLM(config)
+    assert config.total_pole_modes == 1_024
+    assert sum(parameter.numel() for parameter in model.parameters()) == 31_373_824
+    reader_parameters = sum(
+        parameter.numel()
+        for name, parameter in model.named_parameters()
+        if name.startswith("blocks.0.reader.")
+    )
+    writer_parameters = sum(
+        parameter.numel()
+        for name, parameter in model.named_parameters()
+        if name.startswith("blocks.0.writer.")
+    )
+    assert reader_parameters == 143_616
+    assert writer_parameters == 65_536
+    tokens = torch.randint(config.vocab_size, (1, 9))
+    changed = tokens.clone()
+    changed[:, 6:] = torch.randint(config.vocab_size, changed[:, 6:].shape)
+    with torch.no_grad():
+        expected = model(tokens)
+        actual = model(changed)
+    torch.testing.assert_close(expected[:, :6], actual[:, :6], atol=1.0e-6, rtol=0.0)
+
+
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:
     root = Path(__file__).resolve().parents[1]
     requirements = (

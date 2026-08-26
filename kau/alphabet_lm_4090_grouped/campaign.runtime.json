@@ -1,0 +1,65 @@
+{
+  "architecture": {
+    "K": 256,
+    "K_per_bank": 32,
+    "banks": 8,
+    "decay_dominant_fraction": 0.5,
+    "global_post_hidden": 384,
+    "parameters": 31373824,
+    "pole_initialization": "lifetime_palette",
+    "poles_per_bank": 128,
+    "reader_kernel": 3,
+    "reader_rank": 2,
+    "total_poles": 1024
+  },
+  "campaign_id": "kau-alphabet-lm-grouped-h8p128-10m-s501-v1",
+  "campaign_manifest_sha256": "f09a4b5e8caefc33c06bff0df02a4b5a857c58a181023ee67771b0bbcf1cc111",
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-GroupedH8P128-10M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-grouped-h8p128-10m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051",
+    "version": "v1"
+  },
+  "parameter_counts": {
+    "alphabet-grouped-h8p128": 31373824
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet-grouped-h8p128": {
+      "display_name": "RTX4090-S501-ALPHABET-GroupedH8P128-10M",
+      "id": "92f9347b0e5bcc15",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "10M",
+        "grouped-memory",
+        "H8",
+        "P128",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.grouped_h8p128_10m.runtime.v1",
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-grouped-h8p128"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 10000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

@@ -35,11 +35,14 @@ class AlphabetLMConfig:
     minimum_half_life: float = 2.0
     maximum_half_life: float = 8_192.0
     decay_dominant_fraction: float = 0.5
+    memory_banks: int = 1
+    bank_pole_modes: int = 128
 
     def __post_init__(self) -> None:
         values = (
             self.vocab_size, self.modes, self.pole_modes, self.layers, self.reader_rank,
             self.reader_kernel, self.post_hidden, self.context_length,
+            self.memory_banks, self.bank_pole_modes,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -49,10 +52,18 @@ class AlphabetLMConfig:
             or not 0.0 <= self.decay_dominant_fraction <= 1.0
         ):
             raise ValueError("invalid ALPHABET-LM pole initialization")
+        if self.modes % self.memory_banks:
+            raise ValueError("ALPHABET-LM modes must divide evenly across memory banks")
 
     @property
     def model_width(self) -> int:
         return 2 * self.modes
+
+    @property
+    def total_pole_modes(self) -> int:
+        if self.memory_banks == 1:
+            return self.pole_modes
+        return self.memory_banks * self.bank_pole_modes
 
 
 class CausalFactorizedComplexConv1dReader(nn.Module):
@@ -116,6 +127,118 @@ class CausalFactorizedComplexConv1dReader(nn.Module):
         )
 
 
+class GroupedCausalFactorizedComplexConv1dReader(nn.Module):
+    def __init__(
+        self,
+        input_modes: int,
+        poles_per_bank: int,
+        *,
+        banks: int,
+        rank: int = 2,
+        kernel_size: int = 3,
+    ) -> None:
+        super().__init__()
+        if input_modes % banks or min(input_modes, poles_per_bank, banks, rank) <= 0:
+            raise ValueError("invalid grouped causal reader dimensions")
+        self.input_modes = input_modes
+        self.banks = banks
+        self.input_modes_per_bank = input_modes // banks
+        self.poles_per_bank = poles_per_bank
+        self.rank = rank
+        self.kernel_size = kernel_size
+        self.norm_weight = nn.Parameter(torch.ones(banks, self.input_modes_per_bank))
+        point_shape = (banks, poles_per_bank, rank, self.input_modes_per_bank)
+        temporal_shape = (banks, poles_per_bank, rank, kernel_size)
+        self.point_weight_real = nn.Parameter(torch.empty(point_shape))
+        self.point_weight_imag = nn.Parameter(torch.empty(point_shape))
+        self.temporal_weight_real = nn.Parameter(torch.empty(temporal_shape))
+        self.temporal_weight_imag = nn.Parameter(torch.empty(temporal_shape))
+        for bank in range(banks):
+            nn.init.xavier_uniform_(self.point_weight_real[bank])
+            nn.init.xavier_uniform_(self.point_weight_imag[bank])
+        with torch.no_grad():
+            self.point_weight_real.mul_(math.sqrt(0.5))
+            self.point_weight_imag.mul_(math.sqrt(0.5))
+            self.temporal_weight_real.zero_()
+            self.temporal_weight_imag.zero_()
+            self.temporal_weight_real[..., -1].fill_(1.0 / math.sqrt(rank))
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        if real.shape != imag.shape or real.ndim != 3 or real.shape[-1] != self.input_modes:
+            raise ValueError("grouped reader expects matching B,T,K coordinates")
+        batch, steps, _modes = real.shape
+        shape = (batch, steps, self.banks, self.input_modes_per_bank)
+        grouped_real = real.reshape(shape)
+        grouped_imag = imag.reshape(shape)
+        energy = (
+            grouped_real.float().square() + grouped_imag.float().square()
+        ).mean(dim=-1, keepdim=True)
+        scale = torch.rsqrt(energy + 1.0e-6).to(real.dtype)
+        weight = self.norm_weight.to(real.dtype).view(1, 1, self.banks, -1)
+        grouped_real = grouped_real * scale * weight
+        grouped_imag = grouped_imag * scale * weight
+        point_real = torch.einsum(
+            "bthk,hprk->bthpr", grouped_real, self.point_weight_real
+        ) - torch.einsum("bthk,hprk->bthpr", grouped_imag, self.point_weight_imag)
+        point_imag = torch.einsum(
+            "bthk,hprk->bthpr", grouped_real, self.point_weight_imag
+        ) + torch.einsum("bthk,hprk->bthpr", grouped_imag, self.point_weight_real)
+        channels = self.banks * self.poles_per_bank * self.rank
+
+        def causal(source: Tensor, weight_source: Tensor) -> Tensor:
+            packed = source.permute(0, 2, 3, 4, 1).reshape(batch, channels, steps)
+            padded = functional.pad(packed, (self.kernel_size - 1, 0))
+            weights = weight_source.reshape(
+                self.banks * self.poles_per_bank, self.rank, self.kernel_size
+            )
+            output = functional.conv1d(
+                padded, weights, groups=self.banks * self.poles_per_bank
+            )
+            return output.transpose(1, 2).reshape(batch, steps, -1)
+
+        return (
+            causal(point_real, self.temporal_weight_real)
+            - causal(point_imag, self.temporal_weight_imag),
+            causal(point_real, self.temporal_weight_imag)
+            + causal(point_imag, self.temporal_weight_real),
+        )
+
+
+class GroupedPackedComplexLinear(nn.Module):
+    def __init__(self, poles_per_bank: int, output_modes: int, *, banks: int) -> None:
+        super().__init__()
+        if output_modes % banks:
+            raise ValueError("grouped writer output modes must divide across banks")
+        self.banks = banks
+        self.poles_per_bank = poles_per_bank
+        self.output_modes = output_modes
+        self.output_modes_per_bank = output_modes // banks
+        shape = (banks, self.output_modes_per_bank, poles_per_bank)
+        self.weight_real = nn.Parameter(torch.empty(shape))
+        self.weight_imag = nn.Parameter(torch.empty(shape))
+        for bank in range(banks):
+            nn.init.xavier_uniform_(self.weight_real[bank])
+            nn.init.xavier_uniform_(self.weight_imag[bank])
+        with torch.no_grad():
+            self.weight_real.mul_(math.sqrt(0.5))
+            self.weight_imag.mul_(math.sqrt(0.5))
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        expected = self.banks * self.poles_per_bank
+        if real.shape != imag.shape or real.shape[-1] != expected:
+            raise ValueError("grouped writer inputs have incompatible shapes")
+        shape = (*real.shape[:-1], self.banks, self.poles_per_bank)
+        grouped_real = real.reshape(shape)
+        grouped_imag = imag.reshape(shape)
+        output_real = torch.einsum(
+            "...hp,hkp->...hk", grouped_real, self.weight_real
+        ) - torch.einsum("...hp,hkp->...hk", grouped_imag, self.weight_imag)
+        output_imag = torch.einsum(
+            "...hp,hkp->...hk", grouped_real, self.weight_imag
+        ) + torch.einsum("...hp,hkp->...hk", grouped_imag, self.weight_real)
+        return output_real.flatten(-2), output_imag.flatten(-2)
+
+
 class FixedComplexPoleMemory1D(nn.Module):
     minimum_damping = 1.0e-5
 
@@ -129,17 +252,21 @@ class FixedComplexPoleMemory1D(nn.Module):
         minimum_half_life: float = 2.0,
         maximum_half_life: float = 8_192.0,
         decay_dominant_fraction: float = 0.5,
+        banks: int = 1,
     ) -> None:
         super().__init__()
         self.modes = int(modes)
         self.context_length = int(context_length)
         self.scan_fp32 = bool(scan_fp32)
+        if modes % banks:
+            raise ValueError("fixed-pole modes must divide evenly across banks")
+        modes_per_bank = modes // banks
         if initialization == "legacy":
             damping = torch.logspace(
-                math.log10(1.0 / context_length), math.log10(0.5), modes
+                math.log10(1.0 / context_length), math.log10(0.5), modes_per_bank
             )
             periods = torch.logspace(
-                math.log10(4.0), math.log10(float(context_length)), modes
+                math.log10(4.0), math.log10(float(context_length)), modes_per_bank
             ).flip(0)
             frequency = (2.0 * math.pi / periods).clamp_max(0.95 * math.pi)
         elif initialization == "lifetime_palette":
@@ -149,13 +276,13 @@ class FixedComplexPoleMemory1D(nn.Module):
             anchors = minimum_half_life * 2.0 ** torch.arange(
                 octaves + 1, dtype=torch.float32
             )
-            anchor_indices = torch.arange(modes) * anchors.numel() // modes
+            anchor_indices = torch.arange(modes_per_bank) * anchors.numel() // modes_per_bank
             half_lives = anchors[anchor_indices]
             damping = math.log(2.0) / half_lives
-            frequency = torch.zeros(modes)
-            decay_modes = round(modes * decay_dominant_fraction)
-            decay_indices = torch.linspace(0, modes - 1, decay_modes).round().long()
-            oscillatory = torch.ones(modes, dtype=torch.bool)
+            frequency = torch.zeros(modes_per_bank)
+            decay_modes = round(modes_per_bank * decay_dominant_fraction)
+            decay_indices = torch.linspace(0, modes_per_bank - 1, decay_modes).round().long()
+            oscillatory = torch.ones(modes_per_bank, dtype=torch.bool)
             oscillatory[decay_indices] = False
             periods = torch.logspace(
                 math.log10(4.0),
@@ -165,6 +292,9 @@ class FixedComplexPoleMemory1D(nn.Module):
             frequency[oscillatory] = 2.0 * math.pi / periods
         else:
             raise ValueError("unknown fixed-pole initialization")
+        if banks > 1:
+            damping = damping.repeat(banks)
+            frequency = frequency.repeat(banks)
         self.raw_damping = nn.Parameter(torch.log(torch.expm1(damping - self.minimum_damping)))
         self.raw_frequency = nn.Parameter(torch.atanh((frequency / math.pi).clamp(-0.999, 0.999)))
 
@@ -201,20 +331,33 @@ class FixedComplexPoleMemory1D(nn.Module):
 class AlphabetLMBlock(nn.Module):
     def __init__(self, config: AlphabetLMConfig) -> None:
         super().__init__()
-        self.reader = CausalFactorizedComplexConv1dReader(
-            config.modes, config.pole_modes, rank=config.reader_rank,
-            kernel_size=config.reader_kernel,
-        )
+        if config.memory_banks == 1:
+            self.reader = CausalFactorizedComplexConv1dReader(
+                config.modes, config.pole_modes, rank=config.reader_rank,
+                kernel_size=config.reader_kernel,
+            )
+            self.writer = PackedComplexLinear(config.pole_modes, config.modes)
+        else:
+            self.reader = GroupedCausalFactorizedComplexConv1dReader(
+                config.modes,
+                config.bank_pole_modes,
+                banks=config.memory_banks,
+                rank=config.reader_rank,
+                kernel_size=config.reader_kernel,
+            )
+            self.writer = GroupedPackedComplexLinear(
+                config.bank_pole_modes, config.modes, banks=config.memory_banks
+            )
         self.memory = FixedComplexPoleMemory1D(
-            config.pole_modes,
+            config.total_pole_modes,
             context_length=config.context_length,
             scan_fp32=config.scan_fp32,
             initialization=config.pole_initialization,
             minimum_half_life=config.minimum_half_life,
             maximum_half_life=config.maximum_half_life,
             decay_dominant_fraction=config.decay_dominant_fraction,
+            banks=config.memory_banks,
         )
-        self.writer = PackedComplexLinear(config.pole_modes, config.modes)
         self.post_fusion = GatedComplexPostFusion(config.modes, config.post_hidden)
 
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
@@ -249,4 +392,5 @@ class AlphabetLM(nn.Module):
 __all__ = [
     "AlphabetLM", "AlphabetLMBlock", "AlphabetLMConfig",
     "CausalFactorizedComplexConv1dReader", "FixedComplexPoleMemory1D",
+    "GroupedCausalFactorizedComplexConv1dReader", "GroupedPackedComplexLinear",
 ]
