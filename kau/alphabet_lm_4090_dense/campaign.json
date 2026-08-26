@@ -1,0 +1,43 @@
+{
+  "schema": "lnet.kau.alphabet_lm.dense_k3_p320_10m.v1",
+  "campaign_id": "kau-alphabet-lm-dense-k3-p320-10m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-dense-k3-p320-10m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "version": "v1",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051"
+  },
+  "architecture": {
+    "K": 256,
+    "P": 320,
+    "layers": 12,
+    "reader": "dense_complex_causal_k3",
+    "reader_initialization": "collapsed_r2k3_exact_function",
+    "reader_kernel": 3,
+    "pole_initialization": "legacy",
+    "global_post_hidden": 384,
+    "parameters": 36714496
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 10000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": ["alphabet-dense-k3-p320"]
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-DenseK3P320-10M-S501-v1"
+  }
+}

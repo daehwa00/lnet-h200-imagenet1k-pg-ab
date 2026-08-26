@@ -28,6 +28,7 @@ from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 RUNTIME_SCHEMA = "lnet.h200.alphabet_lm.viability_10m.runtime.v1"
 KAU_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.pole_init_10m.runtime.v1"
 KAU_GROUPED_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.grouped_h8p128_10m.runtime.v1"
+KAU_DENSE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dense_k3_p320_10m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -109,6 +110,7 @@ def _build(
     pole_initialization: str = "legacy",
     memory_banks: int = 1,
     bank_pole_modes: int = 128,
+    reader_type: str = "r2k3",
 ) -> tuple[nn.Module, dict[str, Any]]:
     alphabet_config = AlphabetLMConfig(
         vocab_size=vocab_size,
@@ -121,6 +123,7 @@ def _build(
         pole_initialization=cast("Any", pole_initialization),
         memory_banks=memory_banks,
         bank_pole_modes=bank_pole_modes,
+        reader_type=cast("Any", reader_type),
     )
     if model_name == "alphabet":
         return AlphabetLM(alphabet_config), {
@@ -272,6 +275,7 @@ def main() -> None:
     )
     parser.add_argument("--memory-banks", type=int, default=1)
     parser.add_argument("--bank-pole-modes", type=int, default=128)
+    parser.add_argument("--reader-type", choices=("r2k3", "dense_k3"), default="r2k3")
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--train-manifest", type=Path, required=True)
     parser.add_argument("--validation-manifest", type=Path, required=True)
@@ -282,6 +286,7 @@ def main() -> None:
         RUNTIME_SCHEMA,
         KAU_RUNTIME_SCHEMA,
         KAU_GROUPED_RUNTIME_SCHEMA,
+        KAU_DENSE_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -313,6 +318,7 @@ def main() -> None:
         pole_initialization=args.pole_initialization,
         memory_banks=args.memory_banks,
         bank_pole_modes=args.bank_pole_modes,
+        reader_type=args.reader_type,
     )
     model = model.to(device)
     parameters = _parameter_count(model)
@@ -349,6 +355,7 @@ def main() -> None:
         "pole_initialization": args.pole_initialization,
         "memory_banks": args.memory_banks,
         "bank_pole_modes": args.bank_pole_modes,
+        "reader_type": args.reader_type,
         "parameters": parameters,
         "training": training,
         "paper": runtime.get("paper"),

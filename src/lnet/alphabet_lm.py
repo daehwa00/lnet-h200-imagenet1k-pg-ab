@@ -32,6 +32,7 @@ class AlphabetLMConfig:
     scan_fp32: bool = True
     rms_epsilon: float = 1.0e-6
     pole_initialization: Literal["legacy", "lifetime_palette"] = "legacy"
+    reader_type: Literal["r2k3", "dense_k3"] = "r2k3"
     minimum_half_life: float = 2.0
     maximum_half_life: float = 8_192.0
     decay_dominant_fraction: float = 0.5
@@ -54,6 +55,8 @@ class AlphabetLMConfig:
             raise ValueError("invalid ALPHABET-LM pole initialization")
         if self.modes % self.memory_banks:
             raise ValueError("ALPHABET-LM modes must divide evenly across memory banks")
+        if self.reader_type == "dense_k3" and self.memory_banks != 1:
+            raise ValueError("dense K3 reader requires the single-bank configuration")
 
     @property
     def model_width(self) -> int:
@@ -204,6 +207,68 @@ class GroupedCausalFactorizedComplexConv1dReader(nn.Module):
         )
 
 
+class DenseComplexConv1dReader(nn.Module):
+    def __init__(
+        self,
+        input_modes: int,
+        output_modes: int,
+        *,
+        kernel_size: int = 3,
+    ) -> None:
+        super().__init__()
+        if min(input_modes, output_modes, kernel_size) <= 0 or kernel_size % 2 == 0:
+            raise ValueError("invalid dense complex reader configuration")
+        self.input_modes = input_modes
+        self.output_modes = output_modes
+        self.kernel_size = kernel_size
+        self.input_norm = ComplexRMSNorm(input_modes)
+        shape = (output_modes, input_modes, kernel_size)
+        self.weight_real = nn.Parameter(torch.empty(shape))
+        self.weight_imag = nn.Parameter(torch.empty(shape))
+
+    @classmethod
+    def from_factorized(
+        cls, source: CausalFactorizedComplexConv1dReader
+    ) -> DenseComplexConv1dReader:
+        dense = cls(source.input_modes, source.output_modes, kernel_size=source.kernel_size)
+        with torch.no_grad():
+            dense.input_norm.weight.copy_(source.input_norm.weight)
+            dense.weight_real.copy_(
+                torch.einsum(
+                    "prl,prk->pkl", source.temporal_weight_real, source.point_weight_real
+                )
+                - torch.einsum(
+                    "prl,prk->pkl", source.temporal_weight_imag, source.point_weight_imag
+                )
+            )
+            dense.weight_imag.copy_(
+                torch.einsum(
+                    "prl,prk->pkl", source.temporal_weight_real, source.point_weight_imag
+                )
+                + torch.einsum(
+                    "prl,prk->pkl", source.temporal_weight_imag, source.point_weight_real
+                )
+            )
+        return dense
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        if real.shape != imag.shape or real.ndim != 3 or real.shape[-1] != self.input_modes:
+            raise ValueError("dense complex reader expects matching B,T,K coordinates")
+        real, imag = self.input_norm(real, imag)
+        packed_input = torch.cat((real, imag), dim=-1).transpose(1, 2)
+        packed_weight = torch.cat(
+            (
+                torch.cat((self.weight_real, -self.weight_imag), dim=1),
+                torch.cat((self.weight_imag, self.weight_real), dim=1),
+            ),
+            dim=0,
+        )
+        padded = functional.pad(packed_input, (self.kernel_size - 1, 0))
+        packed_output = functional.conv1d(padded, packed_weight).transpose(1, 2)
+        output_real, output_imag = packed_output.split(self.output_modes, dim=-1)
+        return output_real, output_imag
+
+
 class GroupedPackedComplexLinear(nn.Module):
     def __init__(self, poles_per_bank: int, output_modes: int, *, banks: int) -> None:
         super().__init__()
@@ -332,9 +397,14 @@ class AlphabetLMBlock(nn.Module):
     def __init__(self, config: AlphabetLMConfig) -> None:
         super().__init__()
         if config.memory_banks == 1:
-            self.reader = CausalFactorizedComplexConv1dReader(
+            factorized_reader = CausalFactorizedComplexConv1dReader(
                 config.modes, config.pole_modes, rank=config.reader_rank,
                 kernel_size=config.reader_kernel,
+            )
+            self.reader = (
+                factorized_reader
+                if config.reader_type == "r2k3"
+                else DenseComplexConv1dReader.from_factorized(factorized_reader)
             )
             self.writer = PackedComplexLinear(config.pole_modes, config.modes)
         else:
@@ -391,6 +461,7 @@ class AlphabetLM(nn.Module):
 
 __all__ = [
     "AlphabetLM", "AlphabetLMBlock", "AlphabetLMConfig",
-    "CausalFactorizedComplexConv1dReader", "FixedComplexPoleMemory1D",
-    "GroupedCausalFactorizedComplexConv1dReader", "GroupedPackedComplexLinear",
+    "CausalFactorizedComplexConv1dReader", "DenseComplexConv1dReader",
+    "FixedComplexPoleMemory1D", "GroupedCausalFactorizedComplexConv1dReader",
+    "GroupedPackedComplexLinear",
 ]

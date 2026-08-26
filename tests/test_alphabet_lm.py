@@ -100,6 +100,40 @@ def test_grouped_h8p128_memory_contract() -> None:
     torch.testing.assert_close(expected[:, :6], actual[:, :6], atol=1.0e-6, rtol=0.0)
 
 
+def test_dense_k3_starts_from_the_same_function_as_r2k3() -> None:
+    torch.manual_seed(501)
+    factorized = AlphabetLM(
+        AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=2,
+            post_hidden=12,
+            context_length=16,
+            reader_type="r2k3",
+        )
+    )
+    torch.manual_seed(501)
+    dense = AlphabetLM(
+        AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=2,
+            post_hidden=12,
+            context_length=16,
+            reader_type="dense_k3",
+        )
+    )
+    tokens = torch.randint(64, (2, 9))
+    with torch.no_grad():
+        expected = factorized(tokens)
+        actual = dense(tokens)
+    torch.testing.assert_close(actual, expected, atol=2.0e-5, rtol=2.0e-5)
+    full = AlphabetLM(AlphabetLMConfig(reader_type="dense_k3"))
+    assert sum(parameter.numel() for parameter in full.parameters()) == 36_714_496
+
+
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:
     root = Path(__file__).resolve().parents[1]
     requirements = (

@@ -49,7 +49,9 @@ def _step(model: nn.Module, tokens: Tensor) -> dict[str, float]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--only", choices=("all", "palette", "grouped"), default="all")
+    parser.add_argument(
+        "--only", choices=("all", "palette", "grouped", "dense"), default="all"
+    )
     args = parser.parse_args()
     if not torch.cuda.is_available() or "4090" not in torch.cuda.get_device_name().upper():
         raise RuntimeError("KAU ALPHABET-LM smoke requires the RTX 4090")
@@ -62,7 +64,7 @@ def main() -> None:
     )
     if args.only == "palette":
         alphabet_variants = alphabet_variants[1:]
-    elif args.only == "grouped":
+    elif args.only in {"grouped", "dense"}:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
         torch.manual_seed(501)
@@ -88,6 +90,12 @@ def main() -> None:
         if sum(parameter.numel() for parameter in grouped.parameters()) != 31_373_824:
             raise RuntimeError("grouped H8P128 parameter contract changed")
         results["alphabet-grouped-h8p128"] = _step(grouped, tokens)
+    if args.only == "dense":
+        torch.manual_seed(501)
+        dense = AlphabetLM(AlphabetLMConfig(reader_type="dense_k3"))
+        if sum(parameter.numel() for parameter in dense.parameters()) != 36_714_496:
+            raise RuntimeError("dense K3 P320 parameter contract changed")
+        results["alphabet-dense-k3-p320"] = _step(dense, tokens)
     if args.only == "all":
         torch.manual_seed(501)
         mamba, parameters, relative_error = build_parameter_matched_mamba(
