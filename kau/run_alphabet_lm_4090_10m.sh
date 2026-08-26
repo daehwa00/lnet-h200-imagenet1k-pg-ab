@@ -50,12 +50,13 @@ import torch
 import wandb
 
 expected = {
-    "torch": "2.9.1+cu128",
     "triton": "3.5.1",
     "mamba-ssm": "2.3.2.post1",
     "pyarrow": "23.0.1",
 }
 actual = {name: version(name) for name in expected}
+actual["torch"] = torch.__version__
+expected["torch"] = "2.9.1+cu128"
 if actual != expected or not torch.cuda.is_available() or "4090" not in torch.cuda.get_device_name():
     raise RuntimeError(f"invalid KAU ALPHABET-LM environment: {actual}")
 viewer = wandb.Api(timeout=15).viewer
