@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-alphabet-lm-preflight-s501-v1",
-  "target_commit": "f691a93f50c011223f1bfb5d36a3c0b44aa77ce1",
-  "generation": 4,
+  "target_commit": "ccbe4f4d5205807e119049835732a15ccc46af9a",
+  "generation": 5,
   "action": "run",
-  "updated_at": "2026-08-26T12:58:10+09:00",
-  "reason": "arm the dependency-complete ALPHABET-LM H200 preflight"
+  "updated_at": "2026-08-26T13:23:11+09:00",
+  "reason": "arm the stride-correct ALPHABET-LM H200 preflight"
 }
