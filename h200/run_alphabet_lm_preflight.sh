@@ -89,7 +89,6 @@ uv_command python install "${PYTHON_VERSION}"
 uv_command pip sync \
   --python "${ENV_ROOT}/bin/python" --index-strategy unsafe-best-match \
   --require-hashes --strict h200/alphabet_lm_preflight/requirements.lock
-uv_command pip install --python "${ENV_ROOT}/bin/python" --no-deps einops==0.8.1
 
 checkout_source() {
   local name="$1" url="$2" commit="$3" target="${SOURCE_ROOT}/$1"
@@ -155,9 +154,12 @@ nvidia-smi --query-gpu=name,compute_cap,memory.total,driver_version --format=csv
 "${ENV_ROOT}/bin/python" - <<'PY'
 import json
 import platform
+from importlib.metadata import version
+
 import torch
 import causal_conv1d
 import mamba_ssm
+from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 
 if platform.python_version() != "3.13.11":
     raise RuntimeError("unexpected Python in ALPHABET-LM preflight")
@@ -165,6 +167,33 @@ if not torch.cuda.is_available() or "H200" not in torch.cuda.get_device_name().u
     raise RuntimeError("ALPHABET-LM preflight requires H200")
 if torch.version.cuda != "13.0":
     raise RuntimeError(f"ALPHABET-LM native build requires PyTorch cu130, got {torch.version.cuda}")
+packages = {
+    name: version(name)
+    for name in (
+        "causal-conv1d", "einops", "huggingface-hub", "mamba-ssm",
+        "tokenizers", "torch", "transformers", "triton", "wandb", "wheel",
+    )
+}
+expected = {
+    "causal-conv1d": "1.7.0",
+    "einops": "0.8.1",
+    "huggingface-hub": "0.36.2",
+    "mamba-ssm": "2.2.6.post3",
+    "tokenizers": "0.22.2",
+    "torch": "2.9.1+cu130",
+    "transformers": "4.57.1",
+    "triton": "3.5.1",
+    "wandb": "0.22.3",
+    "wheel": "0.46.2",
+}
+if packages != expected:
+    raise RuntimeError(f"ALPHABET-LM dependency closure changed: {packages}")
+baseline, parameters, relative_error = build_parameter_matched_mamba(
+    34_794_496, MambaLMConfig()
+)
+if baseline.config.layers != 11 or parameters != 35_425_280 or relative_error >= 0.03:
+    raise RuntimeError("parameter-matched Mamba construction contract changed")
+del baseline
 print(
     "ALPHABET_LM_ENV="
     + json.dumps(
@@ -173,8 +202,13 @@ print(
             "torch": torch.__version__,
             "cuda": torch.version.cuda,
             "gpu": torch.cuda.get_device_name(),
-            "mamba": getattr(mamba_ssm, "__version__", "unknown"),
-            "causal_conv1d": getattr(causal_conv1d, "__version__", "unknown"),
+            "mamba": getattr(mamba_ssm, "__version__", packages["mamba-ssm"]),
+            "causal_conv1d": getattr(
+                causal_conv1d, "__version__", packages["causal-conv1d"]
+            ),
+            "packages": packages,
+            "mamba_parameters": parameters,
+            "mamba_relative_error": relative_error,
         },
         sort_keys=True,
     )
