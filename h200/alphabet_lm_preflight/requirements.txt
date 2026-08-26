@@ -3,6 +3,7 @@
 einops==0.8.1
 ninja==1.13.0
 packaging==26.3
+pyarrow==23.0.1
 setuptools==84.0.0
 torch==2.9.1+cu130
 transformers==4.57.1

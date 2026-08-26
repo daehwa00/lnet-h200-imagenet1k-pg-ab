@@ -7,11 +7,11 @@ readonly PYTHON_VERSION="3.13.11"
 readonly UV_VERSION="0.9.26"
 readonly MAMBA_COMMIT="10b5d6358f27966f6a40e4bf0baa17a460688128"
 readonly CAUSAL_CONV_COMMIT="cd81f0413cad2fc1e6f17e785ac39f59aae690cd"
-readonly CAMPAIGN_MANIFEST="${PROJECT_ROOT}/h200/alphabet_lm_preflight/campaign.json"
-readonly CAMPAIGN_RUNTIME="${PROJECT_ROOT}/h200/alphabet_lm_preflight/campaign.runtime.json"
+readonly CAMPAIGN_MANIFEST="${PROJECT_ROOT}/h200/alphabet_lm_10m/campaign.json"
+readonly CAMPAIGN_RUNTIME="${PROJECT_ROOT}/h200/alphabet_lm_10m/campaign.runtime.json"
 readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab.git"
-readonly CONTROL_REF="refs/heads/control/alphabet-lm-preflight"
-readonly CONTROL_PATH="h200/alphabet_lm_preflight/control.json"
+readonly CONTROL_REF="refs/heads/control/alphabet-lm-viability-10m"
+readonly CONTROL_PATH="h200/alphabet_lm_10m/control.json"
 readonly DUMMY_WANDB_API_KEY="0000000000000000000000000000000000000000"
 cd "${PROJECT_ROOT}"
 
@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("campaign_id")
-if value != "h200-alphabet-lm-preflight-s501-v1":
+if value != "h200-alphabet-lm-viability-10m-s501-v1":
     raise SystemExit("invalid ALPHABET-LM preflight control campaign identity")
 print(value)
 PY
@@ -56,13 +56,13 @@ if [[ "$(git rev-parse HEAD)" != "${H200_EXPECTED_COMMIT}" ]]; then
   echo "ERROR: ALPHABET-LM preflight commit mismatch" >&2
   exit 2
 fi
-python3 h200/alphabet_lm_preflight/generate_contract.py --check
+python3 h200/alphabet_lm_10m/generate_contract.py --check
 if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
   echo "ERROR: ALPHABET-LM preflight checkout is not clean" >&2
   exit 2
 fi
 
-readonly OUTPUT_BASE="/app/output/daehwa00/alphabet-lm-preflight-v1-${H200_EXPECTED_COMMIT:0:16}"
+readonly OUTPUT_BASE="/app/output/daehwa00/alphabet-lm-viability-10m-v1-${H200_EXPECTED_COMMIT:0:16}"
 readonly TOOLCHAIN_ROOT="/app/output/daehwa00/alphabet-lm-preflight-v1-f691a93f50c01122"
 readonly TOOLCHAIN_CACHE_ROOT="${TOOLCHAIN_ROOT}/cache"
 readonly CACHE_ROOT="${OUTPUT_BASE}/cache"
@@ -117,6 +117,7 @@ expected = {
     "einops": "0.8.1",
     "huggingface-hub": "0.36.2",
     "mamba-ssm": "2.2.6.post3",
+    "pyarrow": "23.0.1",
     "tokenizers": "0.22.2",
     "torch": "2.9.1+cu130",
     "transformers": "4.57.1",
@@ -209,7 +210,7 @@ if torch.version.cuda != "13.0":
 packages = {
     name: version(name)
     for name in (
-        "causal-conv1d", "einops", "huggingface-hub", "mamba-ssm",
+        "causal-conv1d", "einops", "huggingface-hub", "mamba-ssm", "pyarrow",
         "tokenizers", "torch", "transformers", "triton", "wandb", "wheel",
     )
 }
@@ -218,6 +219,7 @@ expected = {
     "einops": "0.8.1",
     "huggingface-hub": "0.36.2",
     "mamba-ssm": "2.2.6.post3",
+    "pyarrow": "23.0.1",
     "tokenizers": "0.22.2",
     "torch": "2.9.1+cu130",
     "transformers": "4.57.1",
@@ -259,3 +261,23 @@ timeout --signal=TERM --kill-after=5m 2h \
   --root "${RESULT_ROOT}" --runtime "${CAMPAIGN_RUNTIME}" \
   --microbatch 2 --context-length 2048 --repeats 2
 echo "ALPHABET_LM_PREFLIGHT_COMPLETE=${RESULT_ROOT}/preflight.json"
+
+readonly DATA_ROOT="/app/output/daehwa00/alphabet-lm-fineweb-edu-v1"
+export HF_HOME="${DATA_ROOT}/huggingface-cache"
+export HF_XET_HIGH_PERFORMANCE=1
+timeout --signal=TERM --kill-after=5m 90m \
+  "${ENV_ROOT}/bin/python" scripts/prepare_h200_alphabet_lm_data.py \
+  --runtime "${CAMPAIGN_RUNTIME}" --root "${DATA_ROOT}"
+
+readonly TRAIN_MANIFEST="${DATA_ROOT}/tokens/train.manifest.json"
+readonly VALIDATION_MANIFEST="${DATA_ROOT}/tokens/validation.manifest.json"
+for model in alphabet mamba; do
+  timeout --signal=TERM --kill-after=5m 6h \
+    "${ENV_ROOT}/bin/python" scripts/train_h200_alphabet_lm_10m.py \
+    --model "${model}" \
+    --runtime "${CAMPAIGN_RUNTIME}" \
+    --train-manifest "${TRAIN_MANIFEST}" \
+    --validation-manifest "${VALIDATION_MANIFEST}" \
+    --root "${OUTPUT_BASE}/runs/${model}"
+done
+echo "ALPHABET_LM_10M_CAMPAIGN_COMPLETE=${OUTPUT_BASE}"

@@ -6,6 +6,7 @@ from __future__ import annotations
 # pyright: reportExplicitAny=false, reportImplicitRelativeImport=false
 import argparse
 import json
+import math
 import os
 import statistics
 import time
@@ -28,7 +29,10 @@ from lnet.alphabet_lm_mamba import (
 
 def _runtime(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("schema") != "lnet.h200.alphabet_lm.preflight.runtime.v1":
+    if payload.get("schema") not in {
+        "lnet.h200.alphabet_lm.preflight.runtime.v1",
+        "lnet.h200.alphabet_lm.viability_10m.runtime.v1",
+    }:
         raise RuntimeError("invalid ALPHABET-LM preflight runtime")
     expected = {
         "WANDB_API_KEY": "0" * 40,
@@ -47,7 +51,7 @@ def _runtime(path: Path) -> dict[str, Any]:
 def _initialize_wandb(runtime: dict[str, Any], root: Path) -> Any:
     import wandb  # pyright: ignore[reportMissingImports]
 
-    record = runtime["run"]
+    record = runtime.get("run") or runtime["runs"]["preflight"]
     run = wandb.init(
         project=runtime["project"],
         entity=runtime["entity"],
@@ -98,6 +102,7 @@ def _compiled_steps(model: nn.Module, tokens: Tensor, repeats: int) -> dict[str,
         "nn.Module", torch.compile(model, mode="default", fullgraph=False, dynamic=False)
     )
     samples = []
+    losses = []
     loss = tokens.new_zeros((), dtype=torch.float32)
     torch.cuda.reset_peak_memory_stats()
     for _ in range(repeats):
@@ -105,6 +110,7 @@ def _compiled_steps(model: nn.Module, tokens: Tensor, repeats: int) -> dict[str,
         optimizer.zero_grad(set_to_none=True)
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             loss = _loss(compiled, tokens).float()
+        losses.append(float(loss.detach()))
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
@@ -115,6 +121,7 @@ def _compiled_steps(model: nn.Module, tokens: Tensor, repeats: int) -> dict[str,
     seconds = statistics.median(samples[1:] or samples)
     result = {
         "loss": float(loss.detach()),
+        "initial_loss": losses[0],
         "step_seconds": seconds,
         "tokens_per_second": tokens[:, 1:].numel() / seconds,
         "peak_memory_bytes": float(torch.cuda.max_memory_allocated()),
@@ -163,7 +170,7 @@ def _precision_probe(config: AlphabetLMConfig) -> float:
 
 
 def _run(args: argparse.Namespace, runtime: dict[str, Any]) -> dict[str, Any]:
-    if runtime["preflight"] != {
+    expected_preflight = {
         "alphabet_parameters": 34_794_496,
         "context_length": args.context_length,
         "mamba_parameter_tolerance_fraction": 0.03,
@@ -172,8 +179,16 @@ def _run(args: argparse.Namespace, runtime: dict[str, Any]) -> dict[str, Any]:
         "precision": "bfloat16",
         "repeats": args.repeats,
         "seed": 501,
-    }:
+    }
+    if any(runtime["preflight"].get(key) != value for key, value in expected_preflight.items()):
         raise RuntimeError("ALPHABET-LM preflight arguments differ from the frozen campaign")
+    if runtime["preflight"].get("scan_fp32", True) is not True:
+        raise RuntimeError("ALPHABET-LM preflight requires FP32 scan coefficients")
+    if (
+        runtime["schema"] == "lnet.h200.alphabet_lm.viability_10m.runtime.v1"
+        and runtime["preflight"].get("official_mamba_lm") is not True
+    ):
+        raise RuntimeError("ALPHABET-LM viability requires the official Mamba LM wrapper")
     config = AlphabetLMConfig(context_length=args.context_length, scan_fp32=True)
     torch.manual_seed(501)
     alphabet = AlphabetLM(config).cuda()
@@ -184,6 +199,9 @@ def _run(args: argparse.Namespace, runtime: dict[str, Any]) -> dict[str, Any]:
         MambaLMConfig(vocab_size=config.vocab_size, model_width=config.model_width),
     )
     mamba = mamba.cuda()
+    expected_mamba_parameters = runtime["preflight"].get("mamba_parameters")
+    if expected_mamba_parameters is not None and mamba_parameters != expected_mamba_parameters:
+        raise RuntimeError("parameter-matched Mamba count changed")
     tokens = torch.randint(
         config.vocab_size, (args.microbatch, config.context_length + 1), device="cuda"
     )
@@ -197,6 +215,12 @@ def _run(args: argparse.Namespace, runtime: dict[str, Any]) -> dict[str, Any]:
     mamba_roundtrip = _state_roundtrip(
         mamba, lambda: MambaLM(mamba_config), args.root, "mamba"
     )
+    uniform_loss = math.log(config.vocab_size)
+    for name, metrics in (("alphabet", alphabet_metrics), ("mamba", mamba_metrics)):
+        if not 0.5 * uniform_loss <= metrics["initial_loss"] <= 2.0 * uniform_loss:
+            raise RuntimeError(
+                f"{name} initial loss is outside the frozen viability range: {metrics['initial_loss']} vs uniform {uniform_loss}"
+            )
     return {
         "schema": "lnet.alphabet_lm.h200_preflight.v1",
         "status": "passed",
@@ -246,9 +270,11 @@ def main() -> None:
         wandb_run.log(
             {
                 "alphabet/loss": payload["alphabet"]["loss"],
+                "alphabet/initial_loss": payload["alphabet"]["initial_loss"],
                 "alphabet/tokens_per_second": payload["alphabet"]["tokens_per_second"],
                 "alphabet/peak_memory_bytes": payload["alphabet"]["peak_memory_bytes"],
                 "mamba/loss": payload["mamba"]["loss"],
+                "mamba/initial_loss": payload["mamba"]["initial_loss"],
                 "mamba/tokens_per_second": payload["mamba"]["tokens_per_second"],
                 "mamba/peak_memory_bytes": payload["mamba"]["peak_memory_bytes"],
                 "bf16_vs_fp32_recurrence_max_abs": payload[

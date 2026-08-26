@@ -1,0 +1,106 @@
+{
+  "campaign_id": "h200-alphabet-lm-viability-10m-s501-v1",
+  "campaign_manifest_sha256": "5386114b4ab03977d646ea03ba87a436027264df50f0239c606932c2c98e8c86",
+  "console": "off",
+  "dataset": {
+    "context_length": 2048,
+    "cross_document_packing": false,
+    "document_split_salt": "alphabet-lm-fineweb-edu-v1",
+    "filename": "sample/10BT/000_00000.parquet",
+    "repo_id": "HuggingFaceFW/fineweb-edu",
+    "repo_type": "dataset",
+    "revision": "87f09149ef4734204d70ed1d046ddc9ca3f2b8f9",
+    "sha256": "b1ba7b2ce4cb5ea6ef42dca40263eabb85f37700d01693a68e9b30a31d78e871",
+    "size_bytes": 2152819114,
+    "tokenizer": "ByteLevel-BPE",
+    "train_token_limit": 300000000,
+    "validation_fraction": 0.03,
+    "validation_token_limit": 10000000,
+    "vocab_size": 32768
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-H200-Viability-10M-S501-v1",
+  "output_namespace": "alphabet-lm-viability-10m-v1",
+  "preflight": {
+    "alphabet_parameters": 34794496,
+    "context_length": 2048,
+    "initial_loss_uniform_max_factor": 2.0,
+    "initial_loss_uniform_min_factor": 0.5,
+    "mamba_parameter_tolerance_fraction": 0.03,
+    "mamba_parameters": 35425280,
+    "microbatch": 2,
+    "models": [
+      "ALPHABET-LM",
+      "parameter-matched-Mamba"
+    ],
+    "official_mamba_lm": true,
+    "precision": "bfloat16",
+    "repeats": 2,
+    "scan_fp32": true,
+    "seed": 501
+  },
+  "program": "h200/run_alphabet_lm_preflight.sh",
+  "project": "alphabet-lm-viability",
+  "relay_protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v3",
+  "runs": {
+    "alphabet-10m": {
+      "display_name": "H200-S501-ALPHABET-LM-10M",
+      "id": "c20a74c5e68d09b4",
+      "tags": [
+        "H200",
+        "ALPHABET-LM",
+        "FineWeb-Edu",
+        "10M",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "mamba-10m": {
+      "display_name": "H200-S501-Mamba-10M",
+      "id": "f8034b14ec4c1fb8",
+      "tags": [
+        "H200",
+        "Mamba",
+        "FineWeb-Edu",
+        "10M",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "preflight": {
+      "display_name": "H200-S501-ALPHABET-LM-Mamba-Preflight-v2",
+      "id": "a209963fe6032ca9",
+      "tags": [
+        "H200",
+        "ALPHABET-LM",
+        "Mamba",
+        "preflight-v2",
+        "seed501",
+        "authenticated"
+      ]
+    }
+  },
+  "schema": "lnet.h200.alphabet_lm.viability_10m.runtime.v1",
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet",
+      "mamba"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 10000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  },
+  "wandb_app_url": "https://wandb.ai",
+  "wandb_base_url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+  "wandb_sdk_version": "0.22.3"
+}

@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+# pyright: reportMissingImports=false, reportPrivateUsage=false
+import json
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import torch
 
 from lnet.alphabet_lm import AlphabetLM, AlphabetLMConfig
+from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 from lnet.pac_triton_recurrence_op import pac_triton_recurrence_opaque_op
+from scripts.prepare_h200_alphabet_lm_data import _parquet_to_jsonl, _split_documents
 
 
 def _small() -> AlphabetLMConfig:
@@ -57,6 +63,7 @@ def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:
         "einops==0.8.1",
         "ninja==1.13.0",
         "packaging==26.3",
+        "pyarrow==23.0.1",
         "setuptools==84.0.0",
         "torch==2.9.1+cu130",
         "transformers==4.57.1",
@@ -74,6 +81,29 @@ def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:
         assert transitive in lock
     assert "transformers==5." not in requirements
     assert "transformers==5." not in lock
+
+
+def test_parameter_matched_mamba_uses_official_lm_initialization() -> None:
+    torch.manual_seed(501)
+    model, parameters, relative_error = build_parameter_matched_mamba(
+        34_794_496, MambaLMConfig()
+    )
+    assert parameters == 35_425_280
+    assert relative_error < 0.03
+    state = model.model.state_dict()
+    embedding = state["backbone.embedding.weight"]
+    lm_head = state["lm_head.weight"]
+    assert embedding.data_ptr() == lm_head.data_ptr()
+    torch.testing.assert_close(embedding.std(), torch.tensor(0.02), atol=2.0e-4, rtol=0)
+    out_projections = [
+        parameter
+        for name, parameter in model.model.named_parameters()
+        if name.endswith("mixer.out_proj.weight")
+    ]
+    assert len(out_projections) == 11
+    for projection in out_projections:
+        std = projection.detach().std().item()
+        assert 0.0052 < std < 0.0057
 
 
 def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:
@@ -122,3 +152,33 @@ def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:
         raise_exception=True,
     )
     assert all(value == "SUCCESS" for value in opcheck.values())
+
+
+def test_fineweb_document_conversion_splits_before_tokenization(tmp_path: Path) -> None:
+    source = tmp_path / "source.parquet"
+    pq.write_table(
+        pa.table(
+            {
+                "id": [f"doc-{index}" for index in range(100)],
+                "text": [f"English document number {index}." for index in range(100)],
+            }
+        ),
+        source,
+    )
+    documents = tmp_path / "documents.jsonl"
+    train = tmp_path / "train.jsonl"
+    validation = tmp_path / "validation.jsonl"
+    _parquet_to_jsonl(source, documents)
+    _split_documents(
+        documents,
+        train,
+        validation,
+        validation_fraction=0.2,
+        salt="fixed",
+    )
+    train_ids = {json.loads(line)["id"] for line in train.read_text().splitlines()}
+    validation_ids = {
+        json.loads(line)["id"] for line in validation.read_text().splitlines()
+    }
+    assert train_ids.isdisjoint(validation_ids)
+    assert train_ids | validation_ids == {f"doc-{index}" for index in range(100)}

@@ -5,7 +5,7 @@ export const CAMPAIGN = {
     "running",
     "finished"
   ],
-  "authorizationManifestSha256": "7952c0d636e33be747613e29980d31f63f32947ff58d2da7d77b2f4d3ddf5c2d",
+  "authorizationManifestSha256": "f876f4162e39b02d241a5dbe564f7587a0104b2142d707f744b4be3962ad88e6",
   "campaignId": "h200-imagenet100-stage-allocation-s501-v3",
   "entity": "daehwa",
   "graphqlEnvelopeKeys": {
@@ -451,6 +451,20 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "a209963fe6032ca9": {
+      "displayName": "H200-S501-ALPHABET-LM-Mamba-Preflight-v2",
+      "group": "ALPHABET-LM-H200-Viability-10M-S501-v1",
+      "program": "h200/run_alphabet_lm_preflight.sh",
+      "project": "alphabet-lm-viability",
+      "tags": [
+        "H200",
+        "ALPHABET-LM",
+        "Mamba",
+        "preflight-v2",
+        "seed501",
+        "authenticated"
+      ]
+    },
     "a472d02b55cb3f18": {
       "displayName": "H200-I100-S501-02-K64-P96-128-128-64-D2262",
       "group": "R2K3-K64-PSmallFactorial-D2262-H200-S501",
@@ -638,6 +652,20 @@ export const CAMPAIGN = {
         "authenticated"
       ]
     },
+    "c20a74c5e68d09b4": {
+      "displayName": "H200-S501-ALPHABET-LM-10M",
+      "group": "ALPHABET-LM-H200-Viability-10M-S501-v1",
+      "program": "h200/run_alphabet_lm_preflight.sh",
+      "project": "alphabet-lm-viability",
+      "tags": [
+        "H200",
+        "ALPHABET-LM",
+        "FineWeb-Edu",
+        "10M",
+        "seed501",
+        "authenticated"
+      ]
+    },
     "c6e6a8d87921c54d": {
       "displayName": "H200-I100-S501-11-K128-P128x4-D2223-FullSR7x1",
       "group": "h200-imagenet100-stage-allocation-s501-v3",
@@ -760,6 +788,20 @@ export const CAMPAIGN = {
         "ImageNet-100",
         "Reader-study",
         "strict-vs-WL",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "f8034b14ec4c1fb8": {
+      "displayName": "H200-S501-Mamba-10M",
+      "group": "ALPHABET-LM-H200-Viability-10M-S501-v1",
+      "program": "h200/run_alphabet_lm_preflight.sh",
+      "project": "alphabet-lm-viability",
+      "tags": [
+        "H200",
+        "Mamba",
+        "FineWeb-Edu",
+        "10M",
         "seed501",
         "authenticated"
       ]

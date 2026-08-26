@@ -1,12 +1,13 @@
 """Pinned Mamba-1 baseline adapter for ALPHABET-LM."""
 
+# pyright: reportExplicitAny=false
 from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass, replace
+from typing import Any, cast
 
 from torch import Tensor, nn
-from torch.nn import functional
 
 MAMBA_GIT_COMMIT = "10b5d6358f27966f6a40e4bf0baa17a460688128"
 
@@ -19,44 +20,55 @@ class MambaLMConfig:
     state_size: int = 16
     conv_width: int = 4
     expand: int = 2
-    rms_epsilon: float = 1.0e-6
 
 
-def _mamba_class() -> type[nn.Module]:
+def _mamba_lm_components() -> tuple[type[Any], type[nn.Module]]:
     try:
-        return importlib.import_module("mamba_ssm").Mamba
+        config_type = importlib.import_module("mamba_ssm.models.config_mamba").MambaConfig
+        model_type = importlib.import_module(
+            "mamba_ssm.models.mixer_seq_simple"
+        ).MambaLMHeadModel
     except (AttributeError, ModuleNotFoundError) as error:
         raise RuntimeError("pinned mamba-ssm is unavailable") from error
-
-
-class MambaResidualBlock(nn.Module):
-    def __init__(self, config: MambaLMConfig) -> None:
-        super().__init__()
-        self.norm = nn.RMSNorm(config.model_width, eps=config.rms_epsilon)
-        self.mixer = _mamba_class()(
-            d_model=config.model_width,
-            d_state=config.state_size,
-            d_conv=config.conv_width,
-            expand=config.expand,
-        )
-
-    def forward(self, hidden: Tensor) -> Tensor:
-        return hidden + self.mixer(self.norm(hidden))
+    return cast("type[Any]", config_type), cast("type[nn.Module]", model_type)
 
 
 class MambaLM(nn.Module):
     def __init__(self, config: MambaLMConfig) -> None:
         super().__init__()
         self.config = config
-        self.embedding = nn.Embedding(config.vocab_size, config.model_width)
-        self.blocks = nn.ModuleList(MambaResidualBlock(config) for _ in range(config.layers))
-        self.final_norm = nn.RMSNorm(config.model_width, eps=config.rms_epsilon)
+        config_type, model_type = _mamba_lm_components()
+        official_config = config_type(
+            d_model=config.model_width,
+            d_intermediate=0,
+            n_layer=config.layers,
+            vocab_size=config.vocab_size,
+            ssm_cfg={
+                "layer": "Mamba1",
+                "d_state": config.state_size,
+                "d_conv": config.conv_width,
+                "expand": config.expand,
+            },
+            rms_norm=True,
+            residual_in_fp32=True,
+            fused_add_norm=True,
+            pad_vocab_size_multiple=8,
+            tie_embeddings=True,
+        )
+        self.model = model_type(
+            official_config,
+            initializer_cfg={
+                "initializer_range": 0.02,
+                "rescale_prenorm_residual": True,
+            },
+        )
 
     def forward(self, input_ids: Tensor) -> Tensor:
-        hidden = self.embedding(input_ids)
-        for block in self.blocks:
-            hidden = block(hidden)
-        return functional.linear(self.final_norm(hidden), self.embedding.weight)
+        output = self.model(input_ids)
+        logits = getattr(output, "logits", None)
+        if not isinstance(logits, Tensor):
+            raise TypeError("official Mamba LM returned no logits")
+        return logits
 
 
 def trainable_parameters(model: nn.Module) -> int:

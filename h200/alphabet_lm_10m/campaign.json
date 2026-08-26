@@ -1,0 +1,67 @@
+{
+  "schema": "lnet.h200.alphabet_lm.viability_10m.v1",
+  "campaign_id": "h200-alphabet-lm-viability-10m-s501-v1",
+  "output_namespace": "alphabet-lm-viability-10m-v1",
+  "preflight": {
+    "seed": 501,
+    "context_length": 2048,
+    "microbatch": 2,
+    "repeats": 2,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "official_mamba_lm": true,
+    "models": ["ALPHABET-LM", "parameter-matched-Mamba"],
+    "alphabet_parameters": 34794496,
+    "mamba_parameters": 35425280,
+    "mamba_parameter_tolerance_fraction": 0.03,
+    "initial_loss_uniform_min_factor": 0.5,
+    "initial_loss_uniform_max_factor": 2.0
+  },
+  "dataset": {
+    "repo_id": "HuggingFaceFW/fineweb-edu",
+    "repo_type": "dataset",
+    "revision": "87f09149ef4734204d70ed1d046ddc9ca3f2b8f9",
+    "filename": "sample/10BT/000_00000.parquet",
+    "size_bytes": 2152819114,
+    "sha256": "b1ba7b2ce4cb5ea6ef42dca40263eabb85f37700d01693a68e9b30a31d78e871",
+    "document_split_salt": "alphabet-lm-fineweb-edu-v1",
+    "validation_fraction": 0.03,
+    "tokenizer": "ByteLevel-BPE",
+    "vocab_size": 32768,
+    "context_length": 2048,
+    "train_token_limit": 300000000,
+    "validation_token_limit": 10000000,
+    "cross_document_packing": false
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 10000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": ["alphabet", "mamba"]
+  },
+  "wandb": {
+    "sdk_version": "0.22.3",
+    "base_url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+    "app_url": "https://wandb.ai",
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-H200-Viability-10M-S501-v1",
+    "console": "off"
+  },
+  "relay": {
+    "worker_name": "lnet-h200-imagenet100-stage-relay-v1",
+    "url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+    "upstream_origin": "https://api.wandb.ai",
+    "protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v3"
+  }
+}
