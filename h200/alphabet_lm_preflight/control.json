@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-alphabet-lm-preflight-s501-v1",
-  "target_commit": "4267511543cb293bb3ba8730735d5670f5b3a34a",
-  "generation": 2,
+  "target_commit": "734dec5066f5ebb14d1266f6908a797cefe4365d",
+  "generation": 3,
   "action": "run",
-  "updated_at": "2026-08-26T12:20:49+09:00",
-  "reason": "arm the authenticated ALPHABET-LM H200 preflight"
+  "updated_at": "2026-08-26T12:24:44+09:00",
+  "reason": "arm the authenticated CUDA-13-aligned ALPHABET-LM H200 preflight"
 }
