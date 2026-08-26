@@ -1,0 +1,40 @@
+{
+  "campaign_id": "h200-alphabet-lm-preflight-s501-v1",
+  "campaign_manifest_sha256": "14a11ba0e345080f7e151320851a46d78212356ce1b2b8d50901ff28af1612f0",
+  "console": "off",
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-H200-Preflight-S501",
+  "output_namespace": "alphabet-lm-preflight-v1",
+  "preflight": {
+    "alphabet_parameters": 34794496,
+    "context_length": 2048,
+    "mamba_parameter_tolerance_fraction": 0.03,
+    "microbatch": 2,
+    "models": [
+      "ALPHABET-LM",
+      "parameter-matched-Mamba"
+    ],
+    "precision": "bfloat16",
+    "repeats": 2,
+    "seed": 501
+  },
+  "program": "h200/run_alphabet_lm_preflight.sh",
+  "project": "alphabet-lm-viability",
+  "relay_protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v3",
+  "run": {
+    "display_name": "H200-S501-ALPHABET-LM-Mamba-Preflight",
+    "id": "232624aa1634cbc6",
+    "tags": [
+      "H200",
+      "ALPHABET-LM",
+      "Mamba",
+      "preflight",
+      "seed501",
+      "authenticated"
+    ]
+  },
+  "schema": "lnet.h200.alphabet_lm.preflight.runtime.v1",
+  "wandb_app_url": "https://wandb.ai",
+  "wandb_base_url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+  "wandb_sdk_version": "0.22.3"
+}

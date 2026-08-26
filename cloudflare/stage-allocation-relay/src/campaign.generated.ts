@@ -5,7 +5,7 @@ export const CAMPAIGN = {
     "running",
     "finished"
   ],
-  "authorizationManifestSha256": "b3a3675f1d8f04e661040250b15d2514df954ce923dd9a4fa0b41195ff1fc8e3",
+  "authorizationManifestSha256": "7952c0d636e33be747613e29980d31f63f32947ff58d2da7d77b2f4d3ddf5c2d",
   "campaignId": "h200-imagenet100-stage-allocation-s501-v3",
   "entity": "daehwa",
   "graphqlEnvelopeKeys": {
@@ -163,6 +163,20 @@ export const CAMPAIGN = {
         "H200",
         "ImageNet-100",
         "stage-allocation",
+        "seed501",
+        "authenticated"
+      ]
+    },
+    "232624aa1634cbc6": {
+      "displayName": "H200-S501-ALPHABET-LM-Mamba-Preflight",
+      "group": "ALPHABET-LM-H200-Preflight-S501",
+      "program": "h200/run_alphabet_lm_preflight.sh",
+      "project": "alphabet-lm-viability",
+      "tags": [
+        "H200",
+        "ALPHABET-LM",
+        "Mamba",
+        "preflight",
         "seed501",
         "authenticated"
       ]

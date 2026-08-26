@@ -6,6 +6,7 @@ from __future__ import annotations
 # pyright: reportExplicitAny=false, reportImplicitRelativeImport=false
 import argparse
 import json
+import os
 import statistics
 import time
 from pathlib import Path
@@ -23,6 +24,67 @@ from lnet.alphabet_lm_mamba import (
     build_parameter_matched_mamba,
     trainable_parameters,
 )
+
+
+def _runtime(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("schema") != "lnet.h200.alphabet_lm.preflight.runtime.v1":
+        raise RuntimeError("invalid ALPHABET-LM preflight runtime")
+    expected = {
+        "WANDB_API_KEY": "0" * 40,
+        "WANDB_APP_URL": payload["wandb_app_url"],
+        "WANDB_BASE_URL": payload["wandb_base_url"],
+        "WANDB_ENTITY": payload["entity"],
+        "WANDB_PROJECT": payload["project"],
+        "WANDB_GROUP": payload["group"],
+        "WANDB_CONSOLE": payload["console"],
+    }
+    if any(os.environ.get(name) != value for name, value in expected.items()):
+        raise RuntimeError("ALPHABET-LM preflight W&B environment changed")
+    return cast("dict[str, Any]", payload)
+
+
+def _initialize_wandb(runtime: dict[str, Any], root: Path) -> Any:
+    import wandb  # pyright: ignore[reportMissingImports]
+
+    record = runtime["run"]
+    run = wandb.init(
+        project=runtime["project"],
+        entity=runtime["entity"],
+        group=runtime["group"],
+        name=record["display_name"],
+        id=record["id"],
+        tags=record["tags"],
+        resume="allow",
+        dir=str(root / "wandb"),
+        mode="online",
+        anonymous="never",
+        force=True,
+        settings=wandb.Settings(
+            disable_code=True,
+            console="off",
+            disable_git=True,
+            disable_job_creation=True,
+            init_timeout=float(os.environ.get("WANDB_INIT_TIMEOUT", "30")),
+            save_code=False,
+            x_disable_meta=True,
+            x_disable_stats=True,
+            x_disable_viewer=True,
+            x_extra_http_headers={"User-Agent": "Mozilla/5.0 lnet-h200-wandb-client/1"},
+            x_save_requirements=False,
+        ),
+        config={
+            **runtime["preflight"],
+            "campaign_id": runtime["campaign_id"],
+            "campaign_manifest_sha256": runtime["campaign_manifest_sha256"],
+            "source_commit": os.environ["H200_EXPECTED_COMMIT"],
+            "relay_protocol_version": runtime["relay_protocol_version"],
+        },
+    )
+    if run is None or not run.url:
+        raise RuntimeError("required ALPHABET-LM preflight W&B run was not initialized")
+    print(f"WANDB_RUN_URL={run.url}", flush=True)
+    return run
 
 
 def _loss(model: nn.Module, tokens: Tensor) -> Tensor:
@@ -100,19 +162,18 @@ def _precision_probe(config: AlphabetLMConfig) -> float:
     return error
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--root", type=Path, required=True)
-    parser.add_argument("--microbatch", type=int, default=2)
-    parser.add_argument("--context-length", type=int, default=2_048)
-    parser.add_argument("--repeats", type=int, default=2)
-    args = parser.parse_args()
-    if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
-        raise RuntimeError("ALPHABET-LM smoke requires one CUDA GPU")
-    gpu = torch.cuda.get_device_name()
-    if "H200" not in gpu.upper() or torch.cuda.get_device_capability()[0] != 9:
-        raise RuntimeError(f"ALPHABET-LM smoke requires H200, got {gpu}")
-    args.root.mkdir(parents=True, exist_ok=True)
+def _run(args: argparse.Namespace, runtime: dict[str, Any]) -> dict[str, Any]:
+    if runtime["preflight"] != {
+        "alphabet_parameters": 34_794_496,
+        "context_length": args.context_length,
+        "mamba_parameter_tolerance_fraction": 0.03,
+        "microbatch": args.microbatch,
+        "models": ["ALPHABET-LM", "parameter-matched-Mamba"],
+        "precision": "bfloat16",
+        "repeats": args.repeats,
+        "seed": 501,
+    }:
+        raise RuntimeError("ALPHABET-LM preflight arguments differ from the frozen campaign")
     config = AlphabetLMConfig(context_length=args.context_length, scan_fp32=True)
     torch.manual_seed(501)
     alphabet = AlphabetLM(config).cuda()
@@ -136,13 +197,15 @@ def main() -> None:
     mamba_roundtrip = _state_roundtrip(
         mamba, lambda: MambaLM(mamba_config), args.root, "mamba"
     )
-    payload = {
+    return {
         "schema": "lnet.alphabet_lm.h200_preflight.v1",
         "status": "passed",
-        "gpu": gpu,
+        "gpu": torch.cuda.get_device_name(),
         "context_length": config.context_length,
         "microbatch": args.microbatch,
         "mamba_git_commit": MAMBA_GIT_COMMIT,
+        "source_commit": os.environ["H200_EXPECTED_COMMIT"],
+        "campaign_id": runtime["campaign_id"],
         "alphabet": {
             "K": config.modes, "P": config.pole_modes, "D": config.layers,
             "parameters": alphabet_parameters,
@@ -158,6 +221,53 @@ def main() -> None:
         },
         "bf16_vs_fp32_recurrence_max_abs": precision_error,
     }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--runtime", type=Path, required=True)
+    parser.add_argument("--microbatch", type=int, default=2)
+    parser.add_argument("--context-length", type=int, default=2_048)
+    parser.add_argument("--repeats", type=int, default=2)
+    args = parser.parse_args()
+    if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
+        raise RuntimeError("ALPHABET-LM smoke requires one CUDA GPU")
+    gpu = torch.cuda.get_device_name()
+    if "H200" not in gpu.upper() or torch.cuda.get_device_capability()[0] != 9:
+        raise RuntimeError(f"ALPHABET-LM smoke requires H200, got {gpu}")
+    args.root.mkdir(parents=True, exist_ok=True)
+    runtime = _runtime(args.runtime)
+    (args.root / "wandb").mkdir(parents=True, exist_ok=True)
+    wandb_run = _initialize_wandb(runtime, args.root)
+    succeeded = False
+    try:
+        payload = _run(args, runtime)
+        wandb_run.log(
+            {
+                "alphabet/loss": payload["alphabet"]["loss"],
+                "alphabet/tokens_per_second": payload["alphabet"]["tokens_per_second"],
+                "alphabet/peak_memory_bytes": payload["alphabet"]["peak_memory_bytes"],
+                "mamba/loss": payload["mamba"]["loss"],
+                "mamba/tokens_per_second": payload["mamba"]["tokens_per_second"],
+                "mamba/peak_memory_bytes": payload["mamba"]["peak_memory_bytes"],
+                "bf16_vs_fp32_recurrence_max_abs": payload[
+                    "bf16_vs_fp32_recurrence_max_abs"
+                ],
+            },
+            step=0,
+        )
+        for key, value in {
+            "status": "passed",
+            "alphabet_parameters": payload["alphabet"]["parameters"],
+            "mamba_parameters": payload["mamba"]["parameters"],
+            "mamba_relative_parameter_error": payload["mamba"]["relative_parameter_error"],
+            "source_commit": payload["source_commit"],
+        }.items():
+            wandb_run.summary[key] = value
+        succeeded = True
+    finally:
+        wandb_run.finish(exit_code=0 if succeeded else 1)
     output = args.root / "preflight.json"
     output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print(json.dumps(payload, indent=2, sort_keys=True))

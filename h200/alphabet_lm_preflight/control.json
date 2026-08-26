@@ -1,0 +1,9 @@
+{
+  "schema": "lnet.remote_run_control.v1",
+  "campaign_id": "h200-alphabet-lm-preflight-s501-v1",
+  "target_commit": "0000000000000000000000000000000000000000",
+  "generation": 1,
+  "action": "stop",
+  "updated_at": "2026-08-26T00:00:00+09:00",
+  "reason": "safe default until the immutable preflight deployment is armed"
+}

@@ -1,0 +1,30 @@
+{
+  "schema": "lnet.h200.alphabet_lm.preflight.v1",
+  "campaign_id": "h200-alphabet-lm-preflight-s501-v1",
+  "output_namespace": "alphabet-lm-preflight-v1",
+  "preflight": {
+    "seed": 501,
+    "context_length": 2048,
+    "microbatch": 2,
+    "repeats": 2,
+    "precision": "bfloat16",
+    "models": ["ALPHABET-LM", "parameter-matched-Mamba"],
+    "alphabet_parameters": 34794496,
+    "mamba_parameter_tolerance_fraction": 0.03
+  },
+  "wandb": {
+    "sdk_version": "0.22.3",
+    "base_url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+    "app_url": "https://wandb.ai",
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-H200-Preflight-S501",
+    "console": "off"
+  },
+  "relay": {
+    "worker_name": "lnet-h200-imagenet100-stage-relay-v1",
+    "url": "https://lnet-h200-imagenet100-stage-relay-v1.gpupulse-monitor.workers.dev",
+    "upstream_origin": "https://api.wandb.ai",
+    "protocol_version": "wandb-0.22.3-h200-imagenet100-stage-v3"
+  }
+}

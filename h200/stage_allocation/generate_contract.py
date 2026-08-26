@@ -26,6 +26,7 @@ K64_P_DEPTH_INTERACTION_MANIFEST_PATH = ROOT / "h200/k64_p_depth_interaction/cam
 K_FAMILY_XL_MANIFEST_PATH = ROOT / "h200/k_family_xl/campaign.json"
 K_FAMILY_P_REFINEMENT_MANIFEST_PATH = ROOT / "h200/k_family_p_refinement/campaign.json"
 K_FAMILY_DEPTH_CONTROLS_MANIFEST_PATH = ROOT / "h200/k_family_depth_controls/campaign.json"
+ALPHABET_LM_PREFLIGHT_MANIFEST_PATH = ROOT / "h200/alphabet_lm_preflight/campaign.json"
 PROTOCOL_PATH = ROOT / "h200/campaign.json"
 RUNTIME_PATH = ROOT / "h200/stage_allocation/campaign.runtime.json"
 RELAY_CONSTANTS_PATH = ROOT / "cloudflare/stage-allocation-relay/src/campaign.generated.ts"
@@ -603,6 +604,49 @@ def _validate_k_family_depth_controls(
         raise ValueError("invalid supplemental K-family depth-control relay contract")
 
 
+def _alphabet_lm_preflight_records(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    run_id = _run_id(manifest["campaign_id"], "ALPHABET-Mamba-Compile-Gate:seed501")
+    return [
+        {
+            "id": run_id,
+            "display_name": "H200-S501-ALPHABET-LM-Mamba-Preflight",
+            "group": manifest["wandb"]["group"],
+            "project": manifest["wandb"]["project"],
+            "program": "h200/run_alphabet_lm_preflight.sh",
+            "tags": [
+                "H200", "ALPHABET-LM", "Mamba", "preflight", "seed501", "authenticated"
+            ],
+        }
+    ]
+
+
+def _validate_alphabet_lm_preflight(
+    primary: dict[str, Any], manifest: dict[str, Any]
+) -> None:
+    preflight = manifest.get("preflight", {})
+    wandb = manifest.get("wandb", {})
+    relay = manifest.get("relay", {})
+    if (
+        manifest.get("schema") != "lnet.h200.alphabet_lm.preflight.v1"
+        or manifest.get("campaign_id") != "h200-alphabet-lm-preflight-s501-v1"
+        or manifest.get("output_namespace") != "alphabet-lm-preflight-v1"
+        or preflight.get("seed") != 501
+        or preflight.get("context_length") != 2048
+        or preflight.get("microbatch") != 2
+        or preflight.get("repeats") != 2
+        or preflight.get("precision") != "bfloat16"
+        or preflight.get("alphabet_parameters") != 34_794_496
+        or wandb.get("entity") != primary["wandb"]["entity"]
+        or wandb.get("project") != "alphabet-lm-viability"
+        or wandb.get("group") != "ALPHABET-LM-H200-Preflight-S501"
+        or wandb.get("base_url") != primary["wandb"]["base_url"]
+        or relay.get("url") != primary["relay"]["url"]
+        or relay.get("worker_name") != primary["relay"]["worker_name"]
+        or relay.get("protocol_version") != primary["relay"]["protocol_version"]
+    ):
+        raise ValueError("invalid supplemental ALPHABET-LM preflight relay contract")
+
+
 def _validate(  # noqa: PLR0915
     manifest: dict[str, Any], protocol: dict[str, Any], digest: str
 ) -> None:
@@ -680,6 +724,10 @@ def _validate(  # noqa: PLR0915
         K_FAMILY_DEPTH_CONTROLS_MANIFEST_PATH.read_text(encoding="utf-8")
     )
     _validate_k_family_depth_controls(manifest, k_family_depth_controls)
+    alphabet_lm_preflight = json.loads(
+        ALPHABET_LM_PREFLIGHT_MANIFEST_PATH.read_text(encoding="utf-8")
+    )
+    _validate_alphabet_lm_preflight(manifest, alphabet_lm_preflight)
     all_records = [*records, *_supplemental_records(supplemental)]
     all_records.extend(_reader_wl_records(reader_wl))
     all_records.extend(_k64_p_allocation_records(k64_p_allocation))
@@ -689,6 +737,7 @@ def _validate(  # noqa: PLR0915
     all_records.extend(_k_family_xl_records(k_family_xl))
     all_records.extend(_k_family_p_refinement_records(k_family_p_refinement))
     all_records.extend(_k_family_depth_controls_records(k_family_depth_controls))
+    all_records.extend(_alphabet_lm_preflight_records(alphabet_lm_preflight))
     if len({record["id"] for record in all_records}) != len(all_records):
         raise ValueError("combined relay run IDs are not unique")
 
@@ -747,6 +796,9 @@ def _relay(
         *_k_family_depth_controls_records(
             json.loads(K_FAMILY_DEPTH_CONTROLS_MANIFEST_PATH.read_text(encoding="utf-8"))
         ),
+        *_alphabet_lm_preflight_records(
+            json.loads(ALPHABET_LM_PREFLIGHT_MANIFEST_PATH.read_text(encoding="utf-8"))
+        ),
     ]
     source = protocol["protocol"]
     authorization_digest = hashlib.sha256(
@@ -769,6 +821,8 @@ def _relay(
         + K_FAMILY_P_REFINEMENT_MANIFEST_PATH.read_bytes()
         + b"\0"
         + K_FAMILY_DEPTH_CONTROLS_MANIFEST_PATH.read_bytes()
+        + b"\0"
+        + ALPHABET_LM_PREFLIGHT_MANIFEST_PATH.read_bytes()
         + b"\0"
         + json.dumps(protocol, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
