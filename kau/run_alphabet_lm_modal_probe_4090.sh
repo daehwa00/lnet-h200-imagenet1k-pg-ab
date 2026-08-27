@@ -30,7 +30,7 @@ export MKL_NUM_THREADS=8
 export WANDB_BASE_URL="https://api.wandb.ai"
 export WANDB_ENTITY="daehwa"
 export WANDB_PROJECT="alphabet-lm-viability"
-export WANDB_GROUP="ALPHABET-LM-RTX4090-FrozenModalProbe-S501-v1"
+export WANDB_GROUP="ALPHABET-LM-RTX4090-FrozenModalProbe-S501-v2-LowLR"
 export WANDB_CONSOLE=off
 
 while true; do

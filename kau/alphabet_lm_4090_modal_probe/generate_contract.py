@@ -40,13 +40,14 @@ def _render() -> str:
         "group": manifest["wandb"]["group"],
         "run": {
             "id": hashlib.sha256(f"{campaign_id}\0seed501".encode()).hexdigest()[:16],
-            "display_name": "RTX4090-S501-ALPHABET-FrozenModalProbe-1M",
+            "display_name": "RTX4090-S501-ALPHABET-FrozenModalProbe-1M-LowLR",
             "tags": [
                 "RTX4090",
                 "FineWeb-Edu",
                 "frozen-backbone",
                 "terminal-pole-state",
                 "linear-probe",
+                "low-lr",
                 "seed501",
             ],
         },

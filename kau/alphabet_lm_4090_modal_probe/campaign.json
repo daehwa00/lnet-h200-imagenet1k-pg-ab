@@ -1,6 +1,6 @@
 {
   "schema": "lnet.kau.alphabet_lm.frozen_modal_probe.v1",
-  "campaign_id": "kau-alphabet-lm-frozen-modal-probe-s501-v1",
+  "campaign_id": "kau-alphabet-lm-frozen-modal-probe-s501-v2-low-lr",
   "checkpoint": "legacy-10m-8348e6503a398aa4",
   "probes": {
     "energy": "h + Linear(RMSNorm(log1p(|z|^2)), 512)",
@@ -13,7 +13,7 @@
     "target_tokens": 1000000,
     "global_sequences": 8,
     "microbatch": 1,
-    "learning_rate": 0.003,
+    "learning_rate": 0.0003,
     "weight_decay": 0.01,
     "gradient_clip": 1.0,
     "warmup_updates": 10,
@@ -26,6 +26,6 @@
   "wandb": {
     "entity": "daehwa",
     "project": "alphabet-lm-viability",
-    "group": "ALPHABET-LM-RTX4090-FrozenModalProbe-S501-v1"
+    "group": "ALPHABET-LM-RTX4090-FrozenModalProbe-S501-v2-LowLR"
   }
 }
