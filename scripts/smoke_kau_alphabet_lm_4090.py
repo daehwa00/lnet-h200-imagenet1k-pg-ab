@@ -63,6 +63,7 @@ def main() -> None:
             "dynamic_write_r4",
             "local_only",
             "local_sidecar",
+            "normalized_sidecar",
         ),
         default="all",
     )
@@ -88,6 +89,7 @@ def main() -> None:
         "dynamic_write_r4",
         "local_only",
         "local_sidecar",
+        "normalized_sidecar",
     }:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
@@ -210,6 +212,24 @@ def main() -> None:
             raise RuntimeError("DenseK3 LocalSidecar parameter contract changed")
         full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
         results["alphabet-dense-k3-local-sidecar"] = _step(local_sidecar, full_microbatch)
+    if args.only == "normalized_sidecar":
+        torch.manual_seed(501)
+        normalized_sidecar = AlphabetLM(
+            AlphabetLMConfig(
+                reader_type="dense_k3",
+                memory_layout="local_sidecar",
+                sidecar_initial_scale=0.01,
+                sidecar_normalize_memory=True,
+                sidecar_channelwise_scale=False,
+            )
+        )
+        if sum(parameter.numel() for parameter in normalized_sidecar.parameters()) != 40_649_740:
+            raise RuntimeError("DenseK3 NormalizedScalarSidecar parameter contract changed")
+        full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
+        results["alphabet-dense-k3-normalized-scalar-sidecar"] = _step(
+            normalized_sidecar,
+            full_microbatch,
+        )
     if args.only == "all":
         torch.manual_seed(501)
         mamba, parameters, relative_error = build_parameter_matched_mamba(

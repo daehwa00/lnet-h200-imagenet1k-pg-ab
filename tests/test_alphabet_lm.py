@@ -26,7 +26,10 @@ from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 from lnet.pac_triton_recurrence_op import pac_triton_recurrence_opaque_op
 from scripts.evaluate_kau_alphabet_lm_context import _zero_memory
 from scripts.prepare_h200_alphabet_lm_data import _parquet_to_jsonl, _split_documents
-from scripts.train_h200_alphabet_lm_10m import _copy_matching_legacy_initialization
+from scripts.train_h200_alphabet_lm_10m import (
+    _copy_matching_legacy_initialization,
+    _initialize_sidecar_from_trunk,
+)
 
 
 def _small() -> AlphabetLMConfig:
@@ -722,6 +725,77 @@ def test_sidecar_memory_zero_preserves_the_local_trunk() -> None:
     finally:
         for handle in handles:
             handle.remove()
+
+
+def test_normalized_scalar_sidecar_enforces_per_token_branch_rms() -> None:
+    torch.manual_seed(501)
+    model = AlphabetLM(
+        AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=2,
+            post_hidden=12,
+            context_length=16,
+            reader_type="dense_k3",
+            memory_layout="local_sidecar",
+            sidecar_initial_scale=0.01,
+            sidecar_normalize_memory=True,
+            sidecar_channelwise_scale=False,
+        )
+    )
+    sidecar = next(
+        module for module in model.modules() if isinstance(module, FixedPoleResidualSidecar)
+    )
+    assert sidecar.beta.shape == ()
+    real = torch.randn(2, 16, 8)
+    imag = torch.randn_like(real)
+    output_real, output_imag = sidecar(real, imag)
+    trunk_rms = torch.sqrt(real.square().add(imag.square()).mean(dim=-1))
+    branch_rms = torch.sqrt(
+        (output_real - real).square().add((output_imag - imag).square()).mean(dim=-1)
+    )
+    torch.testing.assert_close(
+        branch_rms / trunk_rms,
+        torch.full_like(trunk_rms, 0.01),
+        atol=2.0e-6,
+        rtol=2.0e-4,
+    )
+
+
+def test_frozen_sidecar_owns_only_new_memory_parameters(tmp_path: Path) -> None:
+    def config(
+        memory_layout: Literal["local_only", "local_sidecar"],
+    ) -> AlphabetLMConfig:
+        return AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=2,
+            post_hidden=12,
+            context_length=16,
+            reader_type="dense_k3",
+            memory_layout=memory_layout,
+            sidecar_normalize_memory=memory_layout == "local_sidecar",
+            sidecar_channelwise_scale=memory_layout != "local_sidecar",
+        )
+
+    torch.manual_seed(501)
+    local = AlphabetLM(config("local_only"))
+    checkpoint = tmp_path / "local-only.pt"
+    torch.save({"model": local.state_dict()}, checkpoint)
+    torch.manual_seed(9)
+    sidecar = AlphabetLM(config("local_sidecar"))
+    contract = _initialize_sidecar_from_trunk(sidecar, checkpoint, freeze_trunk=True)
+    assert contract["enabled"] is True
+    assert contract["frozen"] is True
+    local_state = local.state_dict()
+    for name, value in sidecar.state_dict().items():
+        if ".sidecar." not in name:
+            torch.testing.assert_close(value, local_state[name], atol=0.0, rtol=0.0)
+    trainable = [name for name, parameter in sidecar.named_parameters() if parameter.requires_grad]
+    assert trainable
+    assert all(".sidecar." in name for name in trainable)
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:

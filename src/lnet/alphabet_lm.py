@@ -54,6 +54,8 @@ class AlphabetLMConfig:
     tensor_temporal_modes: int = 8
     tensor_initial_read_gain: float = 0.6
     sidecar_initial_scale: float = 0.01
+    sidecar_normalize_memory: bool = False
+    sidecar_channelwise_scale: bool = True
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -433,6 +435,9 @@ class FixedPoleResidualSidecar(nn.Module):
         maximum_half_life: float,
         decay_dominant_fraction: float,
         initial_scale: float,
+        normalize_memory: bool,
+        channelwise_scale: bool,
+        epsilon: float,
     ) -> None:
         super().__init__()
         self.modes = int(modes)
@@ -448,13 +453,29 @@ class FixedPoleResidualSidecar(nn.Module):
             decay_dominant_fraction=decay_dominant_fraction,
         )
         self.writer = PackedComplexLinear(pole_modes, modes)
-        self.beta = nn.Parameter(torch.full((modes,), float(initial_scale)))
+        beta_shape = (modes,) if channelwise_scale else ()
+        self.beta = nn.Parameter(torch.full(beta_shape, float(initial_scale)))
+        self.normalize_memory = bool(normalize_memory)
+        self.epsilon = float(epsilon)
 
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         if real.shape != imag.shape or real.shape[-1] != self.modes:
             raise ValueError("fixed-pole sidecar expects matching B,T,K coordinates")
         drive = self.reader(*self.norm(real, imag))
         memory = self.writer(*self.memory(*drive))
+        if self.normalize_memory:
+            trunk_rms = torch.sqrt(
+                real.float().square().add(imag.float().square()).mean(dim=-1, keepdim=True)
+            )
+            memory_rms = torch.sqrt(
+                memory[0]
+                .float()
+                .square()
+                .add(memory[1].float().square())
+                .mean(dim=-1, keepdim=True)
+            )
+            scale = (trunk_rms / (memory_rms + self.epsilon)).detach().to(real.dtype)
+            memory = memory[0] * scale, memory[1] * scale
         beta = self.beta.to(dtype=real.dtype)
         return real + beta * memory[0], imag + beta * memory[1]
 
@@ -902,6 +923,9 @@ def _make_sidecar(config: AlphabetLMConfig) -> FixedPoleResidualSidecar | None:
             maximum_half_life=config.maximum_half_life,
             decay_dominant_fraction=config.decay_dominant_fraction,
             initial_scale=config.sidecar_initial_scale,
+            normalize_memory=config.sidecar_normalize_memory,
+            channelwise_scale=config.sidecar_channelwise_scale,
+            epsilon=config.rms_epsilon,
         )
 
 

@@ -73,6 +73,14 @@ def _build(kind: str) -> nn.Module:
             memory_layout="local_sidecar",
             sidecar_initial_scale=0.01,
         )
+    elif kind == "dense_local_sidecar_normalized":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_sidecar",
+            sidecar_initial_scale=0.01,
+            sidecar_normalize_memory=True,
+            sidecar_channelwise_scale=False,
+        )
     return AlphabetLM(config)
 
 
@@ -491,6 +499,7 @@ def main() -> None:
             "dense_dynamic_write_r4",
             "dense_local_only",
             "dense_local_sidecar",
+            "dense_local_sidecar_normalized",
             "mamba",
         ),
         required=True,

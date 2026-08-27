@@ -43,6 +43,9 @@ KAU_TENSORPOLE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.tensorpole_m8_2m.runtime.v
 KAU_DYNAMIC_WRITE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dynamic_write_r4_2m.runtime.v1"
 KAU_CONTEXT_CONTROL_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.context_controls_2m.runtime.v1"
 KAU_LOCAL_SIDECAR_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.local_sidecar_2m.runtime.v1"
+KAU_FROZEN_NORMALIZED_SIDECAR_RUNTIME_SCHEMA = (
+    "lnet.kau.alphabet_lm.frozen_normalized_sidecar_1m.runtime.v1"
+)
 _STOP_EVENT = threading.Event()
 
 
@@ -132,6 +135,38 @@ def _copy_matching_legacy_initialization(
     return copied_tensors, copied_parameters
 
 
+def _initialize_sidecar_from_trunk(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+    *,
+    freeze_trunk: bool,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        if freeze_trunk:
+            raise RuntimeError("freezing the trunk requires an initialization checkpoint")
+        return {"enabled": False, "frozen": False}
+    if not isinstance(model, AlphabetLM) or model.config.memory_layout != "local_sidecar":
+        raise RuntimeError("trunk initialization requires a LocalSidecar ALPHABET model")
+    payload = cast(
+        "dict[str, Any]", torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    expected_missing = {name for name in model.state_dict() if ".sidecar." in name}
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("LocalOnly checkpoint does not match the LocalSidecar trunk")
+    if freeze_trunk:
+        for name, parameter in model.named_parameters():
+            parameter.requires_grad_(".sidecar." in name)
+    return {
+        "enabled": True,
+        "frozen": freeze_trunk,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": sha256_file(checkpoint_path),
+        "missing_sidecar_tensors": len(expected_missing),
+    }
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -165,6 +200,8 @@ def _build(
     tensor_temporal_modes: int = 8,
     tensor_initial_read_gain: float = 0.6,
     sidecar_initial_scale: float = 0.01,
+    sidecar_normalize_memory: bool = False,
+    sidecar_channelwise_scale: bool = True,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -193,6 +230,8 @@ def _build(
         tensor_temporal_modes=tensor_temporal_modes,
         tensor_initial_read_gain=tensor_initial_read_gain,
         sidecar_initial_scale=sidecar_initial_scale,
+        sidecar_normalize_memory=sidecar_normalize_memory,
+        sidecar_channelwise_scale=sidecar_channelwise_scale,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -371,6 +410,18 @@ def main() -> None:
     parser.add_argument("--tensor-temporal-modes", type=int, default=8)
     parser.add_argument("--tensor-initial-read-gain", type=float, default=0.6)
     parser.add_argument("--sidecar-initial-scale", type=float, default=0.01)
+    parser.add_argument(
+        "--sidecar-normalize-memory",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--sidecar-channelwise-scale",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--initialize-trunk-checkpoint", type=Path)
+    parser.add_argument("--freeze-trunk", action="store_true")
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -393,6 +444,7 @@ def main() -> None:
         KAU_DYNAMIC_WRITE_RUNTIME_SCHEMA,
         KAU_CONTEXT_CONTROL_RUNTIME_SCHEMA,
         KAU_LOCAL_SIDECAR_RUNTIME_SCHEMA,
+        KAU_FROZEN_NORMALIZED_SIDECAR_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -438,6 +490,8 @@ def main() -> None:
         tensor_temporal_modes=args.tensor_temporal_modes,
         tensor_initial_read_gain=args.tensor_initial_read_gain,
         sidecar_initial_scale=args.sidecar_initial_scale,
+        sidecar_normalize_memory=args.sidecar_normalize_memory,
+        sidecar_channelwise_scale=args.sidecar_channelwise_scale,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -446,6 +500,8 @@ def main() -> None:
     if args.paired_legacy_initialization and args.paired_dense_initialization:
         raise RuntimeError("paired initialization reference is ambiguous")
     if args.paired_legacy_initialization or args.paired_dense_initialization:
+        if args.initialize_trunk_checkpoint is not None:
+            raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
             raise RuntimeError("paired initialization requires ALPHABET-LM")
         reference_reader = "dense_k3" if args.paired_dense_initialization else "r2k3"
@@ -461,6 +517,11 @@ def main() -> None:
             "copied_parameters": copied_parameters,
             "reference_reader": reference_reader,
         }
+    trunk_initialization = _initialize_sidecar_from_trunk(
+        model,
+        args.initialize_trunk_checkpoint,
+        freeze_trunk=args.freeze_trunk,
+    )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
         active_arguments = {
@@ -477,6 +538,9 @@ def main() -> None:
             "tensor_temporal_modes": args.tensor_temporal_modes,
             "tensor_initial_read_gain": args.tensor_initial_read_gain,
             "sidecar_initial_scale": args.sidecar_initial_scale,
+            "sidecar_normalize_memory": args.sidecar_normalize_memory,
+            "sidecar_channelwise_scale": args.sidecar_channelwise_scale,
+            "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
             "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
@@ -501,12 +565,19 @@ def main() -> None:
             raise RuntimeError("paired initialization coverage changed")
     model = model.to(device)
     parameters = _parameter_count(model)
+    total_parameters = sum(parameter.numel() for parameter in model.parameters())
     default_parameters = 34_794_496 if args.model == "alphabet" else 35_425_280
     expected_parameters = runtime.get("parameter_counts", {}).get(run_label, default_parameters)
     if parameters != expected_parameters:
         raise RuntimeError(f"{args.model} parameter contract changed: {parameters}")
+    expected_total = runtime.get("total_parameter_counts", {}).get(run_label, total_parameters)
+    if total_parameters != expected_total:
+        raise RuntimeError(f"{args.model} total parameter contract changed: {total_parameters}")
+    trainable_parameters = [
+        parameter for parameter in model.parameters() if parameter.requires_grad
+    ]
     optimizer = torch.optim.AdamW(
-        model.parameters(),
+        trainable_parameters,
         lr=float(training["learning_rate"]),
         weight_decay=float(training["weight_decay"]),
         fused=True,
@@ -546,11 +617,15 @@ def main() -> None:
         "tensor_temporal_modes": args.tensor_temporal_modes,
         "tensor_initial_read_gain": args.tensor_initial_read_gain,
         "sidecar_initial_scale": args.sidecar_initial_scale,
+        "sidecar_normalize_memory": args.sidecar_normalize_memory,
+        "sidecar_channelwise_scale": args.sidecar_channelwise_scale,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
         "paired_legacy_initialization": paired_initialization,
+        "trunk_initialization": trunk_initialization,
         "parameters": parameters,
+        "total_parameters": total_parameters,
         "training": training,
         "paper": runtime.get("paper"),
         "train_manifest_sha256": sha256_file(args.train_manifest),
@@ -607,7 +682,7 @@ def main() -> None:
                 scaled = loss_sum / valid_tokens
             scaled.backward()
             loss_total += float(loss_sum.detach())
-        torch.nn.utils.clip_grad_norm_(model.parameters(), float(training["gradient_clip"]))
+        torch.nn.utils.clip_grad_norm_(trainable_parameters, float(training["gradient_clip"]))
         optimizer.step()
         scheduler.step()
         update += 1
@@ -700,6 +775,7 @@ def main() -> None:
         "status": "completed",
         "model": args.model,
         "parameters": parameters,
+        "total_parameters": total_parameters,
         "tokens_seen": tokens_seen,
         "updates": update,
         "validation_loss": validation_loss,
