@@ -81,6 +81,15 @@ def _build(kind: str) -> nn.Module:
             sidecar_normalize_memory=True,
             sidecar_channelwise_scale=False,
         )
+    elif kind == "dense_local_sidecar_normalized_no_recurrence":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_sidecar",
+            sidecar_initial_scale=0.01,
+            sidecar_normalize_memory=True,
+            sidecar_channelwise_scale=False,
+            sidecar_use_recurrence=False,
+        )
     return AlphabetLM(config)
 
 
@@ -500,6 +509,7 @@ def main() -> None:
             "dense_local_only",
             "dense_local_sidecar",
             "dense_local_sidecar_normalized",
+            "dense_local_sidecar_normalized_no_recurrence",
             "mamba",
         ),
         required=True,

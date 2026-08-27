@@ -1,0 +1,92 @@
+{
+  "architecture": {
+    "K": 256,
+    "P": 320,
+    "layers": 12,
+    "variants": {
+      "alphabet-dense-k3-frozen-normalized-local-sidecar": {
+        "equation": "output=L+beta*W(B(Norm(L)))*stopgrad(RMS(L)/(RMS(M)+eps))",
+        "freeze_trunk": true,
+        "memory_layout": "local_sidecar",
+        "memory_readout": "fixed",
+        "pole_dynamics": "fixed",
+        "post_hidden": 384,
+        "reader_type": "dense_k3",
+        "sidecar_channelwise_scale": false,
+        "sidecar_initial_scale": 0.01,
+        "sidecar_normalize_memory": true,
+        "sidecar_use_recurrence": false,
+        "write_map": "static"
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-frozen-local-sidecar-1m-s501-v1",
+  "campaign_manifest_sha256": "3665d641a7cd42a498658e4a45d4fcad331da0018344dd1680a796da575a34f9",
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      128,
+      32,
+      1
+    ],
+    "sidecar_beta_statistics": true,
+    "sidecar_memory_zero": true,
+    "unused_pole_dynamics_parameters": 7680,
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-FrozenLocalSidecar-1M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-frozen-local-sidecar-1m-v1",
+  "parameter_counts": {
+    "alphabet-dense-k3-frozen-normalized-local-sidecar": 3942924
+  },
+  "project": "alphabet-lm-viability",
+  "recurrent_control": {
+    "validation_loss": 6.747202654484441,
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/2cd1af6334cc0eef"
+  },
+  "runs": {
+    "alphabet-dense-k3-frozen-normalized-local-sidecar": {
+      "display_name": "RTX4090-S501-ALPHABET-FrozenLocal-NormLocalSidecar-1M",
+      "id": "957280145360d81e",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "1M",
+        "FrozenLocalOnly",
+        "NormalizedSidecar",
+        "NoRecurrence",
+        "scalar-beta0.01",
+        "seed501"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.frozen_local_sidecar_1m.runtime.v1",
+  "total_parameter_counts": {
+    "alphabet-dense-k3-frozen-normalized-local-sidecar": 40649740
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-dense-k3-frozen-normalized-local-sidecar"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 1000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  },
+  "trunk": {
+    "checkpoint": "/home/daehwa/alphabet-lm-4090-context-control-runs/b845ab6bd1fcdb61/local-only/checkpoint.pt",
+    "checkpoint_sha256": "492993d9fde417abb909efeeeed83dc6ea8d5d0830cdda512e73d4595ebd4b22",
+    "validation_loss": 6.760133224275417,
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/e7453322a3a33629"
+  }
+}

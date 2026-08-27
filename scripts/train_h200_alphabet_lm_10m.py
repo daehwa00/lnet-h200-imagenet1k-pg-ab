@@ -46,6 +46,7 @@ KAU_LOCAL_SIDECAR_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.local_sidecar_2m.runtim
 KAU_FROZEN_NORMALIZED_SIDECAR_RUNTIME_SCHEMA = (
     "lnet.kau.alphabet_lm.frozen_normalized_sidecar_1m.runtime.v1"
 )
+KAU_FROZEN_LOCAL_SIDECAR_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.frozen_local_sidecar_1m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -202,6 +203,7 @@ def _build(
     sidecar_initial_scale: float = 0.01,
     sidecar_normalize_memory: bool = False,
     sidecar_channelwise_scale: bool = True,
+    sidecar_use_recurrence: bool = True,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -232,6 +234,7 @@ def _build(
         sidecar_initial_scale=sidecar_initial_scale,
         sidecar_normalize_memory=sidecar_normalize_memory,
         sidecar_channelwise_scale=sidecar_channelwise_scale,
+        sidecar_use_recurrence=sidecar_use_recurrence,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -422,6 +425,11 @@ def main() -> None:
     )
     parser.add_argument("--initialize-trunk-checkpoint", type=Path)
     parser.add_argument("--freeze-trunk", action="store_true")
+    parser.add_argument(
+        "--sidecar-use-recurrence",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -445,6 +453,7 @@ def main() -> None:
         KAU_CONTEXT_CONTROL_RUNTIME_SCHEMA,
         KAU_LOCAL_SIDECAR_RUNTIME_SCHEMA,
         KAU_FROZEN_NORMALIZED_SIDECAR_RUNTIME_SCHEMA,
+        KAU_FROZEN_LOCAL_SIDECAR_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -492,6 +501,7 @@ def main() -> None:
         sidecar_initial_scale=args.sidecar_initial_scale,
         sidecar_normalize_memory=args.sidecar_normalize_memory,
         sidecar_channelwise_scale=args.sidecar_channelwise_scale,
+        sidecar_use_recurrence=args.sidecar_use_recurrence,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -540,6 +550,7 @@ def main() -> None:
             "sidecar_initial_scale": args.sidecar_initial_scale,
             "sidecar_normalize_memory": args.sidecar_normalize_memory,
             "sidecar_channelwise_scale": args.sidecar_channelwise_scale,
+            "sidecar_use_recurrence": args.sidecar_use_recurrence,
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -619,6 +630,7 @@ def main() -> None:
         "sidecar_initial_scale": args.sidecar_initial_scale,
         "sidecar_normalize_memory": args.sidecar_normalize_memory,
         "sidecar_channelwise_scale": args.sidecar_channelwise_scale,
+        "sidecar_use_recurrence": args.sidecar_use_recurrence,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,

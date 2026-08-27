@@ -798,6 +798,49 @@ def test_frozen_sidecar_owns_only_new_memory_parameters(tmp_path: Path) -> None:
     assert all(".sidecar." in name for name in trainable)
 
 
+def test_no_recurrence_sidecar_changes_only_temporal_carry() -> None:
+    def config(*, use_recurrence: bool) -> AlphabetLMConfig:
+        return AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=2,
+            post_hidden=12,
+            context_length=16,
+            reader_type="dense_k3",
+            memory_layout="local_sidecar",
+            sidecar_normalize_memory=True,
+            sidecar_channelwise_scale=False,
+            sidecar_use_recurrence=use_recurrence,
+        )
+
+    torch.manual_seed(501)
+    recurrent = AlphabetLM(config(use_recurrence=True))
+    torch.manual_seed(501)
+    local = AlphabetLM(config(use_recurrence=False))
+    assert sum(parameter.numel() for parameter in recurrent.parameters()) == sum(
+        parameter.numel() for parameter in local.parameters()
+    )
+    for name, parameter in recurrent.named_parameters():
+        torch.testing.assert_close(
+            parameter,
+            dict(local.named_parameters())[name],
+            atol=0.0,
+            rtol=0.0,
+        )
+    tokens = torch.randint(64, (2, 17))
+    logits = local(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), tokens[:, 1:].flatten())
+    loss.backward()
+    for block in local.blocks:
+        sidecar = cast("FixedPoleResidualSidecar", block.sidecar)
+        assert sidecar.reader.weight_real.grad is not None
+        assert sidecar.writer.weight_real.grad is not None
+        assert sidecar.beta.grad is not None
+        assert sidecar.memory.raw_damping.grad is None
+        assert sidecar.memory.raw_frequency.grad is None
+
+
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:
     root = Path(__file__).resolve().parents[1]
     requirements = (root / "h200/alphabet_lm_preflight/requirements.txt").read_text(

@@ -56,6 +56,7 @@ class AlphabetLMConfig:
     sidecar_initial_scale: float = 0.01
     sidecar_normalize_memory: bool = False
     sidecar_channelwise_scale: bool = True
+    sidecar_use_recurrence: bool = True
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -438,6 +439,7 @@ class FixedPoleResidualSidecar(nn.Module):
         normalize_memory: bool,
         channelwise_scale: bool,
         epsilon: float,
+        use_recurrence: bool,
     ) -> None:
         super().__init__()
         self.modes = int(modes)
@@ -457,12 +459,14 @@ class FixedPoleResidualSidecar(nn.Module):
         self.beta = nn.Parameter(torch.full(beta_shape, float(initial_scale)))
         self.normalize_memory = bool(normalize_memory)
         self.epsilon = float(epsilon)
+        self.use_recurrence = bool(use_recurrence)
 
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         if real.shape != imag.shape or real.shape[-1] != self.modes:
             raise ValueError("fixed-pole sidecar expects matching B,T,K coordinates")
         drive = self.reader(*self.norm(real, imag))
-        memory = self.writer(*self.memory(*drive))
+        state = self.memory(*drive) if self.use_recurrence else drive
+        memory = self.writer(*state)
         if self.normalize_memory:
             trunk_rms = torch.sqrt(
                 real.float().square().add(imag.float().square()).mean(dim=-1, keepdim=True)
@@ -926,6 +930,7 @@ def _make_sidecar(config: AlphabetLMConfig) -> FixedPoleResidualSidecar | None:
             normalize_memory=config.sidecar_normalize_memory,
             channelwise_scale=config.sidecar_channelwise_scale,
             epsilon=config.rms_epsilon,
+            use_recurrence=config.sidecar_use_recurrence,
         )
 
 
