@@ -62,6 +62,7 @@ def main() -> None:
             "tensorpole",
             "dynamic_write_r4",
             "local_only",
+            "local_sidecar",
         ),
         default="all",
     )
@@ -86,6 +87,7 @@ def main() -> None:
         "tensorpole",
         "dynamic_write_r4",
         "local_only",
+        "local_sidecar",
     }:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
@@ -195,6 +197,19 @@ def main() -> None:
             raise RuntimeError("DenseK3 LocalOnly parameter contract changed")
         full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
         results["alphabet-dense-k3-local-only"] = _step(local_only, full_microbatch)
+    if args.only == "local_sidecar":
+        torch.manual_seed(501)
+        local_sidecar = AlphabetLM(
+            AlphabetLMConfig(
+                reader_type="dense_k3",
+                memory_layout="local_sidecar",
+                sidecar_initial_scale=0.01,
+            )
+        )
+        if sum(parameter.numel() for parameter in local_sidecar.parameters()) != 40_652_800:
+            raise RuntimeError("DenseK3 LocalSidecar parameter contract changed")
+        full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
+        results["alphabet-dense-k3-local-sidecar"] = _step(local_sidecar, full_microbatch)
     if args.only == "all":
         torch.manual_seed(501)
         mamba, parameters, relative_error = build_parameter_matched_mamba(

@@ -18,6 +18,7 @@ from lnet.alphabet_lm import (
     AlphabetLMConfig,
     DynamicLowRankWrite,
     FixedComplexPoleMemory1D,
+    FixedPoleResidualSidecar,
     GroupedPackedComplexLinear,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
@@ -66,6 +67,12 @@ def _build(kind: str) -> nn.Module:
         )
     elif kind == "dense_local_only":
         config = AlphabetLMConfig(reader_type="dense_k3", memory_layout="local_only")
+    elif kind == "dense_local_sidecar":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_sidecar",
+            sidecar_initial_scale=0.01,
+        )
     return AlphabetLM(config)
 
 
@@ -77,15 +84,58 @@ def _zero_memory(model: nn.Module) -> list[torch.utils.hooks.RemovableHandle]:
         real, imag = cast("tuple[Tensor, Tensor]", output)
         return torch.zeros_like(real), torch.zeros_like(imag)
 
-    writers = [
-        module
-        for module in model.modules()
-        if isinstance(
-            module,
-            (PackedComplexLinear, GroupedPackedComplexLinear, TensorProductPoleMemory1D),
-        )
+    sidecars = [
+        module for module in model.modules() if isinstance(module, FixedPoleResidualSidecar)
     ]
+    writers = [sidecar.writer for sidecar in sidecars]
+    if not writers:
+        writers = [
+            module
+            for module in model.modules()
+            if isinstance(
+                module,
+                (PackedComplexLinear, GroupedPackedComplexLinear, TensorProductPoleMemory1D),
+            )
+        ]
     return [writer.register_forward_hook(zero_output) for writer in writers]
+
+
+@torch.no_grad()
+def _sidecar_metrics(
+    model: AlphabetLM,
+    dataset: TokenBlockDataset,
+    device: torch.device,
+) -> dict[str, object] | None:
+    modules = [module for module in model.modules() if isinstance(module, FixedPoleResidualSidecar)]
+    if not modules:
+        return None
+    branch_ratios: list[float] = []
+
+    def capture(_module: nn.Module, inputs: tuple[object, ...], output: object) -> None:
+        real, imag = cast("tuple[Tensor, Tensor]", inputs)
+        output_real, output_imag = cast("tuple[Tensor, Tensor]", output)
+        trunk_energy = real.float().square().add(imag.float().square()).mean()
+        branch_energy = (
+            (output_real - real).float().square() + (output_imag - imag).float().square()
+        ).mean()
+        branch_ratios.append(float(torch.sqrt(branch_energy / trunk_energy.clamp_min(1.0e-12))))
+
+    handles = [module.register_forward_hook(capture) for module in modules]
+    sample = dataset[0][:-1].unsqueeze(0).to(device)
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        model.hidden(sample)
+    for handle in handles:
+        handle.remove()
+    beta = torch.stack([module.beta.float() for module in modules])
+    return {
+        "branch_to_trunk_rms_mean": sum(branch_ratios) / len(branch_ratios),
+        "branch_to_trunk_rms_by_layer": branch_ratios,
+        "beta_mean": float(beta.mean()),
+        "beta_abs_mean": float(beta.abs().mean()),
+        "beta_min": float(beta.min()),
+        "beta_max": float(beta.max()),
+        "beta_by_layer": beta.detach().cpu().tolist(),
+    }
 
 
 @torch.no_grad()
@@ -440,6 +490,7 @@ def main() -> None:
             "tensorpole",
             "dense_dynamic_write_r4",
             "dense_local_only",
+            "dense_local_sidecar",
             "mamba",
         ),
         required=True,
@@ -512,6 +563,9 @@ def main() -> None:
         dynamic_write_metrics = _dynamic_write_metrics(model, dataset, device)
         if dynamic_write_metrics is not None:
             payload["dynamic_write"] = dynamic_write_metrics
+        sidecar_metrics = _sidecar_metrics(model, dataset, device)
+        if sidecar_metrics is not None:
+            payload["sidecar"] = sidecar_metrics
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print("KAU_LM_CONTEXT=" + json.dumps(payload, sort_keys=True), flush=True)

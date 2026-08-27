@@ -1,0 +1,72 @@
+{
+  "schema": "lnet.kau.alphabet_lm.local_sidecar_2m.v1",
+  "campaign_id": "kau-alphabet-lm-local-sidecar-2m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-local-sidecar-2m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "version": "v1",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051"
+  },
+  "architecture": {
+    "K": 256,
+    "P": 320,
+    "layers": 12,
+    "variants": {
+      "alphabet-dense-k3-local-sidecar": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_sidecar",
+        "pole_dynamics": "fixed",
+        "memory_readout": "fixed",
+        "write_map": "static",
+        "post_hidden": 384,
+        "sidecar_initial_scale": 0.01,
+        "paired_dense_copied_parameters": 36706816,
+        "equation": "L=LocalOnly(E); u=B(Norm(L)); z=scan(a,u); output=L+beta*W(z)"
+      }
+    }
+  },
+  "controls": {
+    "dense_fixed_2m": {
+      "parameters": 36714496,
+      "validation_loss": 7.67721192400481,
+      "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/8344ae863b50c2d4"
+    },
+    "local_only_2m": {
+      "parameters": 36706816,
+      "validation_loss": 6.760133224275417,
+      "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/e7453322a3a33629"
+    }
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 2000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": ["mamba-2m", "alphabet-dense-k3-local-sidecar"]
+  },
+  "parameter_counts": {
+    "mamba-2m": 35425280,
+    "alphabet-dense-k3-local-sidecar": 40652800
+  },
+  "diagnostics": {
+    "validation_sequence_limit": 512,
+    "context_segments": [2048, 128, 32, 1],
+    "sidecar_memory_zero": true,
+    "sidecar_beta_statistics": true
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-LocalSidecar-2M-S501-v1"
+  }
+}

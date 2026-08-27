@@ -16,6 +16,7 @@ from lnet.alphabet_lm import (
     AlphabetLMConfig,
     DynamicLowRankWrite,
     FixedComplexPoleMemory1D,
+    FixedPoleResidualSidecar,
     IdentityComplexMemory1D,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
@@ -23,6 +24,7 @@ from lnet.alphabet_lm import (
 )
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 from lnet.pac_triton_recurrence_op import pac_triton_recurrence_opaque_op
+from scripts.evaluate_kau_alphabet_lm_context import _zero_memory
 from scripts.prepare_h200_alphabet_lm_data import _parquet_to_jsonl, _split_documents
 from scripts.train_h200_alphabet_lm_10m import _copy_matching_legacy_initialization
 
@@ -566,9 +568,7 @@ def test_dense_local_only_removes_only_recurrent_transport() -> None:
     fixed = AlphabetLM(AlphabetLMConfig(reader_type="dense_k3"))
     fixed_parameters = dict(fixed.named_parameters())
     torch.manual_seed(501)
-    local = AlphabetLM(
-        AlphabetLMConfig(reader_type="dense_k3", memory_layout="local_only")
-    )
+    local = AlphabetLM(AlphabetLMConfig(reader_type="dense_k3", memory_layout="local_only"))
     assert sum(parameter.numel() for parameter in local.parameters()) == 36_706_816
     identity_memories = [
         module for module in local.modules() if isinstance(module, IdentityComplexMemory1D)
@@ -617,6 +617,111 @@ def test_dense_local_only_is_causal_and_has_finite_gradients() -> None:
         parameter.grad is not None and bool(torch.isfinite(parameter.grad).all())
         for parameter in model.parameters()
     )
+
+
+def test_local_sidecar_preserves_the_complete_local_trunk() -> None:
+    torch.manual_seed(501)
+    local = AlphabetLM(AlphabetLMConfig(reader_type="dense_k3", memory_layout="local_only"))
+    local_parameters = dict(local.named_parameters())
+    torch.manual_seed(501)
+    sidecar = AlphabetLM(
+        AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_sidecar",
+            sidecar_initial_scale=0.01,
+        )
+    )
+    assert sum(parameter.numel() for parameter in sidecar.parameters()) == 40_652_800
+    sidecar_parameters = dict(sidecar.named_parameters())
+    for name, parameter in local_parameters.items():
+        torch.testing.assert_close(sidecar_parameters[name], parameter, atol=0.0, rtol=0.0)
+    sidecars = [
+        module for module in sidecar.modules() if isinstance(module, FixedPoleResidualSidecar)
+    ]
+    assert len(sidecars) == 12
+    assert all(torch.equal(module.beta, torch.full_like(module.beta, 0.01)) for module in sidecars)
+
+
+def test_zero_beta_sidecar_is_exactly_local_only_and_receives_gradients() -> None:
+    config = AlphabetLMConfig(
+        vocab_size=64,
+        modes=8,
+        pole_modes=12,
+        layers=2,
+        post_hidden=12,
+        context_length=16,
+        reader_type="dense_k3",
+        memory_layout="local_sidecar",
+        sidecar_initial_scale=0.01,
+    )
+    torch.manual_seed(501)
+    sidecar = AlphabetLM(config)
+    torch.manual_seed(501)
+    local = AlphabetLM(
+        AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=2,
+            post_hidden=12,
+            context_length=16,
+            reader_type="dense_k3",
+            memory_layout="local_only",
+        )
+    )
+    for module in sidecar.modules():
+        if isinstance(module, FixedPoleResidualSidecar):
+            module.beta.data.zero_()
+    tokens = torch.randint(64, (2, 17))
+    with torch.no_grad():
+        torch.testing.assert_close(sidecar(tokens), local(tokens), atol=0.0, rtol=0.0)
+
+    for module in sidecar.modules():
+        if isinstance(module, FixedPoleResidualSidecar):
+            module.beta.data.fill_(0.01)
+    logits = sidecar(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), tokens[:, 1:].flatten())
+    loss.backward()
+    sidecar_parameters = [
+        parameter
+        for module in sidecar.modules()
+        if isinstance(module, FixedPoleResidualSidecar)
+        for parameter in module.parameters()
+    ]
+    assert sidecar_parameters
+    assert all(
+        parameter.grad is not None and bool(torch.isfinite(parameter.grad).all())
+        for parameter in sidecar_parameters
+    )
+
+
+def test_sidecar_memory_zero_preserves_the_local_trunk() -> None:
+    def config(
+        memory_layout: Literal["local_only", "local_sidecar"],
+    ) -> AlphabetLMConfig:
+        return AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=2,
+            post_hidden=12,
+            context_length=16,
+            reader_type="dense_k3",
+            memory_layout=memory_layout,
+        )
+
+    torch.manual_seed(501)
+    local = AlphabetLM(config("local_only"))
+    torch.manual_seed(501)
+    sidecar = AlphabetLM(config("local_sidecar"))
+    tokens = torch.randint(64, (2, 17))
+    handles = _zero_memory(sidecar)
+    try:
+        with torch.no_grad():
+            torch.testing.assert_close(sidecar(tokens), local(tokens), atol=0.0, rtol=0.0)
+    finally:
+        for handle in handles:
+            handle.remove()
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:

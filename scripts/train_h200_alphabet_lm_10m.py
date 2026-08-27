@@ -42,6 +42,7 @@ KAU_DENSE_DELTA_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dense_delta_screen_2m.run
 KAU_TENSORPOLE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.tensorpole_m8_2m.runtime.v1"
 KAU_DYNAMIC_WRITE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dynamic_write_r4_2m.runtime.v1"
 KAU_CONTEXT_CONTROL_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.context_controls_2m.runtime.v1"
+KAU_LOCAL_SIDECAR_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.local_sidecar_2m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -163,6 +164,7 @@ def _build(
     memory_layout: str = "flat",
     tensor_temporal_modes: int = 8,
     tensor_initial_read_gain: float = 0.6,
+    sidecar_initial_scale: float = 0.01,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -190,6 +192,7 @@ def _build(
         memory_layout=cast("Any", memory_layout),
         tensor_temporal_modes=tensor_temporal_modes,
         tensor_initial_read_gain=tensor_initial_read_gain,
+        sidecar_initial_scale=sidecar_initial_scale,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -362,11 +365,12 @@ def main() -> None:
     parser.add_argument("--delta-select-control-bound", type=float, default=1.0)
     parser.add_argument(
         "--memory-layout",
-        choices=("flat", "tensor_product", "local_only"),
+        choices=("flat", "tensor_product", "local_only", "local_sidecar"),
         default="flat",
     )
     parser.add_argument("--tensor-temporal-modes", type=int, default=8)
     parser.add_argument("--tensor-initial-read-gain", type=float, default=0.6)
+    parser.add_argument("--sidecar-initial-scale", type=float, default=0.01)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -388,6 +392,7 @@ def main() -> None:
         KAU_TENSORPOLE_RUNTIME_SCHEMA,
         KAU_DYNAMIC_WRITE_RUNTIME_SCHEMA,
         KAU_CONTEXT_CONTROL_RUNTIME_SCHEMA,
+        KAU_LOCAL_SIDECAR_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -432,6 +437,7 @@ def main() -> None:
         memory_layout=args.memory_layout,
         tensor_temporal_modes=args.tensor_temporal_modes,
         tensor_initial_read_gain=args.tensor_initial_read_gain,
+        sidecar_initial_scale=args.sidecar_initial_scale,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -470,6 +476,7 @@ def main() -> None:
             "memory_layout": args.memory_layout,
             "tensor_temporal_modes": args.tensor_temporal_modes,
             "tensor_initial_read_gain": args.tensor_initial_read_gain,
+            "sidecar_initial_scale": args.sidecar_initial_scale,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
             "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
@@ -538,6 +545,7 @@ def main() -> None:
         "memory_layout": args.memory_layout,
         "tensor_temporal_modes": args.tensor_temporal_modes,
         "tensor_initial_read_gain": args.tensor_initial_read_gain,
+        "sidecar_initial_scale": args.sidecar_initial_scale,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,

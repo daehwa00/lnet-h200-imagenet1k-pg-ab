@@ -36,7 +36,7 @@ class AlphabetLMConfig:
     pole_routing: Literal["static", "dynamic_write", "dynamic_write_read"] = "static"
     pole_dynamics: Literal["fixed", "delta_select"] = "fixed"
     write_map: Literal["static", "dynamic_low_rank"] = "static"
-    memory_layout: Literal["flat", "tensor_product", "local_only"] = "flat"
+    memory_layout: Literal["flat", "tensor_product", "local_only", "local_sidecar"] = "flat"
     memory_readout: Literal["fixed", "query_low_rank"] = "fixed"
     router_hidden: int = 32
     delta_select_rank: int = 16
@@ -53,6 +53,7 @@ class AlphabetLMConfig:
     bank_pole_modes: int = 128
     tensor_temporal_modes: int = 8
     tensor_initial_read_gain: float = 0.6
+    sidecar_initial_scale: float = 0.01
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -99,7 +100,7 @@ class AlphabetLMConfig:
         if (
             self.pole_routing not in {"static", "dynamic_write", "dynamic_write_read"}
             or self.pole_dynamics not in {"fixed", "delta_select"}
-            or self.memory_layout not in {"flat", "tensor_product", "local_only"}
+            or self.memory_layout not in {"flat", "tensor_product", "local_only", "local_sidecar"}
             or self.write_map not in {"static", "dynamic_low_rank"}
             or self.memory_readout not in {"fixed", "query_low_rank"}
         ):
@@ -109,6 +110,7 @@ class AlphabetLMConfig:
             or self.delta_select_control_bound <= 0.0
             or not 0.0 < self.query_read_initial_scale < 1.0
             or not 0.0 < self.dynamic_write_initial_scale < 1.0
+            or not 0.0 < self.sidecar_initial_scale < 1.0
         ):
             raise ValueError("invalid ALPHABET-LM dynamic initialization")
         self._validate_memory_layout()
@@ -140,7 +142,7 @@ class AlphabetLMConfig:
             )
         ):
             raise ValueError("invalid tensor-product memory configuration")
-        if self.memory_layout == "local_only" and (
+        if self.memory_layout in {"local_only", "local_sidecar"} and (
             self.reader_type != "dense_k3"
             or self.memory_banks != 1
             or self.pole_routing != "static"
@@ -414,6 +416,47 @@ class IdentityComplexMemory1D(nn.Module):
         if damping_control is not None:
             raise ValueError("identity memory does not accept damping control")
         return drive_real, drive_imag
+
+
+class FixedPoleResidualSidecar(nn.Module):
+    """Add fixed-pole memory after an otherwise unchanged local trunk."""
+
+    def __init__(
+        self,
+        modes: int,
+        pole_modes: int,
+        *,
+        context_length: int,
+        scan_fp32: bool,
+        initialization: Literal["legacy", "lifetime_palette"],
+        minimum_half_life: float,
+        maximum_half_life: float,
+        decay_dominant_fraction: float,
+        initial_scale: float,
+    ) -> None:
+        super().__init__()
+        self.modes = int(modes)
+        self.norm = ComplexRMSNorm(modes)
+        self.reader = PackedComplexLinear(modes, pole_modes)
+        self.memory = FixedComplexPoleMemory1D(
+            pole_modes,
+            context_length=context_length,
+            scan_fp32=scan_fp32,
+            initialization=initialization,
+            minimum_half_life=minimum_half_life,
+            maximum_half_life=maximum_half_life,
+            decay_dominant_fraction=decay_dominant_fraction,
+        )
+        self.writer = PackedComplexLinear(pole_modes, modes)
+        self.beta = nn.Parameter(torch.full((modes,), float(initial_scale)))
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        if real.shape != imag.shape or real.shape[-1] != self.modes:
+            raise ValueError("fixed-pole sidecar expects matching B,T,K coordinates")
+        drive = self.reader(*self.norm(real, imag))
+        memory = self.writer(*self.memory(*drive))
+        beta = self.beta.to(dtype=real.dtype)
+        return real + beta * memory[0], imag + beta * memory[1]
 
 
 class TensorProductPoleMemory1D(nn.Module):
@@ -834,7 +877,7 @@ def _make_memory(config: AlphabetLMConfig) -> nn.Module:
             decay_dominant_fraction=config.decay_dominant_fraction,
             banks=config.memory_banks,
         )
-    if config.memory_layout == "local_only":
+    if config.memory_layout in {"local_only", "local_sidecar"}:
         return IdentityComplexMemory1D()
     return TensorProductPoleMemory1D(
         config.modes,
@@ -843,6 +886,23 @@ def _make_memory(config: AlphabetLMConfig) -> nn.Module:
         scan_fp32=config.scan_fp32,
         initial_read_gain=config.tensor_initial_read_gain,
     )
+
+
+def _make_sidecar(config: AlphabetLMConfig) -> FixedPoleResidualSidecar | None:
+    if config.memory_layout != "local_sidecar":
+        return None
+    with torch.random.fork_rng(devices=[]):
+        return FixedPoleResidualSidecar(
+            config.modes,
+            config.pole_modes,
+            context_length=config.context_length,
+            scan_fp32=config.scan_fp32,
+            initialization=config.pole_initialization,
+            minimum_half_life=config.minimum_half_life,
+            maximum_half_life=config.maximum_half_life,
+            decay_dominant_fraction=config.decay_dominant_fraction,
+            initial_scale=config.sidecar_initial_scale,
+        )
 
 
 class AlphabetLMBlock(nn.Module):
@@ -924,6 +984,7 @@ class AlphabetLMBlock(nn.Module):
                     hidden_modes=config.router_hidden,
                     read_gate=config.pole_routing == "dynamic_write_read",
                 )
+        self.sidecar = _make_sidecar(config)
 
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         drive = self.reader(real, imag)
@@ -942,7 +1003,8 @@ class AlphabetLMBlock(nn.Module):
         memory = self.writer(*state)
         if self.query_readout is not None:
             memory = self.query_readout(real, imag, *state, *memory)
-        return self.post_fusion(real + memory[0], imag + memory[1])
+        output = self.post_fusion(real + memory[0], imag + memory[1])
+        return output if self.sidecar is None else self.sidecar(*output)
 
 
 class AlphabetLM(nn.Module):
@@ -975,6 +1037,7 @@ __all__ = [
     "DenseComplexConv1dReader",
     "DynamicLowRankWrite",
     "FixedComplexPoleMemory1D",
+    "FixedPoleResidualSidecar",
     "GroupedCausalFactorizedComplexConv1dReader",
     "GroupedPackedComplexLinear",
     "IdentityComplexMemory1D",

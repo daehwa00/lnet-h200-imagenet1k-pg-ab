@@ -1,0 +1,106 @@
+{
+  "architecture": {
+    "K": 256,
+    "P": 320,
+    "layers": 12,
+    "variants": {
+      "alphabet-dense-k3-local-sidecar": {
+        "equation": "L=LocalOnly(E); u=B(Norm(L)); z=scan(a,u); output=L+beta*W(z)",
+        "memory_layout": "local_sidecar",
+        "memory_readout": "fixed",
+        "paired_dense_copied_parameters": 36706816,
+        "pole_dynamics": "fixed",
+        "post_hidden": 384,
+        "reader_type": "dense_k3",
+        "sidecar_initial_scale": 0.01,
+        "write_map": "static"
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-local-sidecar-2m-s501-v1",
+  "campaign_manifest_sha256": "1a073ee66b98b253650bf46f3d82fb13d0faa16c147ac0ddc6ce8ece61dcf0c2",
+  "controls": {
+    "dense_fixed_2m": {
+      "parameters": 36714496,
+      "validation_loss": 7.67721192400481,
+      "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/8344ae863b50c2d4"
+    },
+    "local_only_2m": {
+      "parameters": 36706816,
+      "validation_loss": 6.760133224275417,
+      "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/e7453322a3a33629"
+    }
+  },
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      128,
+      32,
+      1
+    ],
+    "sidecar_beta_statistics": true,
+    "sidecar_memory_zero": true,
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-LocalSidecar-2M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-local-sidecar-2m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051",
+    "version": "v1"
+  },
+  "parameter_counts": {
+    "alphabet-dense-k3-local-sidecar": 40652800,
+    "mamba-2m": 35425280
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet-dense-k3-local-sidecar": {
+      "display_name": "RTX4090-S501-ALPHABET-DenseK3-LocalSidecar-2M",
+      "id": "f9f826b1eaa22638",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "2M",
+        "DenseK3",
+        "LocalSidecar",
+        "P320",
+        "beta0.01",
+        "seed501"
+      ]
+    },
+    "mamba-2m": {
+      "display_name": "RTX4090-S501-OfficialMamba-2M",
+      "id": "b759daf54c6ce500",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "2M",
+        "Mamba",
+        "seed501"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.local_sidecar_2m.runtime.v1",
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "mamba-2m",
+      "alphabet-dense-k3-local-sidecar"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 2000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}
