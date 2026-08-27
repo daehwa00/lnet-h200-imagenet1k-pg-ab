@@ -14,6 +14,7 @@ from lnet.alphabet_lm import (
     AlphabetLM,
     AlphabetLMBlock,
     AlphabetLMConfig,
+    DynamicLowRankWrite,
     FixedComplexPoleMemory1D,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
@@ -440,6 +441,123 @@ def test_tensorpole_initial_memory_scale_matches_dense_fixed_at_full_context() -
         memory_rms = memory[0].square().add(memory[1].square()).mean().sqrt()
         ratios.append(float(memory_rms / input_rms))
     assert 0.9 < ratios[1] / ratios[0] < 1.1
+
+
+def test_dynamic_low_rank_write_changes_state_direction_with_content() -> None:
+    torch.manual_seed(501)
+    write = DynamicLowRankWrite(8, 12, rank=4, initial_scale=0.06)
+    real = torch.randn(2, 7, 8)
+    imag = torch.randn_like(real)
+    base_real = torch.randn(2, 7, 12)
+    base_imag = torch.randn_like(base_real)
+    first = write(real, imag, base_real, base_imag)
+    second = write(-real, imag, base_real, base_imag)
+    assert not torch.allclose(first[0], second[0])
+    first_delta = torch.cat((first[0] - base_real, first[1] - base_imag), dim=-1)
+    second_delta = torch.cat((second[0] - base_real, second[1] - base_imag), dim=-1)
+    assert float(first_delta.detach().square().mean().sqrt()) > 0.0
+    cosine = torch.nn.functional.cosine_similarity(
+        first_delta.flatten(),
+        second_delta.flatten(),
+        dim=0,
+    )
+    assert abs(float(cosine.detach())) < 0.999
+    torch.testing.assert_close(write.scale(), torch.tensor(0.06))
+
+
+def test_dense_dynamic_write_r4_contract_causality_and_gradients() -> None:
+    config = AlphabetLMConfig(
+        reader_type="dense_k3",
+        write_map="dynamic_low_rank",
+        dynamic_write_rank=4,
+        dynamic_write_initial_scale=0.06,
+    )
+    full = AlphabetLM(config)
+    assert sum(parameter.numel() for parameter in full.parameters()) == 36_797_452
+    torch.manual_seed(501)
+    small = AlphabetLM(
+        AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=2,
+            post_hidden=12,
+            context_length=16,
+            reader_type="dense_k3",
+            write_map="dynamic_low_rank",
+            dynamic_write_rank=4,
+            dynamic_write_initial_scale=0.06,
+        )
+    )
+    tokens = torch.randint(64, (2, 17))
+    changed = tokens.clone()
+    changed[:, 10:] = torch.randint(64, changed[:, 10:].shape)
+    with torch.no_grad():
+        expected = small(tokens[:, :-1])
+        actual = small(changed[:, :-1])
+    torch.testing.assert_close(actual[:, :10], expected[:, :10], atol=1.0e-6, rtol=0.0)
+    logits = small(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), tokens[:, 1:].flatten())
+    loss.backward()
+    writes = [module for module in small.modules() if isinstance(module, DynamicLowRankWrite)]
+    assert len(writes) == 2
+    assert all(
+        parameter.grad is not None and bool(torch.isfinite(parameter.grad).all())
+        for write in writes
+        for parameter in write.parameters()
+    )
+
+
+def test_dynamic_write_pair_copies_every_fixed_dense_parameter() -> None:
+    torch.manual_seed(501)
+    fixed = AlphabetLM(AlphabetLMConfig(reader_type="dense_k3"))
+    fixed_parameters = dict(fixed.named_parameters())
+    torch.manual_seed(501)
+    dynamic = AlphabetLM(
+        AlphabetLMConfig(
+            reader_type="dense_k3",
+            write_map="dynamic_low_rank",
+            dynamic_write_rank=4,
+            dynamic_write_initial_scale=0.06,
+        )
+    )
+    _tensors, copied = _copy_matching_legacy_initialization(
+        dynamic,
+        vocab_size=32_768,
+        seed=501,
+        reader_type="dense_k3",
+    )
+    assert copied == 36_714_496
+    for name, parameter in dynamic.named_parameters():
+        source = fixed_parameters.get(name)
+        if source is not None and source.shape == parameter.shape:
+            torch.testing.assert_close(parameter, source, atol=0.0, rtol=0.0)
+
+
+def test_dynamic_write_initial_branch_is_ten_percent_of_static_drive() -> None:
+    torch.manual_seed(501)
+    block = cast(
+        "AlphabetLMBlock",
+        AlphabetLM(
+            AlphabetLMConfig(
+                reader_type="dense_k3",
+                write_map="dynamic_low_rank",
+                dynamic_write_rank=4,
+                dynamic_write_initial_scale=0.06,
+            )
+        ).blocks[0],
+    )
+    real = torch.randn(1, 2_048, 256)
+    imag = torch.randn_like(real)
+    dynamic_write = block.dynamic_write
+    assert isinstance(dynamic_write, DynamicLowRankWrite)
+    with torch.no_grad():
+        base = block.reader(real, imag)
+        routed = dynamic_write(real, imag, *base)
+    branch = torch.cat((routed[0] - base[0], routed[1] - base[1]), dim=-1)
+    static = torch.cat(base, dim=-1)
+    ratio = branch.square().mean().sqrt() / static.square().mean().sqrt()
+    assert 0.08 < float(ratio) < 0.12
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:

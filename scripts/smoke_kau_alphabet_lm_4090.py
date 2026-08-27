@@ -60,6 +60,7 @@ def main() -> None:
             "qread",
             "delta_select",
             "tensorpole",
+            "dynamic_write_r4",
         ),
         default="all",
     )
@@ -82,6 +83,7 @@ def main() -> None:
         "qread",
         "delta_select",
         "tensorpole",
+        "dynamic_write_r4",
     }:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
@@ -163,6 +165,23 @@ def main() -> None:
         full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
         results["alphabet-dense-k3-tensorpole-m8"] = _step(
             tensorpole,
+            full_microbatch,
+        )
+    if args.only == "dynamic_write_r4":
+        torch.manual_seed(501)
+        dynamic_write = AlphabetLM(
+            AlphabetLMConfig(
+                reader_type="dense_k3",
+                write_map="dynamic_low_rank",
+                dynamic_write_rank=4,
+                dynamic_write_initial_scale=0.06,
+            )
+        )
+        if sum(parameter.numel() for parameter in dynamic_write.parameters()) != 36_797_452:
+            raise RuntimeError("DenseK3 DynamicWrite-R4 parameter contract changed")
+        full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
+        results["alphabet-dense-k3-dynamic-write-r4"] = _step(
+            dynamic_write,
             full_microbatch,
         )
     if args.only == "all":

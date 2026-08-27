@@ -35,12 +35,15 @@ class AlphabetLMConfig:
     reader_type: Literal["r2k3", "dense_k3"] = "r2k3"
     pole_routing: Literal["static", "dynamic_write", "dynamic_write_read"] = "static"
     pole_dynamics: Literal["fixed", "delta_select"] = "fixed"
+    write_map: Literal["static", "dynamic_low_rank"] = "static"
     memory_layout: Literal["flat", "tensor_product"] = "flat"
     memory_readout: Literal["fixed", "query_low_rank"] = "fixed"
     router_hidden: int = 32
     delta_select_rank: int = 16
     delta_select_initial_scale: float = 0.1
     delta_select_control_bound: float = 1.0
+    dynamic_write_rank: int = 4
+    dynamic_write_initial_scale: float = 0.06
     query_read_rank: int = 32
     query_read_initial_scale: float = 0.05
     minimum_half_life: float = 2.0
@@ -75,6 +78,7 @@ class AlphabetLMConfig:
             self.bank_pole_modes,
             self.router_hidden,
             self.delta_select_rank,
+            self.dynamic_write_rank,
             self.query_read_rank,
             self.tensor_temporal_modes,
         )
@@ -96,6 +100,7 @@ class AlphabetLMConfig:
             self.pole_routing not in {"static", "dynamic_write", "dynamic_write_read"}
             or self.pole_dynamics not in {"fixed", "delta_select"}
             or self.memory_layout not in {"flat", "tensor_product"}
+            or self.write_map not in {"static", "dynamic_low_rank"}
             or self.memory_readout not in {"fixed", "query_low_rank"}
         ):
             raise ValueError("invalid ALPHABET-LM dynamic configuration")
@@ -103,6 +108,7 @@ class AlphabetLMConfig:
             not 0.0 < self.delta_select_initial_scale < 1.0
             or self.delta_select_control_bound <= 0.0
             or not 0.0 < self.query_read_initial_scale < 1.0
+            or not 0.0 < self.dynamic_write_initial_scale < 1.0
         ):
             raise ValueError("invalid ALPHABET-LM dynamic initialization")
         if self.memory_layout == "tensor_product" and (
@@ -124,6 +130,13 @@ class AlphabetLMConfig:
             )
         ):
             raise ValueError("invalid tensor-product memory configuration")
+        if self.write_map == "dynamic_low_rank" and (
+            self.reader_type != "dense_k3"
+            or self.memory_layout != "flat"
+            or self.memory_banks != 1
+            or self.pole_routing != "static"
+        ):
+            raise ValueError("invalid low-rank dynamic write configuration")
 
     @property
     def model_width(self) -> int:
@@ -666,6 +679,60 @@ class LowRankDecaySelector(nn.Module):
         return self.control_bound * self.scale().to(bounded.dtype) * bounded
 
 
+class DynamicLowRankWrite(nn.Module):
+    """Add a token-conditioned low-rank update to a static complex write map."""
+
+    def __init__(
+        self,
+        modes: int,
+        pole_modes: int,
+        *,
+        rank: int,
+        initial_scale: float,
+    ) -> None:
+        super().__init__()
+        if min(modes, pole_modes, rank) <= 0 or not 0.0 < initial_scale < 1.0:
+            raise ValueError("invalid dynamic low-rank write configuration")
+        self.modes = int(modes)
+        self.pole_modes = int(pole_modes)
+        self.rank = int(rank)
+        self.norm = ComplexRMSNorm(modes)
+        self.content = PackedComplexLinear(modes, rank)
+        self.gate = nn.Linear(2 * modes, rank, bias=False)
+        self.direction = PackedComplexLinear(rank, pole_modes)
+        initial_logit = math.log(initial_scale / (1.0 - initial_scale))
+        self.raw_scale = nn.Parameter(torch.tensor(initial_logit))
+        nn.init.xavier_uniform_(self.gate.weight)
+
+    def scale(self) -> Tensor:
+        return torch.sigmoid(self.raw_scale)
+
+    def forward(
+        self,
+        real: Tensor,
+        imag: Tensor,
+        base_real: Tensor,
+        base_imag: Tensor,
+    ) -> ComplexField:
+        if real.shape != imag.shape or real.shape[-1] != self.modes:
+            raise ValueError("dynamic write expects matching B,T,K coordinates")
+        if (
+            base_real.shape != base_imag.shape
+            or base_real.shape[:-1] != real.shape[:-1]
+            or base_real.shape[-1] != self.pole_modes
+        ):
+            raise ValueError("dynamic write base drive has incompatible shapes")
+        unit_real, unit_imag = self.norm(real, imag)
+        content_real, content_imag = self.content(unit_real, unit_imag)
+        gate = functional.silu(self.gate(torch.cat((unit_real, unit_imag), dim=-1)))
+        dynamic_real, dynamic_imag = self.direction(
+            content_real * gate,
+            content_imag * gate,
+        )
+        scale = self.scale().to(base_real.dtype)
+        return base_real + scale * dynamic_real, base_imag + scale * dynamic_imag
+
+
 class QueryConditionedLowRankReadout(nn.Module):
     """Add a small content-conditioned bilinear read from pole state.
 
@@ -802,6 +869,16 @@ class AlphabetLMBlock(nn.Module):
                 )
         else:
             self.decay_selector = None
+        if config.write_map == "dynamic_low_rank":
+            with torch.random.fork_rng(devices=[]):
+                self.dynamic_write = DynamicLowRankWrite(
+                    config.modes,
+                    config.total_pole_modes,
+                    rank=config.dynamic_write_rank,
+                    initial_scale=config.dynamic_write_initial_scale,
+                )
+        else:
+            self.dynamic_write = None
         if config.pole_routing == "static":
             self.router = None
         else:
@@ -815,6 +892,8 @@ class AlphabetLMBlock(nn.Module):
 
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         drive = self.reader(real, imag)
+        if self.dynamic_write is not None:
+            drive = self.dynamic_write(real, imag, *drive)
         read_gate = None
         if self.router is not None:
             write_gate, read_gate = self.router(real, imag)
@@ -859,6 +938,7 @@ __all__ = [
     "AlphabetLMConfig",
     "CausalFactorizedComplexConv1dReader",
     "DenseComplexConv1dReader",
+    "DynamicLowRankWrite",
     "FixedComplexPoleMemory1D",
     "GroupedCausalFactorizedComplexConv1dReader",
     "GroupedPackedComplexLinear",

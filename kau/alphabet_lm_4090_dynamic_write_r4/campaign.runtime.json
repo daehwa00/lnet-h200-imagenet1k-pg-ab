@@ -1,0 +1,100 @@
+{
+  "architecture": {
+    "K": 256,
+    "P": 320,
+    "dynamic_write_equation": "drive=B0(local_E)+scale*U(g(E)*V(norm(E)))",
+    "layers": 12,
+    "memory_layout": "flat",
+    "pole_dynamics": "fixed_token_independent",
+    "post_hidden": 384,
+    "reader": "DenseComplexK3",
+    "variants": {
+      "alphabet-dense-k3-dynamic-write-r4": {
+        "dynamic_write_initial_scale": 0.06,
+        "dynamic_write_rank": 4,
+        "memory_layout": "flat",
+        "memory_readout": "fixed",
+        "paired_dense_copied_parameters": 36714496,
+        "pole_dynamics": "fixed",
+        "post_hidden": 384,
+        "reader_type": "dense_k3",
+        "target_initial_branch_to_static_rms": 0.1,
+        "write_map": "dynamic_low_rank"
+      }
+    },
+    "writer": "fixed_complex_linear"
+  },
+  "campaign_id": "kau-alphabet-lm-dynamic-write-r4-2m-s501-v1",
+  "campaign_manifest_sha256": "f99072cfaa91e03f1712732dc3235cd82c7c85db1bca1a8a506c95e040804d66",
+  "decision": {
+    "run_r8_at_improvement": 0.1,
+    "stop_below_improvement": 0.03,
+    "strong_signal_improvement": 0.3
+  },
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      128,
+      32,
+      1
+    ],
+    "dynamic_write_statistics": true,
+    "memory_zero": true,
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-DenseK3-DynamicWriteR4-2M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-dynamic-write-r4-2m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051",
+    "version": "v1"
+  },
+  "parameter_counts": {
+    "alphabet-dense-k3-dynamic-write-r4": 36797452
+  },
+  "project": "alphabet-lm-viability",
+  "reused_control": {
+    "label": "alphabet-dense-k3-fixed",
+    "parameters": 36714496,
+    "source_commit": "d880f24c644c266f2ca3c7db937fca47290932c1",
+    "validation_loss": 7.67721192400481,
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/8344ae863b50c2d4"
+  },
+  "runs": {
+    "alphabet-dense-k3-dynamic-write-r4": {
+      "display_name": "RTX4090-S501-ALPHABET-DenseK3-DynamicWriteR4-2M",
+      "id": "5b535f83cd0781d9",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "2M",
+        "DenseK3",
+        "DynamicWrite-R4",
+        "fixed-retention",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.dynamic_write_r4_2m.runtime.v1",
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-dense-k3-dynamic-write-r4"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 2000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

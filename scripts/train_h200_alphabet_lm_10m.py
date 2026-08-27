@@ -24,6 +24,7 @@ from torch.nn import functional
 from lnet.alphabet_lm import (
     AlphabetLM,
     AlphabetLMConfig,
+    DynamicLowRankWrite,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
 )
@@ -39,6 +40,7 @@ KAU_STEP_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.step_control_2m.runtime.v1"
 KAU_DECODER_READOUT_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.decoder_readout_screen_2m.runtime.v1"
 KAU_DENSE_DELTA_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dense_delta_screen_2m.runtime.v1"
 KAU_TENSORPOLE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.tensorpole_m8_2m.runtime.v1"
+KAU_DYNAMIC_WRITE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dynamic_write_r4_2m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -160,6 +162,9 @@ def _build(
     memory_layout: str = "flat",
     tensor_temporal_modes: int = 8,
     tensor_initial_read_gain: float = 0.6,
+    write_map: str = "static",
+    dynamic_write_rank: int = 4,
+    dynamic_write_initial_scale: float = 0.06,
 ) -> tuple[nn.Module, dict[str, Any]]:
     alphabet_config = AlphabetLMConfig(
         vocab_size=vocab_size,
@@ -184,6 +189,9 @@ def _build(
         memory_layout=cast("Any", memory_layout),
         tensor_temporal_modes=tensor_temporal_modes,
         tensor_initial_read_gain=tensor_initial_read_gain,
+        write_map=cast("Any", write_map),
+        dynamic_write_rank=dynamic_write_rank,
+        dynamic_write_initial_scale=dynamic_write_initial_scale,
     )
     if model_name == "alphabet":
         return AlphabetLM(alphabet_config), {
@@ -354,6 +362,9 @@ def main() -> None:
     parser.add_argument("--memory-layout", choices=("flat", "tensor_product"), default="flat")
     parser.add_argument("--tensor-temporal-modes", type=int, default=8)
     parser.add_argument("--tensor-initial-read-gain", type=float, default=0.6)
+    parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
+    parser.add_argument("--dynamic-write-rank", type=int, default=4)
+    parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--train-manifest", type=Path, required=True)
     parser.add_argument("--validation-manifest", type=Path, required=True)
@@ -370,6 +381,7 @@ def main() -> None:
         KAU_DECODER_READOUT_RUNTIME_SCHEMA,
         KAU_DENSE_DELTA_RUNTIME_SCHEMA,
         KAU_TENSORPOLE_RUNTIME_SCHEMA,
+        KAU_DYNAMIC_WRITE_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -414,6 +426,9 @@ def main() -> None:
         memory_layout=args.memory_layout,
         tensor_temporal_modes=args.tensor_temporal_modes,
         tensor_initial_read_gain=args.tensor_initial_read_gain,
+        write_map=args.write_map,
+        dynamic_write_rank=args.dynamic_write_rank,
+        dynamic_write_initial_scale=args.dynamic_write_initial_scale,
     )
     paired_initialization: dict[str, int | bool | str] = {"enabled": False}
     if args.paired_legacy_initialization and args.paired_dense_initialization:
@@ -449,6 +464,9 @@ def main() -> None:
             "memory_layout": args.memory_layout,
             "tensor_temporal_modes": args.tensor_temporal_modes,
             "tensor_initial_read_gain": args.tensor_initial_read_gain,
+            "write_map": args.write_map,
+            "dynamic_write_rank": args.dynamic_write_rank,
+            "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
         }
         expected_variant = {
             key: value for key, value in active_arguments.items() if key in variant_contract
@@ -514,6 +532,9 @@ def main() -> None:
         "memory_layout": args.memory_layout,
         "tensor_temporal_modes": args.tensor_temporal_modes,
         "tensor_initial_read_gain": args.tensor_initial_read_gain,
+        "write_map": args.write_map,
+        "dynamic_write_rank": args.dynamic_write_rank,
+        "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
         "paired_legacy_initialization": paired_initialization,
         "parameters": parameters,
         "training": training,
@@ -590,6 +611,7 @@ def main() -> None:
         if isinstance(model, AlphabetLM):
             query_scales = []
             decay_scales = []
+            dynamic_write_scales = []
             for block in model.blocks:
                 readout = block.query_readout
                 if isinstance(readout, QueryConditionedLowRankReadout):
@@ -597,10 +619,17 @@ def main() -> None:
                 selector = block.decay_selector
                 if isinstance(selector, LowRankDecaySelector):
                     decay_scales.append(float(selector.scale().detach()))
+                dynamic_write = block.dynamic_write
+                if isinstance(dynamic_write, DynamicLowRankWrite):
+                    dynamic_write_scales.append(float(dynamic_write.scale().detach()))
             if query_scales:
                 row["query_read_scale_mean"] = sum(query_scales) / len(query_scales)
             if decay_scales:
                 row["delta_select_scale_mean"] = sum(decay_scales) / len(decay_scales)
+            if dynamic_write_scales:
+                row["dynamic_write_scale_mean"] = sum(dynamic_write_scales) / len(
+                    dynamic_write_scales
+                )
         if update == 1:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
@@ -638,6 +667,8 @@ def main() -> None:
             wandb_metrics["model/query_read_scale_mean"] = row["query_read_scale_mean"]
         if "delta_select_scale_mean" in row:
             wandb_metrics["model/delta_select_scale_mean"] = row["delta_select_scale_mean"]
+        if "dynamic_write_scale_mean" in row:
+            wandb_metrics["model/dynamic_write_scale_mean"] = row["dynamic_write_scale_mean"]
         wandb_run.log(wandb_metrics, step=update)
         print("ALPHABET_LM_PROGRESS=" + json.dumps(row, sort_keys=True), flush=True)
         if _STOP_EVENT.is_set():

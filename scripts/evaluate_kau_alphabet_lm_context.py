@@ -16,6 +16,7 @@ from torch.nn import functional
 from lnet.alphabet_lm import (
     AlphabetLM,
     AlphabetLMConfig,
+    DynamicLowRankWrite,
     FixedComplexPoleMemory1D,
     GroupedPackedComplexLinear,
     LowRankDecaySelector,
@@ -55,6 +56,13 @@ def _build(kind: str) -> nn.Module:
             reader_type="dense_k3",
             memory_layout="tensor_product",
             tensor_temporal_modes=8,
+        )
+    elif kind == "dense_dynamic_write_r4":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            write_map="dynamic_low_rank",
+            dynamic_write_rank=4,
+            dynamic_write_initial_scale=0.06,
         )
     return AlphabetLM(config)
 
@@ -298,6 +306,64 @@ def _tensorpole_metrics(
     }
 
 
+@torch.no_grad()
+def _dynamic_write_metrics(
+    model: AlphabetLM,
+    dataset: TokenBlockDataset,
+    device: torch.device,
+) -> dict[str, object] | None:
+    modules = [module for module in model.modules() if isinstance(module, DynamicLowRankWrite)]
+    if not modules:
+        return None
+    rows: list[tuple[float, float, float, float, float, float]] = []
+
+    def capture(module: nn.Module, inputs: tuple[object, ...], output: object) -> None:
+        write = cast("DynamicLowRankWrite", module)
+        real, imag, base_real, base_imag = cast("tuple[Tensor, Tensor, Tensor, Tensor]", inputs)
+        output_real, output_imag = cast("tuple[Tensor, Tensor]", output)
+        unit_real, unit_imag = write.norm(real, imag)
+        gate = functional.silu(write.gate(torch.cat((unit_real, unit_imag), dim=-1))).float()
+        content_real, content_imag = write.content(unit_real, unit_imag)
+        content_energy = content_real.float().square().add(content_imag.float().square()).mean()
+        base_energy = base_real.float().square().add(base_imag.float().square()).mean()
+        branch_energy = (
+            (output_real - base_real).float().square() + (output_imag - base_imag).float().square()
+        ).mean()
+        rows.append(
+            (
+                float(torch.sqrt(branch_energy / base_energy.clamp_min(1.0e-12))),
+                float(gate.square().mean().sqrt()),
+                float(gate.std()),
+                float(gate.mean()),
+                float(content_energy.sqrt()),
+                float(write.scale()),
+            )
+        )
+
+    handles = [module.register_forward_hook(capture) for module in modules]
+    sample = dataset[0][:-1].unsqueeze(0).to(device)
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        model.hidden(sample)
+    for handle in handles:
+        handle.remove()
+    labels = (
+        "branch_to_static_rms",
+        "gate_rms",
+        "gate_std",
+        "gate_mean",
+        "content_rms",
+        "scale",
+    )
+    payload: dict[str, object] = {
+        f"{label}_mean": sum(row[index] for row in rows) / len(rows)
+        for index, label in enumerate(labels)
+    }
+    payload.update(
+        {f"{label}_by_layer": [row[index] for row in rows] for index, label in enumerate(labels)}
+    )
+    return payload
+
+
 def _loss_sum(model: nn.Module, inputs: Tensor, labels: Tensor, pad_id: int) -> tuple[float, int]:
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         logits = model(inputs)
@@ -370,6 +436,7 @@ def main() -> None:
             "dense_fixed",
             "dense_delta",
             "tensorpole",
+            "dense_dynamic_write_r4",
             "mamba",
         ),
         required=True,
@@ -439,6 +506,9 @@ def main() -> None:
         tensor_metrics = _tensorpole_metrics(model, dataset, device)
         if tensor_metrics is not None:
             payload["tensorpole"] = tensor_metrics
+        dynamic_write_metrics = _dynamic_write_metrics(model, dataset, device)
+        if dynamic_write_metrics is not None:
+            payload["dynamic_write"] = dynamic_write_metrics
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print("KAU_LM_CONTEXT=" + json.dumps(payload, sort_keys=True), flush=True)
