@@ -61,6 +61,7 @@ def main() -> None:
             "delta_select",
             "tensorpole",
             "dynamic_write_r4",
+            "local_only",
         ),
         default="all",
     )
@@ -84,6 +85,7 @@ def main() -> None:
         "delta_select",
         "tensorpole",
         "dynamic_write_r4",
+        "local_only",
     }:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
@@ -184,6 +186,15 @@ def main() -> None:
             dynamic_write,
             full_microbatch,
         )
+    if args.only == "local_only":
+        torch.manual_seed(501)
+        local_only = AlphabetLM(
+            AlphabetLMConfig(reader_type="dense_k3", memory_layout="local_only")
+        )
+        if sum(parameter.numel() for parameter in local_only.parameters()) != 36_706_816:
+            raise RuntimeError("DenseK3 LocalOnly parameter contract changed")
+        full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
+        results["alphabet-dense-k3-local-only"] = _step(local_only, full_microbatch)
     if args.only == "all":
         torch.manual_seed(501)
         mamba, parameters, relative_error = build_parameter_matched_mamba(

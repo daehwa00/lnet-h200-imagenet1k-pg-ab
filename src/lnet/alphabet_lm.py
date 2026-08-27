@@ -36,7 +36,7 @@ class AlphabetLMConfig:
     pole_routing: Literal["static", "dynamic_write", "dynamic_write_read"] = "static"
     pole_dynamics: Literal["fixed", "delta_select"] = "fixed"
     write_map: Literal["static", "dynamic_low_rank"] = "static"
-    memory_layout: Literal["flat", "tensor_product"] = "flat"
+    memory_layout: Literal["flat", "tensor_product", "local_only"] = "flat"
     memory_readout: Literal["fixed", "query_low_rank"] = "fixed"
     router_hidden: int = 32
     delta_select_rank: int = 16
@@ -99,7 +99,7 @@ class AlphabetLMConfig:
         if (
             self.pole_routing not in {"static", "dynamic_write", "dynamic_write_read"}
             or self.pole_dynamics not in {"fixed", "delta_select"}
-            or self.memory_layout not in {"flat", "tensor_product"}
+            or self.memory_layout not in {"flat", "tensor_product", "local_only"}
             or self.write_map not in {"static", "dynamic_low_rank"}
             or self.memory_readout not in {"fixed", "query_low_rank"}
         ):
@@ -111,6 +111,16 @@ class AlphabetLMConfig:
             or not 0.0 < self.dynamic_write_initial_scale < 1.0
         ):
             raise ValueError("invalid ALPHABET-LM dynamic initialization")
+        self._validate_memory_layout()
+        if self.write_map == "dynamic_low_rank" and (
+            self.reader_type != "dense_k3"
+            or self.memory_layout != "flat"
+            or self.memory_banks != 1
+            or self.pole_routing != "static"
+        ):
+            raise ValueError("invalid low-rank dynamic write configuration")
+
+    def _validate_memory_layout(self) -> None:
         if self.memory_layout == "tensor_product" and (
             self.reader_type != "dense_k3"
             or self.memory_banks != 1
@@ -130,13 +140,15 @@ class AlphabetLMConfig:
             )
         ):
             raise ValueError("invalid tensor-product memory configuration")
-        if self.write_map == "dynamic_low_rank" and (
+        if self.memory_layout == "local_only" and (
             self.reader_type != "dense_k3"
-            or self.memory_layout != "flat"
             or self.memory_banks != 1
             or self.pole_routing != "static"
+            or self.pole_dynamics != "fixed"
+            or self.write_map != "static"
+            or self.memory_readout != "fixed"
         ):
-            raise ValueError("invalid low-rank dynamic write configuration")
+            raise ValueError("invalid local-only memory configuration")
 
     @property
     def model_width(self) -> int:
@@ -385,6 +397,23 @@ class GroupedPackedComplexLinear(nn.Module):
 class _ComplexIdentity(nn.Module):
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         return real, imag
+
+
+class IdentityComplexMemory1D(nn.Module):
+    """Preserve the learned local drive while removing recurrent transport."""
+
+    def forward(
+        self,
+        drive_real: Tensor,
+        drive_imag: Tensor,
+        *,
+        damping_control: Tensor | None = None,
+    ) -> ComplexField:
+        if drive_real.shape != drive_imag.shape:
+            raise ValueError("identity memory expects matching complex drives")
+        if damping_control is not None:
+            raise ValueError("identity memory does not accept damping control")
+        return drive_real, drive_imag
 
 
 class TensorProductPoleMemory1D(nn.Module):
@@ -793,6 +822,29 @@ class QueryConditionedLowRankReadout(nn.Module):
         return base_real + scale * dynamic_real, base_imag + scale * dynamic_imag
 
 
+def _make_memory(config: AlphabetLMConfig) -> nn.Module:
+    if config.memory_layout == "flat":
+        return FixedComplexPoleMemory1D(
+            config.total_pole_modes,
+            context_length=config.context_length,
+            scan_fp32=config.scan_fp32,
+            initialization=config.pole_initialization,
+            minimum_half_life=config.minimum_half_life,
+            maximum_half_life=config.maximum_half_life,
+            decay_dominant_fraction=config.decay_dominant_fraction,
+            banks=config.memory_banks,
+        )
+    if config.memory_layout == "local_only":
+        return IdentityComplexMemory1D()
+    return TensorProductPoleMemory1D(
+        config.modes,
+        config.tensor_temporal_modes,
+        half_lives=config.tensor_half_lives,
+        scan_fp32=config.scan_fp32,
+        initial_read_gain=config.tensor_initial_read_gain,
+    )
+
+
 class AlphabetLMBlock(nn.Module):
     def __init__(self, config: AlphabetLMConfig) -> None:
         super().__init__()
@@ -805,13 +857,6 @@ class AlphabetLMBlock(nn.Module):
             )
             self.reader = DenseComplexConv1dReader.from_factorized(factorized_reader)
             self.writer = _ComplexIdentity()
-            self.memory = TensorProductPoleMemory1D(
-                config.modes,
-                config.tensor_temporal_modes,
-                half_lives=config.tensor_half_lives,
-                scan_fp32=config.scan_fp32,
-                initial_read_gain=config.tensor_initial_read_gain,
-            )
         elif config.memory_banks == 1:
             factorized_reader = CausalFactorizedComplexConv1dReader(
                 config.modes,
@@ -836,17 +881,7 @@ class AlphabetLMBlock(nn.Module):
             self.writer = GroupedPackedComplexLinear(
                 config.bank_pole_modes, config.modes, banks=config.memory_banks
             )
-        if config.memory_layout == "flat":
-            self.memory = FixedComplexPoleMemory1D(
-                config.total_pole_modes,
-                context_length=config.context_length,
-                scan_fp32=config.scan_fp32,
-                initialization=config.pole_initialization,
-                minimum_half_life=config.minimum_half_life,
-                maximum_half_life=config.maximum_half_life,
-                decay_dominant_fraction=config.decay_dominant_fraction,
-                banks=config.memory_banks,
-            )
+        self.memory = _make_memory(config)
         self.post_fusion = GatedComplexPostFusion(config.modes, config.post_hidden)
         if config.memory_readout == "query_low_rank":
             with torch.random.fork_rng(devices=[]):
@@ -942,6 +977,7 @@ __all__ = [
     "FixedComplexPoleMemory1D",
     "GroupedCausalFactorizedComplexConv1dReader",
     "GroupedPackedComplexLinear",
+    "IdentityComplexMemory1D",
     "LowRankDecaySelector",
     "LowRankPoleRouter",
     "QueryConditionedLowRankReadout",

@@ -41,6 +41,7 @@ KAU_DECODER_READOUT_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.decoder_readout_scree
 KAU_DENSE_DELTA_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dense_delta_screen_2m.runtime.v1"
 KAU_TENSORPOLE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.tensorpole_m8_2m.runtime.v1"
 KAU_DYNAMIC_WRITE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dynamic_write_r4_2m.runtime.v1"
+KAU_CONTEXT_CONTROL_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.context_controls_2m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -359,7 +360,11 @@ def main() -> None:
     parser.add_argument("--delta-select-rank", type=int, default=16)
     parser.add_argument("--delta-select-initial-scale", type=float, default=0.1)
     parser.add_argument("--delta-select-control-bound", type=float, default=1.0)
-    parser.add_argument("--memory-layout", choices=("flat", "tensor_product"), default="flat")
+    parser.add_argument(
+        "--memory-layout",
+        choices=("flat", "tensor_product", "local_only"),
+        default="flat",
+    )
     parser.add_argument("--tensor-temporal-modes", type=int, default=8)
     parser.add_argument("--tensor-initial-read-gain", type=float, default=0.6)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
@@ -382,6 +387,7 @@ def main() -> None:
         KAU_DENSE_DELTA_RUNTIME_SCHEMA,
         KAU_TENSORPOLE_RUNTIME_SCHEMA,
         KAU_DYNAMIC_WRITE_RUNTIME_SCHEMA,
+        KAU_CONTEXT_CONTROL_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:

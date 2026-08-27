@@ -1,0 +1,94 @@
+{
+  "architecture": {
+    "K": 256,
+    "P": 320,
+    "layers": 12,
+    "post_hidden": 384,
+    "reader": "DenseComplexK3",
+    "variants": {
+      "alphabet-dense-k3-local-only": {
+        "memory_layout": "local_only",
+        "memory_readout": "fixed",
+        "paired_dense_copied_parameters": 36706816,
+        "pole_dynamics": "fixed",
+        "post_hidden": 384,
+        "reader_type": "dense_k3",
+        "write_map": "static"
+      }
+    },
+    "writer": "fixed_complex_linear"
+  },
+  "campaign_id": "kau-alphabet-lm-context-controls-2m-s501-v1",
+  "campaign_manifest_sha256": "1a3b94456080354270e28819c0cd71fd0ac29a71e35c087dd92ef541844b78f3",
+  "controls": {
+    "dense_fixed": {
+      "parameters": 36714496,
+      "validation_loss_2m": 7.67721192400481,
+      "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/8344ae863b50c2d4"
+    },
+    "mamba_10m": {
+      "parameters": 35425280,
+      "validation_loss": 5.6978587456397625,
+      "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/54bfa60106163c27"
+    }
+  },
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      128,
+      32,
+      1
+    ],
+    "local_only_equation": "DenseK3(E) -> identity memory -> fixed writer -> residual -> unchanged PostFusion",
+    "mamba_checkpoint": "/home/daehwa/alphabet-lm-4090-runs/fc7fd201f2a29398/runs/mamba/checkpoint.pt",
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-ContextControls-2M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-context-controls-2m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051",
+    "version": "v1"
+  },
+  "parameter_counts": {
+    "alphabet-dense-k3-local-only": 36706816
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet-dense-k3-local-only": {
+      "display_name": "RTX4090-S501-ALPHABET-DenseK3-LocalOnly-2M",
+      "id": "e7453322a3a33629",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "2M",
+        "DenseK3",
+        "LocalOnly",
+        "no-recurrence",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.context_controls_2m.runtime.v1",
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-dense-k3-local-only"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 2000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

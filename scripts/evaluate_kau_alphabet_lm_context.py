@@ -64,6 +64,8 @@ def _build(kind: str) -> nn.Module:
             dynamic_write_rank=4,
             dynamic_write_initial_scale=0.06,
         )
+    elif kind == "dense_local_only":
+        config = AlphabetLMConfig(reader_type="dense_k3", memory_layout="local_only")
     return AlphabetLM(config)
 
 
@@ -437,6 +439,7 @@ def main() -> None:
             "dense_delta",
             "tensorpole",
             "dense_dynamic_write_r4",
+            "dense_local_only",
             "mamba",
         ),
         required=True,

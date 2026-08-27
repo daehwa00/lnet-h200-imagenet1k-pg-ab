@@ -16,6 +16,7 @@ from lnet.alphabet_lm import (
     AlphabetLMConfig,
     DynamicLowRankWrite,
     FixedComplexPoleMemory1D,
+    IdentityComplexMemory1D,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
     TensorProductPoleMemory1D,
@@ -558,6 +559,64 @@ def test_dynamic_write_initial_branch_is_ten_percent_of_static_drive() -> None:
     static = torch.cat(base, dim=-1)
     ratio = branch.square().mean().sqrt() / static.square().mean().sqrt()
     assert 0.08 < float(ratio) < 0.12
+
+
+def test_dense_local_only_removes_only_recurrent_transport() -> None:
+    torch.manual_seed(501)
+    fixed = AlphabetLM(AlphabetLMConfig(reader_type="dense_k3"))
+    fixed_parameters = dict(fixed.named_parameters())
+    torch.manual_seed(501)
+    local = AlphabetLM(
+        AlphabetLMConfig(reader_type="dense_k3", memory_layout="local_only")
+    )
+    assert sum(parameter.numel() for parameter in local.parameters()) == 36_706_816
+    identity_memories = [
+        module for module in local.modules() if isinstance(module, IdentityComplexMemory1D)
+    ]
+    assert len(identity_memories) == 12
+    assert not any(isinstance(module, FixedComplexPoleMemory1D) for module in local.modules())
+    for name, parameter in local.named_parameters():
+        torch.testing.assert_close(parameter, fixed_parameters[name], atol=0.0, rtol=0.0)
+
+    block = cast("AlphabetLMBlock", local.blocks[0])
+    real = torch.randn(2, 17, 256)
+    imag = torch.randn_like(real)
+    with torch.no_grad():
+        drive = block.reader(real, imag)
+        state = block.memory(*drive)
+    torch.testing.assert_close(state[0], drive[0], atol=0.0, rtol=0.0)
+    torch.testing.assert_close(state[1], drive[1], atol=0.0, rtol=0.0)
+
+
+def test_dense_local_only_is_causal_and_has_finite_gradients() -> None:
+    torch.manual_seed(501)
+    model = AlphabetLM(
+        AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=2,
+            post_hidden=12,
+            context_length=16,
+            reader_type="dense_k3",
+            memory_layout="local_only",
+        )
+    )
+    tokens = torch.randint(64, (2, 17))
+    changed = tokens.clone()
+    changed[:, 10:] = torch.randint(64, changed[:, 10:].shape)
+    with torch.no_grad():
+        expected = model(tokens[:, :-1])
+        actual = model(changed[:, :-1])
+    torch.testing.assert_close(actual[:, :10], expected[:, :10], atol=1.0e-6, rtol=0.0)
+    logits = model(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), tokens[:, 1:].flatten())
+    loss.backward()
+    assert torch.isfinite(loss)
+    assert all(
+        parameter.grad is not None and bool(torch.isfinite(parameter.grad).all())
+        for parameter in model.parameters()
+    )
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:
