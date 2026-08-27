@@ -1,0 +1,42 @@
+{
+  "campaign_id": "kau-alphabet-lm-frozen-modal-probe-s501-v1",
+  "campaign_manifest_sha256": "057794b9b9fdb96e2a3d618daab7e29e494a6a2770574080f7d41bf451727b93",
+  "checkpoint": "legacy-10m-8348e6503a398aa4",
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-FrozenModalProbe-S501-v1",
+  "probe_parameters": 819200,
+  "probes": {
+    "complex": "h + Linear(RMSNorm([Re(z), Im(z)]), 512)",
+    "energy": "h + Linear(RMSNorm(log1p(|z|^2)), 512)",
+    "shuffled": "complex probe with a 997-token circular state shift"
+  },
+  "project": "alphabet-lm-viability",
+  "run": {
+    "display_name": "RTX4090-S501-ALPHABET-FrozenModalProbe-1M",
+    "id": "8aecaa06c56bc074",
+    "tags": [
+      "RTX4090",
+      "FineWeb-Edu",
+      "frozen-backbone",
+      "terminal-pole-state",
+      "linear-probe",
+      "seed501"
+    ]
+  },
+  "schema": "lnet.kau.alphabet_lm.frozen_modal_probe.runtime.v1",
+  "training": {
+    "checkpoint_updates": 25,
+    "frozen_backbone": true,
+    "global_sequences": 8,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.003,
+    "microbatch": 1,
+    "precision": "bfloat16",
+    "seed": 501,
+    "target_tokens": 1000000,
+    "validation_sequences": 512,
+    "warmup_updates": 10,
+    "weight_decay": 0.01,
+    "zero_initialized_fusion": true
+  }
+}
