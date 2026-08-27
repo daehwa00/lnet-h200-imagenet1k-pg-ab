@@ -16,7 +16,9 @@ from torch.nn import functional
 from lnet.alphabet_lm import (
     AlphabetLM,
     AlphabetLMConfig,
+    FixedComplexPoleMemory1D,
     GroupedPackedComplexLinear,
+    LowRankDecaySelector,
     QueryConditionedLowRankReadout,
 )
 from lnet.alphabet_lm_data import TokenBlockDataset
@@ -25,21 +27,29 @@ from lnet.pac_complex_layers import PackedComplexLinear
 
 
 def _build(kind: str) -> nn.Module:
-    if kind == "legacy":
-        return AlphabetLM(AlphabetLMConfig())
+    if kind == "mamba":
+        return MambaLM(MambaLMConfig())
+    config = AlphabetLMConfig()
     if kind == "grouped":
-        return AlphabetLM(
-            AlphabetLMConfig(
-                pole_initialization="lifetime_palette",
-                memory_banks=8,
-                bank_pole_modes=128,
-            )
+        config = AlphabetLMConfig(
+            pole_initialization="lifetime_palette",
+            memory_banks=8,
+            bank_pole_modes=128,
         )
-    if kind == "wide":
-        return AlphabetLM(AlphabetLMConfig(post_hidden=512))
-    if kind == "qread":
-        return AlphabetLM(AlphabetLMConfig(memory_readout="query_low_rank", query_read_rank=32))
-    return MambaLM(MambaLMConfig())
+    elif kind == "wide":
+        config = AlphabetLMConfig(post_hidden=512)
+    elif kind == "qread":
+        config = AlphabetLMConfig(memory_readout="query_low_rank", query_read_rank=32)
+    elif kind == "dense_fixed":
+        config = AlphabetLMConfig(reader_type="dense_k3")
+    elif kind == "dense_delta":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            pole_dynamics="delta_select",
+            delta_select_rank=16,
+            delta_select_initial_scale=0.3,
+        )
+    return AlphabetLM(config)
 
 
 def _zero_memory(model: nn.Module) -> list[torch.utils.hooks.RemovableHandle]:
@@ -99,6 +109,87 @@ def _query_readout_metrics(
     for handle in handles:
         handle.remove()
     labels = ("branch_to_base_rms", "query_rms", "query_std", "scale")
+    return {
+        f"{label}_mean": sum(row[index] for row in rows) / len(rows)
+        for index, label in enumerate(labels)
+    }
+
+
+@torch.no_grad()
+def _delta_select_metrics(
+    model: AlphabetLM,
+    dataset: TokenBlockDataset,
+    device: torch.device,
+) -> dict[str, float] | None:
+    pairs = [
+        (block.decay_selector, block.memory)
+        for block in model.blocks
+        if isinstance(block.decay_selector, LowRankDecaySelector)
+    ]
+    if not pairs:
+        return None
+    rows: list[tuple[float, float, float, float, float, float, float, float, float]] = []
+
+    def capture(
+        selector: LowRankDecaySelector,
+        memory: nn.Module,
+        control: Tensor,
+    ) -> None:
+        fixed_memory = cast("FixedComplexPoleMemory1D", memory)
+        active = control.float()
+        base = fixed_memory.damping().float().view(1, 1, -1)
+        effective = fixed_memory.minimum_damping + functional.softplus(
+            fixed_memory.raw_damping.float().view(1, 1, -1) + active
+        )
+        frequency = fixed_memory.frequency().float().view(1, 1, -1)
+        relative = effective / base - 1.0
+        rows.append(
+            (
+                float(active.square().mean().sqrt()),
+                float(active.std()),
+                float(active.abs().max()),
+                float(selector.scale()),
+                float(relative.square().mean().sqrt()),
+                float(
+                    (
+                        active.abs()
+                        > 0.95 * selector.control_bound * selector.scale().to(active.dtype)
+                    )
+                    .float()
+                    .mean()
+                ),
+                float(effective.min()),
+                float(torch.exp(-effective).max()),
+                float(torch.sqrt(effective.square() + frequency.square()).min()),
+            )
+        )
+
+    handles = [
+        selector.register_forward_hook(
+            lambda module, _inputs, output, memory=memory: capture(
+                cast("LowRankDecaySelector", module),
+                memory,
+                cast("Tensor", cast("object", output)),
+            )
+        )
+        for selector, memory in pairs
+    ]
+    sample = dataset[0][:-1].unsqueeze(0).to(device)
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        model.hidden(sample)
+    for handle in handles:
+        handle.remove()
+    labels = (
+        "control_rms",
+        "control_std",
+        "control_abs_max",
+        "scale",
+        "relative_damping_change_rms",
+        "saturation_fraction",
+        "effective_damping_min",
+        "discrete_decay_abs_max",
+        "continuous_pole_abs_min",
+    )
     return {
         f"{label}_mean": sum(row[index] for row in rows) / len(rows)
         for index, label in enumerate(labels)
@@ -168,7 +259,17 @@ def _evaluate(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--kind", choices=("legacy", "grouped", "wide", "qread", "mamba"), required=True
+        "--kind",
+        choices=(
+            "legacy",
+            "grouped",
+            "wide",
+            "qread",
+            "dense_fixed",
+            "dense_delta",
+            "mamba",
+        ),
+        required=True,
     )
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--validation-manifest", type=Path, required=True)
@@ -229,6 +330,9 @@ def main() -> None:
         query_metrics = _query_readout_metrics(model, dataset, device)
         if query_metrics is not None:
             payload["query_readout"] = query_metrics
+        delta_metrics = _delta_select_metrics(model, dataset, device)
+        if delta_metrics is not None:
+            payload["delta_select"] = delta_metrics
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print("KAU_LM_CONTEXT=" + json.dumps(payload, sort_keys=True), flush=True)

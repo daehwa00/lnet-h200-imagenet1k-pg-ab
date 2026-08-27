@@ -51,7 +51,15 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--only",
-        choices=("all", "palette", "grouped", "dense", "routing", "qread"),
+        choices=(
+            "all",
+            "palette",
+            "grouped",
+            "dense",
+            "routing",
+            "qread",
+            "delta_select",
+        ),
         default="all",
     )
     args = parser.parse_args()
@@ -66,7 +74,7 @@ def main() -> None:
     )
     if args.only == "palette":
         alphabet_variants = alphabet_variants[1:]
-    elif args.only in {"grouped", "dense", "routing", "qread"}:
+    elif args.only in {"grouped", "dense", "routing", "qread", "delta_select"}:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
         torch.manual_seed(501)
@@ -116,6 +124,23 @@ def main() -> None:
         if sum(parameter.numel() for parameter in qread.parameters()) != 35_436_556:
             raise RuntimeError("query-read R32 parameter contract changed")
         results["alphabet-qread-r32"] = _step(qread, tokens)
+    if args.only == "delta_select":
+        torch.manual_seed(501)
+        delta_select = AlphabetLM(
+            AlphabetLMConfig(
+                reader_type="dense_k3",
+                pole_dynamics="delta_select",
+                delta_select_rank=16,
+                delta_select_initial_scale=0.3,
+            )
+        )
+        if sum(parameter.numel() for parameter in delta_select.parameters()) != 36_877_324:
+            raise RuntimeError("DenseK3 DeltaSelect-R16 parameter contract changed")
+        full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
+        results["alphabet-dense-k3-delta-select-r16"] = _step(
+            delta_select,
+            full_microbatch,
+        )
     if args.only == "all":
         torch.manual_seed(501)
         mamba, parameters, relative_error = build_parameter_matched_mamba(

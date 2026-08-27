@@ -1,0 +1,75 @@
+{
+  "schema": "lnet.kau.alphabet_lm.dense_delta_screen_2m.v1",
+  "campaign_id": "kau-alphabet-lm-dense-delta-screen-2m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-dense-delta-screen-2m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "version": "v1",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051"
+  },
+  "architecture": {
+    "K": 256,
+    "P": 320,
+    "layers": 12,
+    "reader": "DenseComplexK3",
+    "pole_initialization": "legacy",
+    "frequency": "per_layer_trainable_token_independent",
+    "writer": "fixed_complex_linear",
+    "post_hidden": 384,
+    "variants": {
+      "alphabet-dense-k3-fixed": {
+        "reader_type": "dense_k3",
+        "pole_dynamics": "fixed",
+        "delta_select_rank": 16,
+        "delta_select_initial_scale": 0.1,
+        "delta_select_control_bound": 1.0,
+        "paired_dense_copied_parameters": 36714496
+      },
+      "alphabet-dense-k3-delta-r16": {
+        "reader_type": "dense_k3",
+        "pole_dynamics": "delta_select",
+        "delta_select_rank": 16,
+        "delta_select_initial_scale": 0.3,
+        "delta_select_control_bound": 1.0,
+        "target_initial_raw_damping_control_rms": 0.05,
+        "equation": "alpha_t=minimum+softplus(raw_alpha+scale*tanh(U*silu(V*norm(x_t))))",
+        "paired_dense_copied_parameters": 36714496
+      }
+    }
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 2000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-dense-k3-fixed",
+      "alphabet-dense-k3-delta-r16"
+    ]
+  },
+  "parameter_counts": {
+    "alphabet-dense-k3-fixed": 36714496,
+    "alphabet-dense-k3-delta-r16": 36877324
+  },
+  "diagnostics": {
+    "validation_sequence_limit": 512,
+    "context_segments": [2048, 128, 32, 1],
+    "memory_zero": true,
+    "delta_control_statistics": true
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-DenseK3-DeltaSelect-2M-S501-v1"
+  }
+}

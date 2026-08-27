@@ -14,6 +14,7 @@ from lnet.alphabet_lm import (
     AlphabetLM,
     AlphabetLMConfig,
     FixedComplexPoleMemory1D,
+    LowRankDecaySelector,
     QueryConditionedLowRankReadout,
 )
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
@@ -227,6 +228,91 @@ def test_query_read_r32_model_contract_and_gradients() -> None:
         parameter.grad is not None and bool(torch.isfinite(parameter.grad).all())
         for parameter in model.parameters()
     )
+
+
+def test_dynamic_damping_zero_control_matches_fixed_memory_exactly() -> None:
+    torch.manual_seed(501)
+    memory = FixedComplexPoleMemory1D(12, context_length=16, scan_fp32=True)
+    drive_real = torch.randn(2, 9, 12)
+    drive_imag = torch.randn(2, 9, 12)
+    control = torch.zeros_like(drive_real, requires_grad=True)
+    fixed = memory(drive_real, drive_imag)
+    dynamic = memory(drive_real, drive_imag, control)
+    torch.testing.assert_close(dynamic[0], fixed[0], atol=3.0e-7, rtol=4.0e-6)
+    torch.testing.assert_close(dynamic[1], fixed[1], atol=3.0e-7, rtol=4.0e-6)
+    dynamic[0].square().mean().add(dynamic[1].square().mean()).backward()
+    assert control.grad is not None
+    assert bool(torch.isfinite(control.grad).all())
+    assert memory.raw_damping.grad is not None
+
+
+def test_delta_select_r16_dense_model_contract_and_gradients() -> None:
+    full = AlphabetLM(
+        AlphabetLMConfig(
+            reader_type="dense_k3",
+            pole_dynamics="delta_select",
+            delta_select_rank=16,
+            delta_select_initial_scale=0.3,
+        )
+    )
+    assert sum(parameter.numel() for parameter in full.parameters()) == 36_877_324
+    torch.manual_seed(501)
+    config = AlphabetLMConfig(
+        vocab_size=64,
+        modes=8,
+        pole_modes=12,
+        layers=2,
+        post_hidden=12,
+        context_length=16,
+        reader_type="dense_k3",
+        pole_dynamics="delta_select",
+        delta_select_rank=4,
+        delta_select_initial_scale=0.3,
+    )
+    model = AlphabetLM(config)
+    tokens = torch.randint(64, (2, 17))
+    changed = tokens.clone()
+    changed[:, 10:] = torch.randint(64, changed[:, 10:].shape)
+    with torch.no_grad():
+        expected = model(tokens[:, :-1])
+        actual = model(changed[:, :-1])
+    torch.testing.assert_close(actual[:, :10], expected[:, :10], atol=1.0e-6, rtol=0.0)
+    logits = model(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), tokens[:, 1:].flatten())
+    loss.backward()
+    selectors = [module for module in model.modules() if isinstance(module, LowRankDecaySelector)]
+    assert len(selectors) == 2
+    assert all(
+        parameter.grad is not None and bool(torch.isfinite(parameter.grad).all())
+        for selector in selectors
+        for parameter in selector.parameters()
+    )
+
+
+def test_dense_delta_pair_copies_every_fixed_dense_parameter() -> None:
+    torch.manual_seed(501)
+    fixed = AlphabetLM(AlphabetLMConfig(reader_type="dense_k3"))
+    fixed_parameters = dict(fixed.named_parameters())
+    torch.manual_seed(501)
+    dynamic = AlphabetLM(
+        AlphabetLMConfig(
+            reader_type="dense_k3",
+            pole_dynamics="delta_select",
+            delta_select_rank=16,
+            delta_select_initial_scale=0.3,
+        )
+    )
+    _tensors, copied = _copy_matching_legacy_initialization(
+        dynamic,
+        vocab_size=32_768,
+        seed=501,
+        reader_type="dense_k3",
+    )
+    assert copied == 36_714_496
+    for name, parameter in dynamic.named_parameters():
+        source = fixed_parameters.get(name)
+        if source is not None and source.shape == parameter.shape:
+            torch.testing.assert_close(parameter, source, atol=0.0, rtol=0.0)
 
 
 def test_decoder_readout_variants_copy_every_shape_compatible_legacy_parameter() -> None:

@@ -24,6 +24,7 @@ from torch.nn import functional
 from lnet.alphabet_lm import (
     AlphabetLM,
     AlphabetLMConfig,
+    LowRankDecaySelector,
     QueryConditionedLowRankReadout,
 )
 from lnet.alphabet_lm_data import TokenBlockDataset, sha256_file
@@ -36,6 +37,7 @@ KAU_DENSE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dense_k3_p320_10m.runtime.v1"
 KAU_ROUTING_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dynamic_routing_2m.runtime.v1"
 KAU_STEP_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.step_control_2m.runtime.v1"
 KAU_DECODER_READOUT_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.decoder_readout_screen_2m.runtime.v1"
+KAU_DENSE_DELTA_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dense_delta_screen_2m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -104,11 +106,14 @@ def _copy_matching_legacy_initialization(
     *,
     vocab_size: int,
     seed: int,
+    reader_type: str = "r2k3",
 ) -> tuple[int, int]:
-    """Make all shape-compatible parameters identical to the seeded Legacy control."""
+    """Make shape-compatible parameters identical to a seeded fixed-pole control."""
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(seed)
-        reference = AlphabetLM(AlphabetLMConfig(vocab_size=vocab_size))
+        reference = AlphabetLM(
+            AlphabetLMConfig(vocab_size=vocab_size, reader_type=cast("Any", reader_type))
+        )
     source = dict(reference.named_parameters())
     copied_tensors = 0
     copied_parameters = 0
@@ -147,6 +152,10 @@ def _build(
     memory_readout: str = "fixed",
     query_read_rank: int = 32,
     query_read_initial_scale: float = 0.05,
+    pole_dynamics: str = "fixed",
+    delta_select_rank: int = 16,
+    delta_select_initial_scale: float = 0.1,
+    delta_select_control_bound: float = 1.0,
 ) -> tuple[nn.Module, dict[str, Any]]:
     alphabet_config = AlphabetLMConfig(
         vocab_size=vocab_size,
@@ -164,6 +173,10 @@ def _build(
         memory_readout=cast("Any", memory_readout),
         query_read_rank=query_read_rank,
         query_read_initial_scale=query_read_initial_scale,
+        pole_dynamics=cast("Any", pole_dynamics),
+        delta_select_rank=delta_select_rank,
+        delta_select_initial_scale=delta_select_initial_scale,
+        delta_select_control_bound=delta_select_control_bound,
     )
     if model_name == "alphabet":
         return AlphabetLM(alphabet_config), {
@@ -326,6 +339,11 @@ def main() -> None:
     parser.add_argument("--query-read-rank", type=int, default=32)
     parser.add_argument("--query-read-initial-scale", type=float, default=0.05)
     parser.add_argument("--paired-legacy-initialization", action="store_true")
+    parser.add_argument("--paired-dense-initialization", action="store_true")
+    parser.add_argument("--pole-dynamics", choices=("fixed", "delta_select"), default="fixed")
+    parser.add_argument("--delta-select-rank", type=int, default=16)
+    parser.add_argument("--delta-select-initial-scale", type=float, default=0.1)
+    parser.add_argument("--delta-select-control-bound", type=float, default=1.0)
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--train-manifest", type=Path, required=True)
     parser.add_argument("--validation-manifest", type=Path, required=True)
@@ -340,6 +358,7 @@ def main() -> None:
         KAU_ROUTING_RUNTIME_SCHEMA,
         KAU_STEP_RUNTIME_SCHEMA,
         KAU_DECODER_READOUT_RUNTIME_SCHEMA,
+        KAU_DENSE_DELTA_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -377,35 +396,61 @@ def main() -> None:
         memory_readout=args.memory_readout,
         query_read_rank=args.query_read_rank,
         query_read_initial_scale=args.query_read_initial_scale,
+        pole_dynamics=args.pole_dynamics,
+        delta_select_rank=args.delta_select_rank,
+        delta_select_initial_scale=args.delta_select_initial_scale,
+        delta_select_control_bound=args.delta_select_control_bound,
     )
-    paired_initialization: dict[str, int | bool] = {"enabled": False}
-    if args.paired_legacy_initialization:
+    paired_initialization: dict[str, int | bool | str] = {"enabled": False}
+    if args.paired_legacy_initialization and args.paired_dense_initialization:
+        raise RuntimeError("paired initialization reference is ambiguous")
+    if args.paired_legacy_initialization or args.paired_dense_initialization:
         if not isinstance(model, AlphabetLM):
-            raise RuntimeError("paired Legacy initialization requires ALPHABET-LM")
+            raise RuntimeError("paired initialization requires ALPHABET-LM")
+        reference_reader = "dense_k3" if args.paired_dense_initialization else "r2k3"
         copied_tensors, copied_parameters = _copy_matching_legacy_initialization(
             model,
             vocab_size=train.manifest.vocab_size,
             seed=seed,
+            reader_type=reference_reader,
         )
         paired_initialization = {
             "enabled": True,
             "copied_tensors": copied_tensors,
             "copied_parameters": copied_parameters,
+            "reference_reader": reference_reader,
         }
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
-        expected_variant = {
+        active_arguments = {
             "post_hidden": args.post_hidden,
             "memory_readout": args.memory_readout,
             "query_read_rank": args.query_read_rank,
+            "query_read_initial_scale": args.query_read_initial_scale,
+            "reader_type": args.reader_type,
+            "pole_dynamics": args.pole_dynamics,
+            "delta_select_rank": args.delta_select_rank,
+            "delta_select_initial_scale": args.delta_select_initial_scale,
+            "delta_select_control_bound": args.delta_select_control_bound,
         }
-        if "query_read_initial_scale" in variant_contract:
-            expected_variant["query_read_initial_scale"] = args.query_read_initial_scale
+        expected_variant = {
+            key: value for key, value in active_arguments.items() if key in variant_contract
+        }
         if any(variant_contract.get(key) != value for key, value in expected_variant.items()):
-            raise RuntimeError("decoder/readout variant arguments changed")
-        expected_copied = variant_contract.get("paired_legacy_copied_parameters")
+            raise RuntimeError("campaign variant arguments changed")
+        expected_copied = next(
+            (
+                variant_contract[key]
+                for key in (
+                    "paired_legacy_copied_parameters",
+                    "paired_dense_copied_parameters",
+                )
+                if key in variant_contract
+            ),
+            None,
+        )
         if paired_initialization.get("copied_parameters") != expected_copied:
-            raise RuntimeError("paired Legacy initialization coverage changed")
+            raise RuntimeError("paired initialization coverage changed")
     model = model.to(device)
     parameters = _parameter_count(model)
     default_parameters = 34_794_496 if args.model == "alphabet" else 35_425_280
@@ -445,6 +490,10 @@ def main() -> None:
         "memory_readout": args.memory_readout,
         "query_read_rank": args.query_read_rank,
         "query_read_initial_scale": args.query_read_initial_scale,
+        "pole_dynamics": args.pole_dynamics,
+        "delta_select_rank": args.delta_select_rank,
+        "delta_select_initial_scale": args.delta_select_initial_scale,
+        "delta_select_control_bound": args.delta_select_control_bound,
         "paired_legacy_initialization": paired_initialization,
         "parameters": parameters,
         "training": training,
@@ -520,12 +569,18 @@ def main() -> None:
         }
         if isinstance(model, AlphabetLM):
             query_scales = []
+            decay_scales = []
             for block in model.blocks:
                 readout = block.query_readout
                 if isinstance(readout, QueryConditionedLowRankReadout):
                     query_scales.append(float(readout.scale().detach()))
+                selector = block.decay_selector
+                if isinstance(selector, LowRankDecaySelector):
+                    decay_scales.append(float(selector.scale().detach()))
             if query_scales:
                 row["query_read_scale_mean"] = sum(query_scales) / len(query_scales)
+            if decay_scales:
+                row["delta_select_scale_mean"] = sum(decay_scales) / len(decay_scales)
         if update == 1:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
@@ -561,6 +616,8 @@ def main() -> None:
         }
         if "query_read_scale_mean" in row:
             wandb_metrics["model/query_read_scale_mean"] = row["query_read_scale_mean"]
+        if "delta_select_scale_mean" in row:
+            wandb_metrics["model/delta_select_scale_mean"] = row["delta_select_scale_mean"]
         wandb_run.log(wandb_metrics, step=update)
         print("ALPHABET_LM_PROGRESS=" + json.dumps(row, sort_keys=True), flush=True)
         if _STOP_EVENT.is_set():

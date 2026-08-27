@@ -1,0 +1,109 @@
+{
+  "architecture": {
+    "K": 256,
+    "P": 320,
+    "frequency": "per_layer_trainable_token_independent",
+    "layers": 12,
+    "pole_initialization": "legacy",
+    "post_hidden": 384,
+    "reader": "DenseComplexK3",
+    "variants": {
+      "alphabet-dense-k3-delta-r16": {
+        "delta_select_control_bound": 1.0,
+        "delta_select_initial_scale": 0.3,
+        "delta_select_rank": 16,
+        "equation": "alpha_t=minimum+softplus(raw_alpha+scale*tanh(U*silu(V*norm(x_t))))",
+        "paired_dense_copied_parameters": 36714496,
+        "pole_dynamics": "delta_select",
+        "reader_type": "dense_k3",
+        "target_initial_raw_damping_control_rms": 0.05
+      },
+      "alphabet-dense-k3-fixed": {
+        "delta_select_control_bound": 1.0,
+        "delta_select_initial_scale": 0.1,
+        "delta_select_rank": 16,
+        "paired_dense_copied_parameters": 36714496,
+        "pole_dynamics": "fixed",
+        "reader_type": "dense_k3"
+      }
+    },
+    "writer": "fixed_complex_linear"
+  },
+  "campaign_id": "kau-alphabet-lm-dense-delta-screen-2m-s501-v1",
+  "campaign_manifest_sha256": "c22bb9473f399fdbd7f510691e03e8ac28dc26aa7bb0c2e76b6ebbed49369923",
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      128,
+      32,
+      1
+    ],
+    "delta_control_statistics": true,
+    "memory_zero": true,
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-DenseK3-DeltaSelect-2M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-dense-delta-screen-2m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051",
+    "version": "v1"
+  },
+  "parameter_counts": {
+    "alphabet-dense-k3-delta-r16": 36877324,
+    "alphabet-dense-k3-fixed": 36714496
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet-dense-k3-delta-r16": {
+      "display_name": "RTX4090-S501-ALPHABET-DenseK3-DeltaSelectR16-2M",
+      "id": "9877a24e25f2e8a8",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "2M",
+        "alphabet-dense-k3-delta-r16",
+        "dense-k3",
+        "delta-select-screen",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    },
+    "alphabet-dense-k3-fixed": {
+      "display_name": "RTX4090-S501-ALPHABET-DenseK3-Fixed-2M",
+      "id": "8344ae863b50c2d4",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "2M",
+        "alphabet-dense-k3-fixed",
+        "dense-k3",
+        "delta-select-screen",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.dense_delta_screen_2m.runtime.v1",
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-dense-k3-fixed",
+      "alphabet-dense-k3-delta-r16"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 2000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

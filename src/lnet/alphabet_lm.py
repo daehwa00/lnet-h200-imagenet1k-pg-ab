@@ -13,7 +13,7 @@ from torch.nn import functional
 from .complex_scan_transitions import ComplexRMSNorm
 from .pac_complex_layers import PackedComplexLinear
 from .pac_gated_post_fusion import GatedComplexPostFusion
-from .pac_real2d_math import discrete_pole_real2d
+from .pac_real2d_math import discrete_pole_real2d, pole_gamma_from_control_real2d
 from .pac_triton_recurrence_op import pac_triton_recurrence_opaque_op
 
 ComplexField = tuple[Tensor, Tensor]
@@ -34,8 +34,12 @@ class AlphabetLMConfig:
     pole_initialization: Literal["legacy", "lifetime_palette"] = "legacy"
     reader_type: Literal["r2k3", "dense_k3"] = "r2k3"
     pole_routing: Literal["static", "dynamic_write", "dynamic_write_read"] = "static"
+    pole_dynamics: Literal["fixed", "delta_select"] = "fixed"
     memory_readout: Literal["fixed", "query_low_rank"] = "fixed"
     router_hidden: int = 32
+    delta_select_rank: int = 16
+    delta_select_initial_scale: float = 0.1
+    delta_select_control_bound: float = 1.0
     query_read_rank: int = 32
     query_read_initial_scale: float = 0.05
     minimum_half_life: float = 2.0
@@ -57,6 +61,7 @@ class AlphabetLMConfig:
             self.memory_banks,
             self.bank_pole_modes,
             self.router_hidden,
+            self.delta_select_rank,
             self.query_read_rank,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
@@ -73,12 +78,18 @@ class AlphabetLMConfig:
             raise ValueError("dense K3 reader requires the single-bank configuration")
         if self.pole_routing != "static" and self.memory_banks != 1:
             raise ValueError("dynamic pole routing currently requires a single memory bank")
-        if self.pole_routing not in {"static", "dynamic_write", "dynamic_write_read"}:
-            raise ValueError("invalid ALPHABET-LM pole routing")
-        if self.memory_readout not in {"fixed", "query_low_rank"}:
-            raise ValueError("invalid ALPHABET-LM memory readout")
-        if not 0.0 < self.query_read_initial_scale < 1.0:
-            raise ValueError("query read initial scale must lie strictly between zero and one")
+        if (
+            self.pole_routing not in {"static", "dynamic_write", "dynamic_write_read"}
+            or self.pole_dynamics not in {"fixed", "delta_select"}
+            or self.memory_readout not in {"fixed", "query_low_rank"}
+        ):
+            raise ValueError("invalid ALPHABET-LM dynamic configuration")
+        if (
+            not 0.0 < self.delta_select_initial_scale < 1.0
+            or self.delta_select_control_bound <= 0.0
+            or not 0.0 < self.query_read_initial_scale < 1.0
+        ):
+            raise ValueError("invalid ALPHABET-LM dynamic initialization")
 
     @property
     def model_width(self) -> int:
@@ -384,21 +395,39 @@ class FixedComplexPoleMemory1D(nn.Module):
     def coefficients(self) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         return discrete_pole_real2d(self.damping(), self.frequency(), 1.0)
 
-    def forward(self, drive_real: Tensor, drive_imag: Tensor) -> ComplexField:
-        decay_real, decay_imag, gamma_real, gamma_imag = self.coefficients()
+    def forward(
+        self,
+        drive_real: Tensor,
+        drive_imag: Tensor,
+        damping_control: Tensor | None = None,
+    ) -> ComplexField:
         scan_dtype = torch.float32 if self.scan_fp32 else drive_real.dtype
         active_real, active_imag = drive_real.to(scan_dtype), drive_imag.to(scan_dtype)
+        if damping_control is None:
+            coefficients = self.coefficients()
+        else:
+            if damping_control.shape != drive_real.shape:
+                raise ValueError("dynamic damping control must match the pole drive")
+            frequency = self.frequency().to(device=drive_real.device, dtype=scan_dtype)
+            coefficients = pole_gamma_from_control_real2d(
+                self.raw_damping.to(device=drive_real.device, dtype=scan_dtype),
+                frequency,
+                damping_control.to(scan_dtype),
+                self.minimum_damping,
+                1.0,
+            )
         values = tuple(
-            value.to(device=drive_real.device, dtype=scan_dtype)
-            for value in (decay_real, decay_imag, gamma_real, gamma_imag)
+            value.to(device=drive_real.device, dtype=scan_dtype) for value in coefficients
         )
         dr, di, gr, gi = values
         input_real = gr * active_real - gi * active_imag
         input_imag = gi * active_real + gr * active_imag
         shape = (1, 1, self.modes)
+        active_decay_real = dr.view(shape).expand_as(input_real) if dr.ndim == 1 else dr
+        active_decay_imag = di.view(shape).expand_as(input_imag) if di.ndim == 1 else di
         state_real, state_imag = pac_triton_recurrence_opaque_op(
-            dr.view(shape).expand_as(input_real),
-            di.view(shape).expand_as(input_imag),
+            active_decay_real,
+            active_decay_imag,
             input_real,
             input_imag,
         )
@@ -432,6 +461,49 @@ class LowRankPoleRouter(nn.Module):
             write_gate, read_gate = gates.split(self.pole_modes, dim=-1)
             return write_gate, read_gate
         return gates, None
+
+
+class LowRankDecaySelector(nn.Module):
+    """Produce bounded token-conditioned offsets in raw damping space."""
+
+    def __init__(
+        self,
+        modes: int,
+        pole_modes: int,
+        *,
+        rank: int,
+        initial_scale: float,
+        control_bound: float,
+    ) -> None:
+        super().__init__()
+        if (
+            min(modes, pole_modes, rank) <= 0
+            or not 0.0 < initial_scale < 1.0
+            or control_bound <= 0.0
+        ):
+            raise ValueError("invalid low-rank decay selector configuration")
+        self.modes = int(modes)
+        self.pole_modes = int(pole_modes)
+        self.rank = int(rank)
+        self.control_bound = float(control_bound)
+        self.norm = ComplexRMSNorm(modes)
+        self.input = nn.Linear(2 * modes, rank, bias=False)
+        self.output = nn.Linear(rank, pole_modes, bias=False)
+        initial_logit = math.log(initial_scale / (1.0 - initial_scale))
+        self.raw_scale = nn.Parameter(torch.tensor(initial_logit))
+        nn.init.xavier_uniform_(self.input.weight)
+        nn.init.xavier_uniform_(self.output.weight)
+
+    def scale(self) -> Tensor:
+        return torch.sigmoid(self.raw_scale)
+
+    def forward(self, real: Tensor, imag: Tensor) -> Tensor:
+        if real.shape != imag.shape or real.shape[-1] != self.modes:
+            raise ValueError("low-rank decay selector expects matching B,T,K coordinates")
+        unit_real, unit_imag = self.norm(real, imag)
+        hidden = functional.silu(self.input(torch.cat((unit_real, unit_imag), dim=-1)))
+        bounded = torch.tanh(self.output(hidden))
+        return self.control_bound * self.scale().to(bounded.dtype) * bounded
 
 
 class QueryConditionedLowRankReadout(nn.Module):
@@ -542,6 +614,17 @@ class AlphabetLMBlock(nn.Module):
                 )
         else:
             self.query_readout = None
+        if config.pole_dynamics == "delta_select":
+            with torch.random.fork_rng(devices=[]):
+                self.decay_selector = LowRankDecaySelector(
+                    config.modes,
+                    config.total_pole_modes,
+                    rank=config.delta_select_rank,
+                    initial_scale=config.delta_select_initial_scale,
+                    control_bound=config.delta_select_control_bound,
+                )
+        else:
+            self.decay_selector = None
         if config.pole_routing == "static":
             self.router = None
         else:
@@ -559,7 +642,10 @@ class AlphabetLMBlock(nn.Module):
         if self.router is not None:
             write_gate, read_gate = self.router(real, imag)
             drive = drive[0] * write_gate, drive[1] * write_gate
-        state = self.memory(*drive)
+        damping_control = (
+            self.decay_selector(real, imag) if self.decay_selector is not None else None
+        )
+        state = self.memory(*drive, damping_control=damping_control)
         if read_gate is not None:
             state = state[0] * read_gate, state[1] * read_gate
         memory = self.writer(*state)
@@ -599,6 +685,7 @@ __all__ = [
     "FixedComplexPoleMemory1D",
     "GroupedCausalFactorizedComplexConv1dReader",
     "GroupedPackedComplexLinear",
+    "LowRankDecaySelector",
     "LowRankPoleRouter",
     "QueryConditionedLowRankReadout",
 ]
