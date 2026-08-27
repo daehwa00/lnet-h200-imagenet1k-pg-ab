@@ -1,0 +1,72 @@
+{
+  "schema": "lnet.kau.alphabet_lm.tensorpole_m8_2m.v1",
+  "campaign_id": "kau-alphabet-lm-tensorpole-m8-2m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-tensorpole-m8-2m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "version": "v1",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051"
+  },
+  "architecture": {
+    "K": 256,
+    "temporal_modes": 8,
+    "recurrent_complex_state": 2048,
+    "layers": 12,
+    "reader": "DenseComplexK3-KtoK",
+    "memory_layout": "content_K_x_temporal_M",
+    "initial_half_lives": [4, 16, 64, 256, 1024, 4096, 16384, 65536],
+    "frequency": "per_layer_trainable_token_independent_zero_initialized",
+    "write": "learned_per_content_complex_KxM_unit_energy",
+    "read": "learned_per_content_complex_KxM_conjugate_write_initialized",
+    "initial_read_gain": 0.6,
+    "initial_read_gain_calibration": "matches DenseK3-Fixed memory-to-input RMS at T2048",
+    "post_hidden": 384,
+    "variants": {
+      "alphabet-dense-k3-tensorpole-m8": {
+        "reader_type": "dense_k3",
+        "memory_layout": "tensor_product",
+        "tensor_temporal_modes": 8,
+        "tensor_initial_read_gain": 0.6,
+        "paired_dense_copied_parameters": 28842496
+      }
+    }
+  },
+  "reused_control": {
+    "label": "alphabet-dense-k3-fixed",
+    "source_commit": "d880f24c644c266f2ca3c7db937fca47290932c1",
+    "parameters": 36714496,
+    "validation_loss": 7.67721192400481,
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/8344ae863b50c2d4"
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 2000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": ["alphabet-dense-k3-tensorpole-m8"]
+  },
+  "parameter_counts": {
+    "alphabet-dense-k3-tensorpole-m8": 33659584
+  },
+  "diagnostics": {
+    "validation_sequence_limit": 512,
+    "context_segments": [2048, 128, 32, 1],
+    "memory_zero": true,
+    "tensorpole_statistics": true
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-TensorPole-M8-2M-S501-v1"
+  }
+}

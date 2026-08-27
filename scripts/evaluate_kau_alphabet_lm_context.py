@@ -20,6 +20,7 @@ from lnet.alphabet_lm import (
     GroupedPackedComplexLinear,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
+    TensorProductPoleMemory1D,
 )
 from lnet.alphabet_lm_data import TokenBlockDataset
 from lnet.alphabet_lm_mamba import MambaLM, MambaLMConfig
@@ -49,6 +50,12 @@ def _build(kind: str) -> nn.Module:
             delta_select_rank=16,
             delta_select_initial_scale=0.3,
         )
+    elif kind == "tensorpole":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="tensor_product",
+            tensor_temporal_modes=8,
+        )
     return AlphabetLM(config)
 
 
@@ -63,7 +70,10 @@ def _zero_memory(model: nn.Module) -> list[torch.utils.hooks.RemovableHandle]:
     writers = [
         module
         for module in model.modules()
-        if isinstance(module, (PackedComplexLinear, GroupedPackedComplexLinear))
+        if isinstance(
+            module,
+            (PackedComplexLinear, GroupedPackedComplexLinear, TensorProductPoleMemory1D),
+        )
     ]
     return [writer.register_forward_hook(zero_output) for writer in writers]
 
@@ -196,6 +206,98 @@ def _delta_select_metrics(
     }
 
 
+@torch.no_grad()
+def _tensorpole_metrics(
+    model: AlphabetLM,
+    dataset: TokenBlockDataset,
+    device: torch.device,
+) -> dict[str, object] | None:
+    modules = [
+        module for module in model.modules() if isinstance(module, TensorProductPoleMemory1D)
+    ]
+    if not modules:
+        return None
+    memory_to_drive: list[float] = []
+
+    def capture(_module: nn.Module, inputs: tuple[object, ...], output: object) -> None:
+        drive_real, drive_imag, *_rest = cast("tuple[Tensor, Tensor, object]", inputs)
+        memory_real, memory_imag = cast("tuple[Tensor, Tensor]", output)
+        drive_energy = drive_real.float().square().add(drive_imag.float().square()).mean()
+        memory_energy = memory_real.float().square().add(memory_imag.float().square()).mean()
+        memory_to_drive.append(float(torch.sqrt(memory_energy / drive_energy.clamp_min(1.0e-12))))
+
+    handles = [module.register_forward_hook(capture) for module in modules]
+    sample = dataset[0][:-1].unsqueeze(0).to(device)
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        model.hidden(sample)
+    for handle in handles:
+        handle.remove()
+    half_lives = torch.stack([module.half_lives().float() for module in modules])
+    frequencies = torch.stack([module.frequency().float() for module in modules])
+    write_energy = torch.stack(
+        [
+            module.write_real.float().square().add(module.write_imag.float().square()).sum(dim=-1)
+            for module in modules
+        ]
+    )
+    read_energy = torch.stack(
+        [
+            module.read_real.float().square().add(module.read_imag.float().square()).sum(dim=-1)
+            for module in modules
+        ]
+    )
+    write_mode_rms = torch.stack(
+        [
+            module.write_real.float()
+            .square()
+            .add(module.write_imag.float().square())
+            .mean(dim=0)
+            .sqrt()
+            for module in modules
+        ]
+    )
+    read_mode_rms = torch.stack(
+        [
+            module.read_real.float()
+            .square()
+            .add(module.read_imag.float().square())
+            .mean(dim=0)
+            .sqrt()
+            for module in modules
+        ]
+    )
+    transport_abs = torch.stack(
+        [
+            (
+                (module.read_real * module.write_real - module.read_imag * module.write_imag)
+                .float()
+                .square()
+                + (module.read_real * module.write_imag + module.read_imag * module.write_real)
+                .float()
+                .square()
+            )
+            .sqrt()
+            .mean(dim=0)
+            for module in modules
+        ]
+    )
+    return {
+        "memory_to_drive_rms_mean": sum(memory_to_drive) / len(memory_to_drive),
+        "memory_to_drive_rms_by_layer": memory_to_drive,
+        "half_life_min": float(half_lives.min()),
+        "half_life_median": float(half_lives.median()),
+        "half_life_max": float(half_lives.max()),
+        "frequency_abs_mean": float(frequencies.abs().mean()),
+        "write_row_energy_mean": float(write_energy.mean()),
+        "read_row_energy_mean": float(read_energy.mean()),
+        "half_lives_by_layer": half_lives.detach().cpu().tolist(),
+        "frequencies_by_layer": frequencies.detach().cpu().tolist(),
+        "write_mode_rms_by_layer": write_mode_rms.detach().cpu().tolist(),
+        "read_mode_rms_by_layer": read_mode_rms.detach().cpu().tolist(),
+        "transport_abs_mean_by_layer_mode": transport_abs.detach().cpu().tolist(),
+    }
+
+
 def _loss_sum(model: nn.Module, inputs: Tensor, labels: Tensor, pad_id: int) -> tuple[float, int]:
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         logits = model(inputs)
@@ -267,6 +369,7 @@ def main() -> None:
             "qread",
             "dense_fixed",
             "dense_delta",
+            "tensorpole",
             "mamba",
         ),
         required=True,
@@ -333,6 +436,9 @@ def main() -> None:
         delta_metrics = _delta_select_metrics(model, dataset, device)
         if delta_metrics is not None:
             payload["delta_select"] = delta_metrics
+        tensor_metrics = _tensorpole_metrics(model, dataset, device)
+        if tensor_metrics is not None:
+            payload["tensorpole"] = tensor_metrics
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print("KAU_LM_CONTEXT=" + json.dumps(payload, sort_keys=True), flush=True)

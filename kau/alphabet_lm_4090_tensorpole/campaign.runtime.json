@@ -1,0 +1,103 @@
+{
+  "architecture": {
+    "K": 256,
+    "frequency": "per_layer_trainable_token_independent_zero_initialized",
+    "initial_half_lives": [
+      4,
+      16,
+      64,
+      256,
+      1024,
+      4096,
+      16384,
+      65536
+    ],
+    "initial_read_gain": 0.6,
+    "initial_read_gain_calibration": "matches DenseK3-Fixed memory-to-input RMS at T2048",
+    "layers": 12,
+    "memory_layout": "content_K_x_temporal_M",
+    "post_hidden": 384,
+    "read": "learned_per_content_complex_KxM_conjugate_write_initialized",
+    "reader": "DenseComplexK3-KtoK",
+    "recurrent_complex_state": 2048,
+    "temporal_modes": 8,
+    "variants": {
+      "alphabet-dense-k3-tensorpole-m8": {
+        "memory_layout": "tensor_product",
+        "paired_dense_copied_parameters": 28842496,
+        "reader_type": "dense_k3",
+        "tensor_initial_read_gain": 0.6,
+        "tensor_temporal_modes": 8
+      }
+    },
+    "write": "learned_per_content_complex_KxM_unit_energy"
+  },
+  "campaign_id": "kau-alphabet-lm-tensorpole-m8-2m-s501-v1",
+  "campaign_manifest_sha256": "679e2605ba2ba08b2065a3d1fca854891b43abcf3e3a7adf47e6ca129094c86a",
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      128,
+      32,
+      1
+    ],
+    "memory_zero": true,
+    "tensorpole_statistics": true,
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-TensorPole-M8-2M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-tensorpole-m8-2m-v1",
+  "paper": {
+    "arxiv_id": "2608.24051",
+    "title": "ALPHABET: A Laplace-Pole History Aggregator with Banked Exponential Transport",
+    "url": "https://arxiv.org/abs/2608.24051",
+    "version": "v1"
+  },
+  "parameter_counts": {
+    "alphabet-dense-k3-tensorpole-m8": 33659584
+  },
+  "project": "alphabet-lm-viability",
+  "reused_control": {
+    "label": "alphabet-dense-k3-fixed",
+    "parameters": 36714496,
+    "source_commit": "d880f24c644c266f2ca3c7db937fca47290932c1",
+    "validation_loss": 7.67721192400481,
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/8344ae863b50c2d4"
+  },
+  "runs": {
+    "alphabet-dense-k3-tensorpole-m8": {
+      "display_name": "RTX4090-S501-ALPHABET-DenseK3-TensorPoleM8-2M",
+      "id": "cdd80a052293a99a",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "2M",
+        "DenseK3",
+        "TensorPole-M8",
+        "content-times-temporal-state",
+        "seed501",
+        "arXiv-2608.24051"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.tensorpole_m8_2m.runtime.v1",
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-dense-k3-tensorpole-m8"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 2000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

@@ -59,6 +59,7 @@ def main() -> None:
             "routing",
             "qread",
             "delta_select",
+            "tensorpole",
         ),
         default="all",
     )
@@ -74,7 +75,14 @@ def main() -> None:
     )
     if args.only == "palette":
         alphabet_variants = alphabet_variants[1:]
-    elif args.only in {"grouped", "dense", "routing", "qread", "delta_select"}:
+    elif args.only in {
+        "grouped",
+        "dense",
+        "routing",
+        "qread",
+        "delta_select",
+        "tensorpole",
+    }:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
         torch.manual_seed(501)
@@ -139,6 +147,22 @@ def main() -> None:
         full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
         results["alphabet-dense-k3-delta-select-r16"] = _step(
             delta_select,
+            full_microbatch,
+        )
+    if args.only == "tensorpole":
+        torch.manual_seed(501)
+        tensorpole = AlphabetLM(
+            AlphabetLMConfig(
+                reader_type="dense_k3",
+                memory_layout="tensor_product",
+                tensor_temporal_modes=8,
+            )
+        )
+        if sum(parameter.numel() for parameter in tensorpole.parameters()) != 33_659_584:
+            raise RuntimeError("DenseK3 TensorPole-M8 parameter contract changed")
+        full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
+        results["alphabet-dense-k3-tensorpole-m8"] = _step(
+            tensorpole,
             full_microbatch,
         )
     if args.only == "all":

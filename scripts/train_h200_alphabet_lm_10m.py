@@ -38,6 +38,7 @@ KAU_ROUTING_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dynamic_routing_2m.runtime.v1
 KAU_STEP_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.step_control_2m.runtime.v1"
 KAU_DECODER_READOUT_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.decoder_readout_screen_2m.runtime.v1"
 KAU_DENSE_DELTA_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.dense_delta_screen_2m.runtime.v1"
+KAU_TENSORPOLE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.tensorpole_m8_2m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -156,6 +157,9 @@ def _build(
     delta_select_rank: int = 16,
     delta_select_initial_scale: float = 0.1,
     delta_select_control_bound: float = 1.0,
+    memory_layout: str = "flat",
+    tensor_temporal_modes: int = 8,
+    tensor_initial_read_gain: float = 0.6,
 ) -> tuple[nn.Module, dict[str, Any]]:
     alphabet_config = AlphabetLMConfig(
         vocab_size=vocab_size,
@@ -177,6 +181,9 @@ def _build(
         delta_select_rank=delta_select_rank,
         delta_select_initial_scale=delta_select_initial_scale,
         delta_select_control_bound=delta_select_control_bound,
+        memory_layout=cast("Any", memory_layout),
+        tensor_temporal_modes=tensor_temporal_modes,
+        tensor_initial_read_gain=tensor_initial_read_gain,
     )
     if model_name == "alphabet":
         return AlphabetLM(alphabet_config), {
@@ -344,6 +351,9 @@ def main() -> None:
     parser.add_argument("--delta-select-rank", type=int, default=16)
     parser.add_argument("--delta-select-initial-scale", type=float, default=0.1)
     parser.add_argument("--delta-select-control-bound", type=float, default=1.0)
+    parser.add_argument("--memory-layout", choices=("flat", "tensor_product"), default="flat")
+    parser.add_argument("--tensor-temporal-modes", type=int, default=8)
+    parser.add_argument("--tensor-initial-read-gain", type=float, default=0.6)
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--train-manifest", type=Path, required=True)
     parser.add_argument("--validation-manifest", type=Path, required=True)
@@ -359,6 +369,7 @@ def main() -> None:
         KAU_STEP_RUNTIME_SCHEMA,
         KAU_DECODER_READOUT_RUNTIME_SCHEMA,
         KAU_DENSE_DELTA_RUNTIME_SCHEMA,
+        KAU_TENSORPOLE_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -400,6 +411,9 @@ def main() -> None:
         delta_select_rank=args.delta_select_rank,
         delta_select_initial_scale=args.delta_select_initial_scale,
         delta_select_control_bound=args.delta_select_control_bound,
+        memory_layout=args.memory_layout,
+        tensor_temporal_modes=args.tensor_temporal_modes,
+        tensor_initial_read_gain=args.tensor_initial_read_gain,
     )
     paired_initialization: dict[str, int | bool | str] = {"enabled": False}
     if args.paired_legacy_initialization and args.paired_dense_initialization:
@@ -432,6 +446,9 @@ def main() -> None:
             "delta_select_rank": args.delta_select_rank,
             "delta_select_initial_scale": args.delta_select_initial_scale,
             "delta_select_control_bound": args.delta_select_control_bound,
+            "memory_layout": args.memory_layout,
+            "tensor_temporal_modes": args.tensor_temporal_modes,
+            "tensor_initial_read_gain": args.tensor_initial_read_gain,
         }
         expected_variant = {
             key: value for key, value in active_arguments.items() if key in variant_contract
@@ -494,6 +511,9 @@ def main() -> None:
         "delta_select_rank": args.delta_select_rank,
         "delta_select_initial_scale": args.delta_select_initial_scale,
         "delta_select_control_bound": args.delta_select_control_bound,
+        "memory_layout": args.memory_layout,
+        "tensor_temporal_modes": args.tensor_temporal_modes,
+        "tensor_initial_read_gain": args.tensor_initial_read_gain,
         "paired_legacy_initialization": paired_initialization,
         "parameters": parameters,
         "training": training,

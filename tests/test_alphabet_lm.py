@@ -12,10 +12,12 @@ import torch
 
 from lnet.alphabet_lm import (
     AlphabetLM,
+    AlphabetLMBlock,
     AlphabetLMConfig,
     FixedComplexPoleMemory1D,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
+    TensorProductPoleMemory1D,
 )
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 from lnet.pac_triton_recurrence_op import pac_triton_recurrence_opaque_op
@@ -344,6 +346,100 @@ def test_decoder_readout_variants_copy_every_shape_compatible_legacy_parameter()
             source = reference_parameters.get(name)
             if source is not None and source.shape == parameter.shape:
                 torch.testing.assert_close(parameter, source, atol=0.0, rtol=0.0)
+
+
+def test_tensor_product_memory_matches_complex_reference() -> None:
+    torch.manual_seed(501)
+    memory = TensorProductPoleMemory1D(
+        5,
+        4,
+        half_lives=(4.0, 16.0, 64.0, 256.0),
+        scan_fp32=True,
+        initial_read_gain=0.6,
+    )
+    drive_real = torch.randn(2, 9, 5)
+    drive_imag = torch.randn(2, 9, 5)
+    actual_real, actual_imag = memory(drive_real, drive_imag)
+    drive = torch.complex(drive_real, drive_imag)
+    write = torch.complex(memory.write_real, memory.write_imag)
+    read = torch.complex(memory.read_real, memory.read_imag)
+    pole = torch.complex(-memory.damping(), memory.frequency())
+    decay = torch.exp(pole)
+    gamma = torch.expm1(pole) / pole
+    state = torch.zeros(2, 5, 4, dtype=torch.complex64)
+    expected = []
+    for current in drive.unbind(dim=1):
+        state = decay * state + gamma * write * current.unsqueeze(-1)
+        expected.append((read * state).sum(dim=-1))
+    reference = torch.stack(expected, dim=1)
+    torch.testing.assert_close(actual_real, reference.real, atol=2.0e-5, rtol=2.0e-5)
+    torch.testing.assert_close(actual_imag, reference.imag, atol=2.0e-5, rtol=2.0e-5)
+
+
+def test_tensorpole_m8_model_contract_causality_and_gradients() -> None:
+    config = AlphabetLMConfig(reader_type="dense_k3", memory_layout="tensor_product")
+    full = AlphabetLM(config)
+    assert config.recurrent_state_modes == 2_048
+    assert sum(parameter.numel() for parameter in full.parameters()) == 33_659_584
+    memory = full.blocks[0].memory
+    assert isinstance(memory, TensorProductPoleMemory1D)
+    expected_half_lives = torch.tensor(config.tensor_half_lives)
+    torch.testing.assert_close(memory.half_lives().detach(), expected_half_lives)
+    row_energy = memory.write_real.square().add(memory.write_imag.square()).sum(dim=-1)
+    torch.testing.assert_close(row_energy, torch.ones_like(row_energy))
+    torch.testing.assert_close(memory.read_real, 0.6 * memory.write_real)
+    torch.testing.assert_close(memory.read_imag, -0.6 * memory.write_imag)
+
+    torch.manual_seed(501)
+    small = AlphabetLM(
+        AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=2,
+            post_hidden=12,
+            context_length=16,
+            reader_type="dense_k3",
+            memory_layout="tensor_product",
+            tensor_temporal_modes=4,
+            tensor_half_lives=(4.0, 16.0, 64.0, 256.0),
+        )
+    )
+    tokens = torch.randint(64, (2, 17))
+    changed = tokens.clone()
+    changed[:, 10:] = torch.randint(64, changed[:, 10:].shape)
+    with torch.no_grad():
+        expected = small(tokens[:, :-1])
+        actual = small(changed[:, :-1])
+    torch.testing.assert_close(actual[:, :10], expected[:, :10], atol=1.0e-6, rtol=0.0)
+    logits = small(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), tokens[:, 1:].flatten())
+    loss.backward()
+    assert all(
+        parameter.grad is not None and bool(torch.isfinite(parameter.grad).all())
+        for parameter in small.parameters()
+    )
+
+
+def test_tensorpole_initial_memory_scale_matches_dense_fixed_at_full_context() -> None:
+    torch.manual_seed(501)
+    real = torch.randn(1, 2_048, 256)
+    imag = torch.randn_like(real)
+    ratios = []
+    for layout in ("flat", "tensor_product"):
+        torch.manual_seed(501)
+        block = cast(
+            "AlphabetLMBlock",
+            AlphabetLM(AlphabetLMConfig(reader_type="dense_k3", memory_layout=layout)).blocks[0],
+        )
+        with torch.no_grad():
+            drive = block.reader(real, imag)
+            state = block.memory(*drive)
+            memory = block.writer(*state)
+        input_rms = real.square().add(imag.square()).mean().sqrt()
+        memory_rms = memory[0].square().add(memory[1].square()).mean().sqrt()
+        ratios.append(float(memory_rms / input_rms))
+    assert 0.9 < ratios[1] / ratios[0] < 1.1
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:

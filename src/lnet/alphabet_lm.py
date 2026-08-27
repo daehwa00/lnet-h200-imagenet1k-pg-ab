@@ -35,6 +35,7 @@ class AlphabetLMConfig:
     reader_type: Literal["r2k3", "dense_k3"] = "r2k3"
     pole_routing: Literal["static", "dynamic_write", "dynamic_write_read"] = "static"
     pole_dynamics: Literal["fixed", "delta_select"] = "fixed"
+    memory_layout: Literal["flat", "tensor_product"] = "flat"
     memory_readout: Literal["fixed", "query_low_rank"] = "fixed"
     router_hidden: int = 32
     delta_select_rank: int = 16
@@ -47,6 +48,18 @@ class AlphabetLMConfig:
     decay_dominant_fraction: float = 0.5
     memory_banks: int = 1
     bank_pole_modes: int = 128
+    tensor_temporal_modes: int = 8
+    tensor_initial_read_gain: float = 0.6
+    tensor_half_lives: tuple[float, ...] = (
+        4.0,
+        16.0,
+        64.0,
+        256.0,
+        1_024.0,
+        4_096.0,
+        16_384.0,
+        65_536.0,
+    )
 
     def __post_init__(self) -> None:
         values = (
@@ -63,6 +76,7 @@ class AlphabetLMConfig:
             self.router_hidden,
             self.delta_select_rank,
             self.query_read_rank,
+            self.tensor_temporal_modes,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -81,6 +95,7 @@ class AlphabetLMConfig:
         if (
             self.pole_routing not in {"static", "dynamic_write", "dynamic_write_read"}
             or self.pole_dynamics not in {"fixed", "delta_select"}
+            or self.memory_layout not in {"flat", "tensor_product"}
             or self.memory_readout not in {"fixed", "query_low_rank"}
         ):
             raise ValueError("invalid ALPHABET-LM dynamic configuration")
@@ -90,6 +105,25 @@ class AlphabetLMConfig:
             or not 0.0 < self.query_read_initial_scale < 1.0
         ):
             raise ValueError("invalid ALPHABET-LM dynamic initialization")
+        if self.memory_layout == "tensor_product" and (
+            self.reader_type != "dense_k3"
+            or self.memory_banks != 1
+            or self.pole_routing != "static"
+            or self.pole_dynamics != "fixed"
+            or self.memory_readout != "fixed"
+            or len(self.tensor_half_lives) != self.tensor_temporal_modes
+            or any(value <= 0.0 for value in self.tensor_half_lives)
+            or self.tensor_initial_read_gain <= 0.0
+            or any(
+                left >= right
+                for left, right in zip(
+                    self.tensor_half_lives,
+                    self.tensor_half_lives[1:],
+                    strict=False,
+                )
+            )
+        ):
+            raise ValueError("invalid tensor-product memory configuration")
 
     @property
     def model_width(self) -> int:
@@ -100,6 +134,12 @@ class AlphabetLMConfig:
         if self.memory_banks == 1:
             return self.pole_modes
         return self.memory_banks * self.bank_pole_modes
+
+    @property
+    def recurrent_state_modes(self) -> int:
+        if self.memory_layout == "tensor_product":
+            return self.modes * self.tensor_temporal_modes
+        return self.total_pole_modes
 
 
 class CausalFactorizedComplexConv1dReader(nn.Module):
@@ -327,6 +367,126 @@ class GroupedPackedComplexLinear(nn.Module):
             "...hp,hkp->...hk", grouped_real, self.weight_imag
         ) + torch.einsum("...hp,hkp->...hk", grouped_imag, self.weight_real)
         return output_real.flatten(-2), output_imag.flatten(-2)
+
+
+class _ComplexIdentity(nn.Module):
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        return real, imag
+
+
+class TensorProductPoleMemory1D(nn.Module):
+    """Separate content coordinates from a small shared temporal pole basis."""
+
+    minimum_damping = 1.0e-7
+
+    def __init__(
+        self,
+        content_modes: int,
+        temporal_modes: int,
+        *,
+        half_lives: tuple[float, ...],
+        scan_fp32: bool,
+        initial_read_gain: float,
+    ) -> None:
+        super().__init__()
+        if (
+            min(content_modes, temporal_modes) <= 0
+            or len(half_lives) != temporal_modes
+            or any(value <= 0.0 for value in half_lives)
+            or initial_read_gain <= 0.0
+        ):
+            raise ValueError("invalid tensor-product pole memory configuration")
+        self.content_modes = int(content_modes)
+        self.temporal_modes = int(temporal_modes)
+        self.scan_fp32 = bool(scan_fp32)
+        self.initial_read_gain = float(initial_read_gain)
+        damping = math.log(2.0) / torch.tensor(half_lives, dtype=torch.float32)
+        self.raw_damping = nn.Parameter(torch.log(torch.expm1(damping - self.minimum_damping)))
+        self.raw_frequency = nn.Parameter(torch.zeros(temporal_modes))
+        shape = (content_modes, temporal_modes)
+        self.write_real = nn.Parameter(torch.empty(shape))
+        self.write_imag = nn.Parameter(torch.empty(shape))
+        self.read_real = nn.Parameter(torch.empty(shape))
+        self.read_imag = nn.Parameter(torch.empty(shape))
+        write_real = torch.randn(shape)
+        write_imag = torch.randn(shape)
+        inverse_norm = torch.rsqrt(
+            write_real.square().add(write_imag.square()).sum(dim=-1, keepdim=True)
+        )
+        with torch.no_grad():
+            self.write_real.copy_(write_real * inverse_norm)
+            self.write_imag.copy_(write_imag * inverse_norm)
+            self.read_real.copy_(self.initial_read_gain * self.write_real)
+            self.read_imag.copy_(-self.initial_read_gain * self.write_imag)
+
+    def damping(self) -> Tensor:
+        return self.minimum_damping + functional.softplus(self.raw_damping)
+
+    def frequency(self) -> Tensor:
+        return math.pi * torch.tanh(self.raw_frequency)
+
+    def half_lives(self) -> Tensor:
+        return math.log(2.0) / self.damping()
+
+    def forward(
+        self,
+        drive_real: Tensor,
+        drive_imag: Tensor,
+        damping_control: Tensor | None = None,
+    ) -> ComplexField:
+        if (
+            drive_real.shape != drive_imag.shape
+            or drive_real.ndim != 3
+            or drive_real.shape[-1] != self.content_modes
+        ):
+            raise ValueError("tensor-product memory expects matching B,T,K coordinates")
+        if damping_control is not None:
+            raise ValueError("tensor-product memory uses token-independent poles")
+        drive_dtype = drive_real.dtype
+        write_real = self.write_real.to(drive_dtype)
+        write_imag = self.write_imag.to(drive_dtype)
+        expanded_real = (
+            drive_real.unsqueeze(-1) * write_real - drive_imag.unsqueeze(-1) * write_imag
+        )
+        expanded_imag = (
+            drive_real.unsqueeze(-1) * write_imag + drive_imag.unsqueeze(-1) * write_real
+        )
+        scan_dtype = torch.float32 if self.scan_fp32 else drive_dtype
+        damping = self.damping().to(device=drive_real.device, dtype=scan_dtype)
+        frequency = self.frequency().to(device=drive_real.device, dtype=scan_dtype)
+        decay_real, decay_imag, gamma_real, gamma_imag = discrete_pole_real2d(
+            damping,
+            frequency,
+            1.0,
+            threshold=1.0e-4,
+        )
+        active_real = expanded_real.to(scan_dtype)
+        active_imag = expanded_imag.to(scan_dtype)
+        gamma_shape = (1, 1, 1, self.temporal_modes)
+        gamma_real = gamma_real.view(gamma_shape)
+        gamma_imag = gamma_imag.view(gamma_shape)
+        input_real = gamma_real * active_real - gamma_imag * active_imag
+        input_imag = gamma_imag * active_real + gamma_real * active_imag
+        flattened_real = input_real.flatten(-2).contiguous()
+        flattened_imag = input_imag.flatten(-2).contiguous()
+        repeated_decay_real = decay_real.repeat(self.content_modes)
+        repeated_decay_imag = decay_imag.repeat(self.content_modes)
+        decay_shape = (1, 1, self.content_modes * self.temporal_modes)
+        state_real, state_imag = pac_triton_recurrence_opaque_op(
+            repeated_decay_real.view(decay_shape).expand_as(flattened_real),
+            repeated_decay_imag.view(decay_shape).expand_as(flattened_imag),
+            flattened_real,
+            flattened_imag,
+        )
+        state_shape = (*drive_real.shape, self.temporal_modes)
+        state_real = state_real.to(drive_dtype).reshape(state_shape)
+        state_imag = state_imag.to(drive_dtype).reshape(state_shape)
+        read_real = self.read_real.to(drive_dtype)
+        read_imag = self.read_imag.to(drive_dtype)
+        return (
+            (state_real * read_real - state_imag * read_imag).sum(dim=-1),
+            (state_real * read_imag + state_imag * read_real).sum(dim=-1),
+        )
 
 
 class FixedComplexPoleMemory1D(nn.Module):
@@ -569,7 +729,23 @@ class QueryConditionedLowRankReadout(nn.Module):
 class AlphabetLMBlock(nn.Module):
     def __init__(self, config: AlphabetLMConfig) -> None:
         super().__init__()
-        if config.memory_banks == 1:
+        if config.memory_layout == "tensor_product":
+            factorized_reader = CausalFactorizedComplexConv1dReader(
+                config.modes,
+                config.modes,
+                rank=config.reader_rank,
+                kernel_size=config.reader_kernel,
+            )
+            self.reader = DenseComplexConv1dReader.from_factorized(factorized_reader)
+            self.writer = _ComplexIdentity()
+            self.memory = TensorProductPoleMemory1D(
+                config.modes,
+                config.tensor_temporal_modes,
+                half_lives=config.tensor_half_lives,
+                scan_fp32=config.scan_fp32,
+                initial_read_gain=config.tensor_initial_read_gain,
+            )
+        elif config.memory_banks == 1:
             factorized_reader = CausalFactorizedComplexConv1dReader(
                 config.modes,
                 config.pole_modes,
@@ -593,16 +769,17 @@ class AlphabetLMBlock(nn.Module):
             self.writer = GroupedPackedComplexLinear(
                 config.bank_pole_modes, config.modes, banks=config.memory_banks
             )
-        self.memory = FixedComplexPoleMemory1D(
-            config.total_pole_modes,
-            context_length=config.context_length,
-            scan_fp32=config.scan_fp32,
-            initialization=config.pole_initialization,
-            minimum_half_life=config.minimum_half_life,
-            maximum_half_life=config.maximum_half_life,
-            decay_dominant_fraction=config.decay_dominant_fraction,
-            banks=config.memory_banks,
-        )
+        if config.memory_layout == "flat":
+            self.memory = FixedComplexPoleMemory1D(
+                config.total_pole_modes,
+                context_length=config.context_length,
+                scan_fp32=config.scan_fp32,
+                initialization=config.pole_initialization,
+                minimum_half_life=config.minimum_half_life,
+                maximum_half_life=config.maximum_half_life,
+                decay_dominant_fraction=config.decay_dominant_fraction,
+                banks=config.memory_banks,
+            )
         self.post_fusion = GatedComplexPostFusion(config.modes, config.post_hidden)
         if config.memory_readout == "query_low_rank":
             with torch.random.fork_rng(devices=[]):
@@ -688,4 +865,5 @@ __all__ = [
     "LowRankDecaySelector",
     "LowRankPoleRouter",
     "QueryConditionedLowRankReadout",
+    "TensorProductPoleMemory1D",
 ]
