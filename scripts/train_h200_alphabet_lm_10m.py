@@ -68,6 +68,7 @@ KAU_ALPHABET2_QUERY_10M_RUNTIME_SCHEMA = (
     "lnet.kau.alphabet_lm.alphabet2_query_10m.runtime.v1"
 )
 KAU_ALPHABET2_QK_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.alphabet2_qk.runtime.v1"
+KAU_ALPHABET2_VECTOR_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.alphabet2_vector.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -390,6 +391,41 @@ def _initialize_slow_key_from_trunk(
     }
 
 
+def _initialize_slow_value_from_trunk(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.slow_cnn_pole_memory is None:
+        raise RuntimeError("value initialization requires a slow memory bank")
+    slow = model.slow_cnn_pole_memory
+    if slow.value is None or slow.extra_synthesis is None:
+        raise RuntimeError("value initialization requires vector-valued memory")
+    payload = cast(
+        "dict[str, Any]", torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    prefixes = (
+        "slow_cnn_pole_memory.value_norm.",
+        "slow_cnn_pole_memory.value.",
+        "slow_cnn_pole_memory.extra_synthesis.",
+    )
+    expected_missing = {name for name in model.state_dict() if name.startswith(prefixes)}
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("Token-Q checkpoint does not match vector-valued memory")
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(name.startswith(prefixes))
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": sha256_file(checkpoint_path),
+        "missing_value_tensors": len(expected_missing),
+        "token_q_frozen": True,
+    }
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -465,6 +501,7 @@ def _build(
     slow_cnn_pole_query_rho: float = 0.5,
     slow_cnn_pole_key: bool = False,
     slow_cnn_pole_key_rho: float = 0.5,
+    slow_cnn_pole_value_width: int = 1,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -535,6 +572,7 @@ def _build(
         slow_cnn_pole_query_rho=slow_cnn_pole_query_rho,
         slow_cnn_pole_key=slow_cnn_pole_key,
         slow_cnn_pole_key_rho=slow_cnn_pole_key_rho,
+        slow_cnn_pole_value_width=slow_cnn_pole_value_width,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -790,9 +828,11 @@ def main() -> None:
     parser.add_argument("--slow-cnn-pole-query-rho", type=float, default=0.5)
     parser.add_argument("--slow-cnn-pole-key", action="store_true")
     parser.add_argument("--slow-cnn-pole-key-rho", type=float, default=0.5)
+    parser.add_argument("--slow-cnn-pole-value-width", type=int, default=1)
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-query-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-key-trunk-checkpoint", type=Path)
+    parser.add_argument("--initialize-slow-value-trunk-checkpoint", type=Path)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -830,6 +870,7 @@ def main() -> None:
         KAU_ALPHABET2_QUERY_EXTENSION_RUNTIME_SCHEMA,
         KAU_ALPHABET2_QUERY_10M_RUNTIME_SCHEMA,
         KAU_ALPHABET2_QK_RUNTIME_SCHEMA,
+        KAU_ALPHABET2_VECTOR_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -917,6 +958,7 @@ def main() -> None:
         slow_cnn_pole_query_rho=args.slow_cnn_pole_query_rho,
         slow_cnn_pole_key=args.slow_cnn_pole_key,
         slow_cnn_pole_key_rho=args.slow_cnn_pole_key_rho,
+        slow_cnn_pole_value_width=args.slow_cnn_pole_value_width,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -933,6 +975,7 @@ def main() -> None:
             or args.initialize_slow_cnn_pole_trunk_checkpoint is not None
             or args.initialize_slow_query_trunk_checkpoint is not None
             or args.initialize_slow_key_trunk_checkpoint is not None
+            or args.initialize_slow_value_trunk_checkpoint is not None
         ):
             raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
@@ -979,6 +1022,10 @@ def main() -> None:
     slow_key_initialization = _initialize_slow_key_from_trunk(
         model,
         args.initialize_slow_key_trunk_checkpoint,
+    )
+    slow_value_initialization = _initialize_slow_value_from_trunk(
+        model,
+        args.initialize_slow_value_trunk_checkpoint,
     )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
@@ -1040,6 +1087,7 @@ def main() -> None:
             "slow_cnn_pole_query_rho": args.slow_cnn_pole_query_rho,
             "slow_cnn_pole_key": args.slow_cnn_pole_key,
             "slow_cnn_pole_key_rho": args.slow_cnn_pole_key_rho,
+            "slow_cnn_pole_value_width": args.slow_cnn_pole_value_width,
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -1205,6 +1253,8 @@ def main() -> None:
         "slow_cnn_pole_key": args.slow_cnn_pole_key,
         "slow_cnn_pole_key_rho": args.slow_cnn_pole_key_rho,
         "slow_key_initialization": slow_key_initialization,
+        "slow_cnn_pole_value_width": args.slow_cnn_pole_value_width,
+        "slow_value_initialization": slow_value_initialization,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
@@ -1344,6 +1394,18 @@ def main() -> None:
                     row["slow_key_weight_rms"] = float(
                         model.slow_cnn_pole_memory.key.weight.detach().float().square().mean().sqrt()
                     )
+                if model.slow_cnn_pole_memory.value is not None:
+                    row["slow_value_weight_rms"] = float(
+                        model.slow_cnn_pole_memory.value.weight.detach().float().square().mean().sqrt()
+                    )
+                if model.slow_cnn_pole_memory.extra_synthesis is not None:
+                    row["slow_extra_synthesis_weight_rms"] = float(
+                        model.slow_cnn_pole_memory.extra_synthesis.weight.detach()
+                        .float()
+                        .square()
+                        .mean()
+                        .sqrt()
+                    )
         if update == 1:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
@@ -1393,6 +1455,12 @@ def main() -> None:
             wandb_metrics["model/slow_query_weight_rms"] = row["slow_query_weight_rms"]
         if "slow_key_weight_rms" in row:
             wandb_metrics["model/slow_key_weight_rms"] = row["slow_key_weight_rms"]
+        if "slow_value_weight_rms" in row:
+            wandb_metrics["model/slow_value_weight_rms"] = row["slow_value_weight_rms"]
+        if "slow_extra_synthesis_weight_rms" in row:
+            wandb_metrics["model/slow_extra_synthesis_weight_rms"] = row[
+                "slow_extra_synthesis_weight_rms"
+            ]
         wandb_run.log(wandb_metrics, step=update)
         print("ALPHABET_LM_PROGRESS=" + json.dumps(row, sort_keys=True), flush=True)
         if _STOP_EVENT.is_set():

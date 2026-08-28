@@ -40,6 +40,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_slow_cnn_pole_from_trunk,
     _initialize_slow_key_from_trunk,
     _initialize_slow_query_from_trunk,
+    _initialize_slow_value_from_trunk,
 )
 
 
@@ -1357,6 +1358,65 @@ def test_qk_checkpoint_trains_only_mandatory_key(tmp_path: Path) -> None:
     slow = cast("SlowCausalCNNPoleMemory", qk.slow_cnn_pole_memory)
     assert slow.key is not None
     torch.testing.assert_close(slow.key.weight, torch.zeros_like(slow.key.weight))
+
+
+def _vector_slow_config() -> AlphabetLMConfig:
+    return replace(
+        _addressed_slow_config(mode="token"),
+        slow_cnn_pole_value_width=4,
+    )
+
+
+def test_vector_pole_memory_preserves_scalar_coordinate_exactly() -> None:
+    torch.manual_seed(501)
+    memory = FixedComplexPoleMemory1D(8, context_length=32, scan_fp32=False)
+    drive_real = torch.randn(2, 9, 8)
+    drive_imag = torch.randn_like(drive_real)
+    scalar = memory(drive_real, drive_imag)
+    value = torch.randn(2, 9, 1, 4)
+    value[..., 0] = 1.0
+    vector = memory(drive_real.unsqueeze(-1) * value, drive_imag.unsqueeze(-1) * value)
+    torch.testing.assert_close(vector[0][..., 0], scalar[0], atol=0.0, rtol=0.0)
+    torch.testing.assert_close(vector[1][..., 0], scalar[1], atol=0.0, rtol=0.0)
+
+
+def test_vector_slow_memory_is_baseline_preserving_and_causal() -> None:
+    torch.manual_seed(501)
+    token_q = AlphabetLM(_addressed_slow_config(mode="token")).eval()
+    torch.manual_seed(501)
+    vector = AlphabetLM(_vector_slow_config()).eval()
+    vector.load_state_dict(token_q.state_dict(), strict=False)
+    tokens = torch.randint(64, (1, 16))
+    changed = tokens.clone()
+    changed[:, 8:] = torch.randint(64, changed[:, 8:].shape)
+    with torch.no_grad():
+        expected = token_q(tokens)
+        actual = vector(tokens)
+        changed_logits = vector(changed)
+    torch.testing.assert_close(actual, expected, atol=2e-6, rtol=2e-6)
+    torch.testing.assert_close(changed_logits[:, :8], actual[:, :8], atol=2e-6, rtol=0.0)
+
+
+def test_vector_checkpoint_trains_only_value_and_extra_synthesis(tmp_path: Path) -> None:
+    torch.manual_seed(501)
+    token_q = AlphabetLM(_addressed_slow_config(mode="token"))
+    checkpoint = tmp_path / "token-q.pt"
+    torch.save({"model": token_q.state_dict()}, checkpoint)
+    vector = AlphabetLM(_vector_slow_config())
+    contract = _initialize_slow_value_from_trunk(vector, checkpoint)
+    assert contract["enabled"] is True
+    trainable = [name for name, parameter in vector.named_parameters() if parameter.requires_grad]
+    assert set(trainable) == {
+        "slow_cnn_pole_memory.value_norm.weight",
+        "slow_cnn_pole_memory.value.weight",
+        "slow_cnn_pole_memory.extra_synthesis.weight",
+    }
+    slow = cast("SlowCausalCNNPoleMemory", vector.slow_cnn_pole_memory)
+    assert slow.extra_synthesis is not None
+    torch.testing.assert_close(
+        slow.extra_synthesis.weight,
+        torch.zeros_like(slow.extra_synthesis.weight),
+    )
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:
