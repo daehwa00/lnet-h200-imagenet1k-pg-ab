@@ -1,0 +1,99 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "alphabet2-token-q-10m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-token-q-10m-s501-v1",
+  "campaign_manifest_sha256": "74c1e840d1e5e4477b7e239f2f502e449ef18ad639f213351507bb6303cf2a76",
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      512,
+      128,
+      32,
+      1
+    ],
+    "memory_zero": true,
+    "milestones": [
+      10000000
+    ],
+    "query_neutral": true,
+    "query_temporal_shift": true,
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-TokenQ-10M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-token-q-10m-v1",
+  "parameter_counts": {
+    "alphabet2-token-q-10m": 66048
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet2-token-q-10m": {
+      "display_name": "RTX4090-S501-ALPHABET2-TokenQ-10M",
+      "id": "ef3703e3bd1f7d3a",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "TokenQ",
+        "10M",
+        "seed501"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_query_10m.runtime.v1",
+  "sources": {
+    "token_q_4m": "/home/daehwa/alphabet-lm-4090-token-q-extension-runs/43a4f5dd69258c59/token-q-4m/checkpoint.pt",
+    "token_q_4m_sha256": "dd7541bf63b5c19f7834506f7da138d2d9ec39912b1ad57279e649285a3cb422",
+    "v1": "/home/daehwa/alphabet-lm-4090-slow-cnn-pole-extension-runs/ed69f7768dc8a844/recurrent-4m/checkpoint.pt",
+    "v1_sha256": "bbf58b774cecd3302fbdd07b5d45d3bca673c656612ee9f0e451e6ff8074f2d1"
+  },
+  "total_parameter_counts": {
+    "alphabet2-token-q-10m": 40462602
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet2-token-q-10m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 10000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}
