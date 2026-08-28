@@ -1023,8 +1023,9 @@ def _configure_cuda_memory_limit(device: torch.device) -> float | None:
     if not math.isfinite(fraction) or not 0.0 < fraction <= 1.0:
         message = f"H200_GPU_MEMORY_FRACTION must be in (0, 1], got {value!r}"
         raise ValueError(message)
-    torch.cuda.set_per_process_memory_fraction(fraction, device)
-    torch.cuda.reset_peak_memory_stats(device)
+    device_index = device.index if device.index is not None else torch.cuda.current_device()
+    torch.cuda.set_per_process_memory_fraction(fraction, device_index)
+    torch.cuda.reset_peak_memory_stats(device_index)
     return fraction
 
 

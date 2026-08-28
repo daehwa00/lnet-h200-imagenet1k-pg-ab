@@ -171,6 +171,46 @@ def test_cli_accepts_inline_task_json_and_queue_contract(tmp_path: Path) -> None
     assert task.result_path == tmp_path / "result.json"
 
 
+@pytest.mark.parametrize(
+    ("device", "current_device", "expected_index"),
+    [
+        (torch.device("cuda"), 3, 3),
+        (torch.device("cuda:5"), 3, 5),
+    ],
+)
+def test_cuda_memory_limit_resolves_an_explicit_device_index(
+    monkeypatch: pytest.MonkeyPatch,
+    device: torch.device,
+    current_device: int,
+    expected_index: int,
+) -> None:
+    configured: list[tuple[float, int]] = []
+    reset: list[int] = []
+
+    def configure_fraction(fraction: float, index: int) -> None:
+        configured.append((fraction, index))
+
+    def reset_peak_memory(index: int) -> None:
+        reset.append(index)
+
+    monkeypatch.setenv("H200_GPU_MEMORY_FRACTION", "0.5")
+    monkeypatch.setattr(worker.torch.cuda, "current_device", lambda: current_device)
+    monkeypatch.setattr(
+        worker.torch.cuda,
+        "set_per_process_memory_fraction",
+        configure_fraction,
+    )
+    monkeypatch.setattr(
+        worker.torch.cuda,
+        "reset_peak_memory_stats",
+        reset_peak_memory,
+    )
+
+    assert worker._configure_cuda_memory_limit(device) == 0.5  # pyright: ignore[reportPrivateUsage]
+    assert configured == [(0.5, expected_index)]
+    assert reset == [expected_index]
+
+
 def test_epoch_checkpoint_resume_preserves_rng_and_scientific_history(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
