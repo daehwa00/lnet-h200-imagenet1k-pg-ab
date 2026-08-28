@@ -57,6 +57,9 @@ KAU_SEMANTIC_EDGE_EXTENSION_RUNTIME_SCHEMA = (
 )
 KAU_CNN_POLE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.cnn_pole_1m.runtime.v1"
 KAU_SLOW_CNN_POLE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.slow_cnn_pole_1m.runtime.v1"
+KAU_SLOW_CNN_POLE_EXTENSION_RUNTIME_SCHEMA = (
+    "lnet.kau.alphabet_lm.slow_cnn_pole_extension.runtime.v1"
+)
 _STOP_EVENT = threading.Event()
 
 
@@ -728,6 +731,7 @@ def main() -> None:
         KAU_SEMANTIC_EDGE_EXTENSION_RUNTIME_SCHEMA,
         KAU_CNN_POLE_RUNTIME_SCHEMA,
         KAU_SLOW_CNN_POLE_RUNTIME_SCHEMA,
+        KAU_SLOW_CNN_POLE_EXTENSION_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
