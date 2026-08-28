@@ -17,6 +17,7 @@ from torch.nn import functional
 from lnet.alphabet_lm import (
     AlphabetLM,
     AlphabetLMConfig,
+    CausalCNNPoleMemory,
     ChunkedSemanticPoleMemory,
     DynamicLowRankWrite,
     FixedComplexPoleMemory1D,
@@ -119,6 +120,20 @@ def _build(kind: str) -> nn.Module:
             semantic_edge_minimum_half_life=1.0,
             semantic_edge_maximum_half_life=256.0,
         )
+    elif kind in {"cnn_pole_p128_6bank", "cnn_pole_p128_6bank_no_recurrence"}:
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            cnn_pole_memory=True,
+            cnn_pole_interval=2,
+            cnn_pole_modes=128,
+            cnn_pole_evidence_width=512,
+            cnn_pole_kernel_size=4,
+            cnn_pole_beta_initial=0.01,
+            cnn_pole_use_recurrence=kind == "cnn_pole_p128_6bank",
+            cnn_pole_minimum_half_life=8.0,
+            cnn_pole_maximum_half_life=4_096.0,
+        )
     return AlphabetLM(config)
 
 
@@ -139,6 +154,16 @@ def _zero_memory(model: nn.Module) -> list[torch.utils.hooks.RemovableHandle]:
     sidecars = [
         module for module in model.modules() if isinstance(module, FixedPoleResidualSidecar)
     ]
+    cnn_memories = [
+        module for module in model.modules() if isinstance(module, CausalCNNPoleMemory)
+    ]
+    if cnn_memories:
+        return [
+            memory.synthesis.register_forward_hook(
+                lambda _module, _inputs, output: torch.zeros_like(cast("Tensor", output))
+            )
+            for memory in cnn_memories
+        ]
     writers = [memory.writer for memory in (*chunk_memories, *edge_memories)]
     if not writers:
         writers = [sidecar.writer for sidecar in sidecars]
@@ -288,6 +313,60 @@ def _semantic_edge_metrics(
         "half_life_anchors_median": float(half_lives.median()),
         "half_life_anchors_max": float(half_lives.max()),
         "excitation_row_gram_max_abs": float((gram - identity).abs().max()),
+    }
+
+
+@torch.no_grad()
+def _cnn_pole_metrics(
+    model: AlphabetLM,
+    dataset: TokenBlockDataset,
+    device: torch.device,
+) -> dict[str, object] | None:
+    memories = model.cnn_pole_memories
+    if memories is None:
+        return None
+    branch_ratios: list[float] = []
+
+    def capture(_module: nn.Module, inputs: tuple[object, ...], output: object) -> None:
+        real, imag = cast("tuple[Tensor, Tensor]", inputs)
+        output_real, output_imag = cast("tuple[Tensor, Tensor]", output)
+        trunk_energy = real.float().square().add(imag.float().square()).mean()
+        branch_energy = (
+            (output_real - real).float().square() + (output_imag - imag).float().square()
+        ).mean()
+        branch_ratios.append(float(torch.sqrt(branch_energy / trunk_energy.clamp_min(1.0e-12))))
+
+    handles = [memory.register_forward_hook(capture) for memory in memories]
+    sample = dataset[0][:-1].unsqueeze(0).to(device)
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        model.hidden(sample)
+    for handle in handles:
+        handle.remove()
+    typed_memories = [cast("CausalCNNPoleMemory", memory) for memory in memories]
+    beta = torch.stack([memory.beta.float() for memory in typed_memories])
+    gram_errors = []
+    for memory in typed_memories:
+        weight = memory.analysis.weight.float()
+        identity = torch.eye(weight.shape[0], device=weight.device)
+        gram_errors.append(float((weight @ weight.T - identity).abs().max()))
+    half_lives = [
+        math.log(2.0) / memory.memory.damping().float() for memory in typed_memories
+    ]
+    return {
+        "banks": len(memories),
+        "interval": model.config.cnn_pole_interval,
+        "kernel_size": model.config.cnn_pole_kernel_size,
+        "pole_modes": model.config.cnn_pole_modes,
+        "use_recurrence": model.config.cnn_pole_use_recurrence,
+        "beta_by_bank": beta.detach().cpu().tolist(),
+        "beta_mean": float(beta.mean()),
+        "branch_to_trunk_rms_by_bank": branch_ratios,
+        "branch_to_trunk_rms_mean": sum(branch_ratios) / len(branch_ratios),
+        "analysis_row_gram_max_abs_by_bank": gram_errors,
+        "half_life_tokens_min": min(float(value.min()) for value in half_lives),
+        "half_life_tokens_median": sum(float(value.median()) for value in half_lives)
+        / len(half_lives),
+        "half_life_tokens_max": max(float(value.max()) for value in half_lives),
     }
 
 
@@ -649,6 +728,8 @@ def main() -> None:
             "chunked_semantic_p128",
             "semantic_edge_p128",
             "semantic_edge_p128_no_recurrence",
+            "cnn_pole_p128_6bank",
+            "cnn_pole_p128_6bank_no_recurrence",
             "mamba",
         ),
         required=True,
@@ -730,6 +811,9 @@ def main() -> None:
         semantic_edge_metrics = _semantic_edge_metrics(model, dataset, device)
         if semantic_edge_metrics is not None:
             payload["semantic_edge"] = semantic_edge_metrics
+        cnn_pole_metrics = _cnn_pole_metrics(model, dataset, device)
+        if cnn_pole_metrics is not None:
+            payload["cnn_pole"] = cnn_pole_metrics
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print("KAU_LM_CONTEXT=" + json.dumps(payload, sort_keys=True), flush=True)

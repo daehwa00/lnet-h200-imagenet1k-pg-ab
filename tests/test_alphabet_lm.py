@@ -15,6 +15,7 @@ from lnet.alphabet_lm import (
     AlphabetLM,
     AlphabetLMBlock,
     AlphabetLMConfig,
+    CausalCNNPoleMemory,
     ChunkedSemanticPoleMemory,
     DynamicLowRankWrite,
     FixedComplexPoleMemory1D,
@@ -32,6 +33,7 @@ from scripts.prepare_h200_alphabet_lm_data import _parquet_to_jsonl, _split_docu
 from scripts.train_h200_alphabet_lm_10m import (
     _copy_matching_legacy_initialization,
     _initialize_chunk_memory_from_trunk,
+    _initialize_cnn_pole_from_trunk,
     _initialize_semantic_edge_from_trunk,
     _initialize_sidecar_from_trunk,
 )
@@ -1095,6 +1097,99 @@ def test_semantic_edge_checkpoint_freezes_every_local_parameter(tmp_path: Path) 
     for name, value in edge_model.state_dict().items():
         if not name.startswith("semantic_edge_memory."):
             torch.testing.assert_close(value, local_state[name], atol=0.0, rtol=0.0)
+
+
+def _cnn_pole_config(*, use_recurrence: bool = True) -> AlphabetLMConfig:
+    return AlphabetLMConfig(
+        vocab_size=64,
+        modes=8,
+        pole_modes=12,
+        layers=4,
+        post_hidden=12,
+        context_length=64,
+        reader_type="dense_k3",
+        memory_layout="local_only",
+        cnn_pole_memory=True,
+        cnn_pole_interval=2,
+        cnn_pole_modes=8,
+        cnn_pole_evidence_width=16,
+        cnn_pole_kernel_size=4,
+        cnn_pole_beta_initial=0.01,
+        cnn_pole_use_recurrence=use_recurrence,
+        cnn_pole_minimum_half_life=1.0,
+        cnn_pole_maximum_half_life=8.0,
+    )
+
+
+def test_cnn_pole_memory_is_repeated_causal_and_non_expansive() -> None:
+    torch.manual_seed(501)
+    model = AlphabetLM(_cnn_pole_config()).eval()
+    memories = cast("torch.nn.ModuleList", model.cnn_pole_memories)
+    assert len(memories) == 2
+    for module in memories:
+        assert isinstance(module, CausalCNNPoleMemory)
+        gram = module.analysis.weight @ module.analysis.weight.T
+        torch.testing.assert_close(gram, torch.eye(16), atol=2.0e-6, rtol=0.0)
+        assert not module.analysis.weight.requires_grad
+
+    tokens = torch.randint(64, (1, 16))
+    changed = tokens.clone()
+    changed[:, 8:] = torch.randint(64, changed[:, 8:].shape)
+    with torch.no_grad():
+        expected = model(tokens)
+        actual = model(changed)
+    torch.testing.assert_close(actual[:, :8], expected[:, :8], atol=2.0e-6, rtol=0.0)
+
+
+def test_cnn_pole_zero_beta_is_exact_local_and_recurrent_control_is_paired() -> None:
+    torch.manual_seed(501)
+    recurrent = AlphabetLM(_cnn_pole_config(use_recurrence=True))
+    torch.manual_seed(501)
+    control = AlphabetLM(_cnn_pole_config(use_recurrence=False))
+    recurrent_state = recurrent.state_dict()
+    control_state = control.state_dict()
+    assert recurrent_state.keys() == control_state.keys()
+    for name, value in recurrent_state.items():
+        torch.testing.assert_close(value, control_state[name], atol=0.0, rtol=0.0)
+
+    torch.manual_seed(501)
+    local = AlphabetLM(replace(_cnn_pole_config(), cnn_pole_memory=False)).eval()
+    local_state = local.state_dict()
+    recurrent.load_state_dict(local_state, strict=False)
+    for module in cast("torch.nn.ModuleList", recurrent.cnn_pole_memories):
+        memory = cast("CausalCNNPoleMemory", module)
+        memory.beta.data.zero_()
+    recurrent.eval()
+    tokens = torch.randint(64, (2, 17))
+    with torch.no_grad():
+        torch.testing.assert_close(recurrent(tokens), local(tokens), atol=0.0, rtol=0.0)
+
+    for module in cast("torch.nn.ModuleList", recurrent.cnn_pole_memories):
+        cast("CausalCNNPoleMemory", module).beta.data.fill_(0.01)
+    handles = _zero_memory(recurrent)
+    assert len(handles) == 2
+    with torch.no_grad():
+        torch.testing.assert_close(recurrent(tokens), local(tokens), atol=0.0, rtol=0.0)
+    for handle in handles:
+        handle.remove()
+
+
+def test_cnn_pole_checkpoint_freezes_the_complete_local_trunk(tmp_path: Path) -> None:
+    config = _cnn_pole_config()
+    torch.manual_seed(501)
+    local = AlphabetLM(replace(config, cnn_pole_memory=False))
+    checkpoint = tmp_path / "local.pt"
+    torch.save({"model": local.state_dict()}, checkpoint)
+    torch.manual_seed(9)
+    model = AlphabetLM(config)
+    contract = _initialize_cnn_pole_from_trunk(model, checkpoint)
+    assert contract["enabled"] is True
+    trainable = [name for name, parameter in model.named_parameters() if parameter.requires_grad]
+    assert trainable
+    assert all(name.startswith("cnn_pole_memories.") for name in trainable)
+    for name, value in model.state_dict().items():
+        if not name.startswith("cnn_pole_memories."):
+            torch.testing.assert_close(value, local.state_dict()[name], atol=0.0, rtol=0.0)
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:

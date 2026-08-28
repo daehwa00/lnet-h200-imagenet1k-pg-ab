@@ -73,6 +73,15 @@ class AlphabetLMConfig:
     semantic_edge_use_recurrence: bool = True
     semantic_edge_minimum_half_life: float = 1.0
     semantic_edge_maximum_half_life: float = 256.0
+    cnn_pole_memory: bool = False
+    cnn_pole_interval: int = 2
+    cnn_pole_modes: int = 128
+    cnn_pole_evidence_width: int = 512
+    cnn_pole_kernel_size: int = 4
+    cnn_pole_beta_initial: float = 0.01
+    cnn_pole_use_recurrence: bool = True
+    cnn_pole_minimum_half_life: float = 8.0
+    cnn_pole_maximum_half_life: float = 4_096.0
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -108,6 +117,10 @@ class AlphabetLMConfig:
             self.semantic_edge_stride,
             self.semantic_edge_pole_modes,
             self.semantic_edge_upper_blocks,
+            self.cnn_pole_interval,
+            self.cnn_pole_modes,
+            self.cnn_pole_evidence_width,
+            self.cnn_pole_kernel_size,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -142,6 +155,7 @@ class AlphabetLMConfig:
         self._validate_memory_layout()
         self._validate_chunk_memory()
         self._validate_semantic_edge_memory()
+        self._validate_cnn_pole_memory()
         if self.write_map == "dynamic_low_rank" and (
             self.reader_type != "dense_k3"
             or self.memory_layout != "flat"
@@ -175,6 +189,20 @@ class AlphabetLMConfig:
             or self.semantic_edge_minimum_half_life >= self.semantic_edge_maximum_half_life
         ):
             raise ValueError("invalid semantic edge memory configuration")
+
+    def _validate_cnn_pole_memory(self) -> None:
+        if not self.cnn_pole_memory:
+            return
+        if (
+            self.chunk_memory
+            or self.semantic_edge_memory
+            or self.memory_layout != "local_only"
+            or self.reader_type != "dense_k3"
+            or self.layers % self.cnn_pole_interval
+            or not 0.0 < self.cnn_pole_beta_initial < 1.0
+            or self.cnn_pole_minimum_half_life >= self.cnn_pole_maximum_half_life
+        ):
+            raise ValueError("invalid CNN pole memory configuration")
 
     def _validate_memory_layout(self) -> None:
         if self.memory_layout == "tensor_product" and (
@@ -722,6 +750,98 @@ class SemanticEdgePoleMemory(nn.Module):
         )
         scale = (trunk_rms / (memory_rms + self.epsilon)).detach().to(real.dtype)
         beta = self.beta[upper_index].to(real.dtype)
+        return (
+            real + beta * memory_real * scale,
+            imag + beta * memory_imag * scale,
+        )
+
+
+class CausalCNNPoleMemory(nn.Module):
+    """Build local evidence with a causal CNN and persist it in a pole sidecar."""
+
+    def __init__(
+        self,
+        modes: int,
+        *,
+        evidence_width: int,
+        kernel_size: int,
+        pole_modes: int,
+        beta_initial: float,
+        use_recurrence: bool,
+        context_length: int,
+        scan_fp32: bool,
+        minimum_half_life: float,
+        maximum_half_life: float,
+        epsilon: float,
+    ) -> None:
+        super().__init__()
+        self.modes = int(modes)
+        self.evidence_width = int(evidence_width)
+        self.kernel_size = int(kernel_size)
+        self.use_recurrence = bool(use_recurrence)
+        self.epsilon = float(epsilon)
+        packed_width = 2 * modes
+        self.norm = nn.RMSNorm(packed_width, eps=epsilon)
+        self.pointwise = nn.Linear(packed_width, evidence_width, bias=False)
+        self.temporal = nn.Conv1d(
+            evidence_width,
+            evidence_width,
+            kernel_size,
+            groups=evidence_width,
+            bias=False,
+        )
+        self.analysis = nn.Linear(evidence_width, 2 * pole_modes, bias=False)
+        self.memory = FixedComplexPoleMemory1D(
+            pole_modes,
+            context_length=context_length,
+            scan_fp32=scan_fp32,
+            initialization="lifetime_palette",
+            minimum_half_life=minimum_half_life,
+            maximum_half_life=maximum_half_life,
+            decay_dominant_fraction=0.5,
+        )
+        self.synthesis = nn.Linear(2 * pole_modes, packed_width, bias=False)
+        self.beta = nn.Parameter(torch.tensor(float(beta_initial)))
+        nn.init.orthogonal_(self.pointwise.weight)
+        with torch.no_grad():
+            self.temporal.weight.zero_()
+            self.temporal.weight[:, 0, -1] = 1.0
+            nn.init.orthogonal_(self.analysis.weight)
+        # The learned pointwise map can absorb any analysis basis. Keeping this
+        # final map fixed preserves the non-expansive row-Stiefel contract
+        # without a costly matrix parametrization in every forward pass.
+        self.analysis.weight.requires_grad = False
+        nn.init.xavier_uniform_(self.synthesis.weight)
+
+    def raw_memory(self, real: Tensor, imag: Tensor) -> ComplexField:
+        if real.shape != imag.shape or real.ndim != 3 or real.shape[-1] != self.modes:
+            raise ValueError("CNN pole memory expects matching B,T,K coordinates")
+        packed = self.norm(torch.cat((real, imag), dim=-1))
+        evidence = self.pointwise(packed)
+        evidence = functional.pad(evidence.transpose(1, 2), (self.kernel_size - 1, 0))
+        evidence = functional.silu(self.temporal(evidence).transpose(1, 2))
+        drive_real, drive_imag = self.analysis(evidence).chunk(2, dim=-1)
+        state = (
+            self.memory(drive_real, drive_imag)
+            if self.use_recurrence
+            else (drive_real, drive_imag)
+        )
+        memory_real, memory_imag = self.synthesis(torch.cat(state, dim=-1)).chunk(2, dim=-1)
+        return memory_real, memory_imag
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        memory_real, memory_imag = self.raw_memory(real, imag)
+        trunk_rms = torch.sqrt(
+            real.float().square().add(imag.float().square()).mean(dim=-1, keepdim=True)
+        )
+        memory_rms = torch.sqrt(
+            memory_real.float()
+            .square()
+            .add(memory_imag.float().square())
+            .mean(dim=-1, keepdim=True)
+        )
+        scale = (trunk_rms / (memory_rms + self.epsilon)).detach().to(real.dtype)
+        beta = self.beta.to(real.dtype)
         return (
             real + beta * memory_real * scale,
             imag + beta * memory_imag * scale,
@@ -1322,6 +1442,26 @@ class AlphabetLM(nn.Module):
                 )
         else:
             self.semantic_edge_memory = None
+        if config.cnn_pole_memory:
+            with torch.random.fork_rng(devices=[]):
+                self.cnn_pole_memories = nn.ModuleList(
+                    CausalCNNPoleMemory(
+                        config.modes,
+                        evidence_width=config.cnn_pole_evidence_width,
+                        kernel_size=config.cnn_pole_kernel_size,
+                        pole_modes=config.cnn_pole_modes,
+                        beta_initial=config.cnn_pole_beta_initial,
+                        use_recurrence=config.cnn_pole_use_recurrence,
+                        context_length=config.context_length,
+                        scan_fp32=config.scan_fp32,
+                        minimum_half_life=config.cnn_pole_minimum_half_life,
+                        maximum_half_life=config.cnn_pole_maximum_half_life,
+                        epsilon=config.rms_epsilon,
+                    )
+                    for _ in range(config.layers // config.cnn_pole_interval)
+                )
+        else:
+            self.cnn_pole_memories = None
         nn.init.normal_(self.embedding.weight, mean=0.0, std=0.02)
         nn.init.orthogonal_(self.analysis.weight)
 
@@ -1359,6 +1499,12 @@ class AlphabetLM(nn.Module):
                     index - memory_start,
                 )
             real, imag = block(real, imag)
+            if (
+                self.cnn_pole_memories is not None
+                and (index + 1) % self.config.cnn_pole_interval == 0
+            ):
+                bank_index = (index + 1) // self.config.cnn_pole_interval - 1
+                real, imag = self.cnn_pole_memories[bank_index](real, imag)
         return self.final_norm(torch.cat((real, imag), dim=-1))
 
     def forward(self, input_ids: Tensor) -> Tensor:
@@ -1369,6 +1515,7 @@ __all__ = [
     "AlphabetLM",
     "AlphabetLMBlock",
     "AlphabetLMConfig",
+    "CausalCNNPoleMemory",
     "CausalFactorizedComplexConv1dReader",
     "ChunkedSemanticPoleMemory",
     "DenseComplexConv1dReader",

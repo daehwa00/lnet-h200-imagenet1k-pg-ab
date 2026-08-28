@@ -68,6 +68,8 @@ def main() -> None:
             "chunked_semantic_p128",
             "semantic_edge_p128",
             "semantic_edge_p128_no_recurrence",
+            "cnn_pole_p128_6bank",
+            "cnn_pole_p128_6bank_no_recurrence",
         ),
         default="all",
     )
@@ -98,6 +100,8 @@ def main() -> None:
         "chunked_semantic_p128",
         "semantic_edge_p128",
         "semantic_edge_p128_no_recurrence",
+        "cnn_pole_p128_6bank",
+        "cnn_pole_p128_6bank_no_recurrence",
     }:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
@@ -300,6 +304,25 @@ def main() -> None:
             raise RuntimeError("Semantic Edge P128 parameter contract changed")
         full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
         results[args.only] = _step(edge, full_microbatch)
+    if args.only in {"cnn_pole_p128_6bank", "cnn_pole_p128_6bank_no_recurrence"}:
+        torch.manual_seed(501)
+        cnn_pole = AlphabetLM(
+            AlphabetLMConfig(
+                reader_type="dense_k3",
+                memory_layout="local_only",
+                cnn_pole_memory=True,
+                cnn_pole_interval=2,
+                cnn_pole_modes=128,
+                cnn_pole_evidence_width=512,
+                cnn_pole_kernel_size=4,
+                cnn_pole_beta_initial=0.01,
+                cnn_pole_use_recurrence=args.only == "cnn_pole_p128_6bank",
+                cnn_pole_minimum_half_life=8.0,
+                cnn_pole_maximum_half_life=4_096.0,
+            )
+        )
+        full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
+        results[args.only] = _step(cnn_pole, full_microbatch)
     if args.only == "all":
         torch.manual_seed(501)
         mamba, parameters, relative_error = build_parameter_matched_mamba(

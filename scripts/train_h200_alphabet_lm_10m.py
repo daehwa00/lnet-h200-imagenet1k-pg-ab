@@ -24,6 +24,7 @@ from torch.nn import functional
 from lnet.alphabet_lm import (
     AlphabetLM,
     AlphabetLMConfig,
+    CausalCNNPoleMemory,
     DynamicLowRankWrite,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
@@ -53,6 +54,7 @@ KAU_SEMANTIC_EDGE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.semantic_edge_1m.runtim
 KAU_SEMANTIC_EDGE_EXTENSION_RUNTIME_SCHEMA = (
     "lnet.kau.alphabet_lm.semantic_edge_extension.runtime.v1"
 )
+KAU_CNN_POLE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.cnn_pole_1m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -243,6 +245,35 @@ def _initialize_semantic_edge_from_trunk(
     }
 
 
+def _initialize_cnn_pole_from_trunk(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.cnn_pole_memories is None:
+        raise RuntimeError("CNN-pole initialization requires repeated CNN pole memory")
+    payload = cast(
+        "dict[str, Any]", torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    expected_missing = {
+        name for name in model.state_dict() if name.startswith("cnn_pole_memories.")
+    }
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("LocalOnly checkpoint does not match the CNN-pole trunk")
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(name.startswith("cnn_pole_memories."))
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": sha256_file(checkpoint_path),
+        "missing_cnn_pole_tensors": len(expected_missing),
+        "trunk_frozen": True,
+    }
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -295,6 +326,15 @@ def _build(
     semantic_edge_use_recurrence: bool = True,
     semantic_edge_minimum_half_life: float = 1.0,
     semantic_edge_maximum_half_life: float = 256.0,
+    cnn_pole_memory: bool = False,
+    cnn_pole_interval: int = 2,
+    cnn_pole_modes: int = 128,
+    cnn_pole_evidence_width: int = 512,
+    cnn_pole_kernel_size: int = 4,
+    cnn_pole_beta_initial: float = 0.01,
+    cnn_pole_use_recurrence: bool = True,
+    cnn_pole_minimum_half_life: float = 8.0,
+    cnn_pole_maximum_half_life: float = 4_096.0,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -342,6 +382,15 @@ def _build(
         semantic_edge_use_recurrence=semantic_edge_use_recurrence,
         semantic_edge_minimum_half_life=semantic_edge_minimum_half_life,
         semantic_edge_maximum_half_life=semantic_edge_maximum_half_life,
+        cnn_pole_memory=cnn_pole_memory,
+        cnn_pole_interval=cnn_pole_interval,
+        cnn_pole_modes=cnn_pole_modes,
+        cnn_pole_evidence_width=cnn_pole_evidence_width,
+        cnn_pole_kernel_size=cnn_pole_kernel_size,
+        cnn_pole_beta_initial=cnn_pole_beta_initial,
+        cnn_pole_use_recurrence=cnn_pole_use_recurrence,
+        cnn_pole_minimum_half_life=cnn_pole_minimum_half_life,
+        cnn_pole_maximum_half_life=cnn_pole_maximum_half_life,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -561,6 +610,20 @@ def main() -> None:
     parser.add_argument("--semantic-edge-minimum-half-life", type=float, default=1.0)
     parser.add_argument("--semantic-edge-maximum-half-life", type=float, default=256.0)
     parser.add_argument("--initialize-semantic-edge-trunk-checkpoint", type=Path)
+    parser.add_argument("--cnn-pole-memory", action="store_true")
+    parser.add_argument("--cnn-pole-interval", type=int, default=2)
+    parser.add_argument("--cnn-pole-modes", type=int, default=128)
+    parser.add_argument("--cnn-pole-evidence-width", type=int, default=512)
+    parser.add_argument("--cnn-pole-kernel-size", type=int, default=4)
+    parser.add_argument("--cnn-pole-beta-initial", type=float, default=0.01)
+    parser.add_argument(
+        "--cnn-pole-use-recurrence",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--cnn-pole-minimum-half-life", type=float, default=8.0)
+    parser.add_argument("--cnn-pole-maximum-half-life", type=float, default=4_096.0)
+    parser.add_argument("--initialize-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -591,6 +654,7 @@ def main() -> None:
         KAU_CHUNKED_SEMANTIC_RUNTIME_SCHEMA,
         KAU_SEMANTIC_EDGE_RUNTIME_SCHEMA,
         KAU_SEMANTIC_EDGE_EXTENSION_RUNTIME_SCHEMA,
+        KAU_CNN_POLE_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -655,6 +719,15 @@ def main() -> None:
         semantic_edge_use_recurrence=args.semantic_edge_use_recurrence,
         semantic_edge_minimum_half_life=args.semantic_edge_minimum_half_life,
         semantic_edge_maximum_half_life=args.semantic_edge_maximum_half_life,
+        cnn_pole_memory=args.cnn_pole_memory,
+        cnn_pole_interval=args.cnn_pole_interval,
+        cnn_pole_modes=args.cnn_pole_modes,
+        cnn_pole_evidence_width=args.cnn_pole_evidence_width,
+        cnn_pole_kernel_size=args.cnn_pole_kernel_size,
+        cnn_pole_beta_initial=args.cnn_pole_beta_initial,
+        cnn_pole_use_recurrence=args.cnn_pole_use_recurrence,
+        cnn_pole_minimum_half_life=args.cnn_pole_minimum_half_life,
+        cnn_pole_maximum_half_life=args.cnn_pole_maximum_half_life,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -667,6 +740,7 @@ def main() -> None:
             args.initialize_trunk_checkpoint is not None
             or args.initialize_chunk_trunk_checkpoint is not None
             or args.initialize_semantic_edge_trunk_checkpoint is not None
+            or args.initialize_cnn_pole_trunk_checkpoint is not None
         ):
             raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
@@ -697,6 +771,10 @@ def main() -> None:
     semantic_edge_initialization = _initialize_semantic_edge_from_trunk(
         model,
         args.initialize_semantic_edge_trunk_checkpoint,
+    )
+    cnn_pole_initialization = _initialize_cnn_pole_from_trunk(
+        model,
+        args.initialize_cnn_pole_trunk_checkpoint,
     )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
@@ -735,6 +813,15 @@ def main() -> None:
             "semantic_edge_use_recurrence": args.semantic_edge_use_recurrence,
             "semantic_edge_minimum_half_life": args.semantic_edge_minimum_half_life,
             "semantic_edge_maximum_half_life": args.semantic_edge_maximum_half_life,
+            "cnn_pole_memory": args.cnn_pole_memory,
+            "cnn_pole_interval": args.cnn_pole_interval,
+            "cnn_pole_modes": args.cnn_pole_modes,
+            "cnn_pole_evidence_width": args.cnn_pole_evidence_width,
+            "cnn_pole_kernel_size": args.cnn_pole_kernel_size,
+            "cnn_pole_beta_initial": args.cnn_pole_beta_initial,
+            "cnn_pole_use_recurrence": args.cnn_pole_use_recurrence,
+            "cnn_pole_minimum_half_life": args.cnn_pole_minimum_half_life,
+            "cnn_pole_maximum_half_life": args.cnn_pole_maximum_half_life,
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -873,6 +960,16 @@ def main() -> None:
         "semantic_edge_minimum_half_life": args.semantic_edge_minimum_half_life,
         "semantic_edge_maximum_half_life": args.semantic_edge_maximum_half_life,
         "semantic_edge_initialization": semantic_edge_initialization,
+        "cnn_pole_memory": args.cnn_pole_memory,
+        "cnn_pole_interval": args.cnn_pole_interval,
+        "cnn_pole_modes": args.cnn_pole_modes,
+        "cnn_pole_evidence_width": args.cnn_pole_evidence_width,
+        "cnn_pole_kernel_size": args.cnn_pole_kernel_size,
+        "cnn_pole_beta_initial": args.cnn_pole_beta_initial,
+        "cnn_pole_use_recurrence": args.cnn_pole_use_recurrence,
+        "cnn_pole_minimum_half_life": args.cnn_pole_minimum_half_life,
+        "cnn_pole_maximum_half_life": args.cnn_pole_maximum_half_life,
+        "cnn_pole_initialization": cnn_pole_initialization,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
@@ -994,6 +1091,12 @@ def main() -> None:
                 row["dynamic_write_scale_mean"] = sum(dynamic_write_scales) / len(
                     dynamic_write_scales
                 )
+            if model.cnn_pole_memories is not None:
+                beta_values = [
+                    float(cast("CausalCNNPoleMemory", bank).beta.detach())
+                    for bank in model.cnn_pole_memories
+                ]
+                row["cnn_pole_beta_mean"] = sum(beta_values) / len(beta_values)
         if update == 1:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
@@ -1033,6 +1136,8 @@ def main() -> None:
             wandb_metrics["model/delta_select_scale_mean"] = row["delta_select_scale_mean"]
         if "dynamic_write_scale_mean" in row:
             wandb_metrics["model/dynamic_write_scale_mean"] = row["dynamic_write_scale_mean"]
+        if "cnn_pole_beta_mean" in row:
+            wandb_metrics["model/cnn_pole_beta_mean"] = row["cnn_pole_beta_mean"]
         wandb_run.log(wandb_metrics, step=update)
         print("ALPHABET_LM_PROGRESS=" + json.dumps(row, sort_keys=True), flush=True)
         if _STOP_EVENT.is_set():

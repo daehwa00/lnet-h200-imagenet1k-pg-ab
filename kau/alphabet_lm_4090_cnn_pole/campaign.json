@@ -1,0 +1,84 @@
+{
+  "schema": "lnet.kau.alphabet_lm.cnn_pole_1m.v1",
+  "campaign_id": "kau-alphabet-lm-cnn-pole-p128-6bank-1m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-cnn-pole-p128-6bank-1m-v1",
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "alphabet-cnn-pole-p128-6bank-recurrent": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "cnn_pole_memory": true,
+        "cnn_pole_interval": 2,
+        "cnn_pole_modes": 128,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_use_recurrence": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_maximum_half_life": 4096.0
+      },
+      "alphabet-cnn-pole-p128-6bank-no-recurrence": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "cnn_pole_memory": true,
+        "cnn_pole_interval": 2,
+        "cnn_pole_modes": 128,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_use_recurrence": false,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_maximum_half_life": 4096.0
+      }
+    }
+  },
+  "trunk": {
+    "checkpoint": "/home/daehwa/alphabet-lm-4090-local-only-10m-runs/3b958854c3c988cb/run/checkpoint.pt",
+    "checkpoint_sha256": "e52c4a7f169d33517c21493ef762d6754003334584ff923603c4b7997fa216d3",
+    "validation_loss": 5.864740199879449,
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/c2e3a82c4b605e40"
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 1000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-cnn-pole-p128-6bank-recurrent",
+      "alphabet-cnn-pole-p128-6bank-no-recurrence"
+    ]
+  },
+  "parameter_counts": {
+    "alphabet-cnn-pole-p128-6bank-recurrent": 2376198,
+    "alphabet-cnn-pole-p128-6bank-no-recurrence": 2376198
+  },
+  "total_parameter_counts": {
+    "alphabet-cnn-pole-p128-6bank-recurrent": 39869446,
+    "alphabet-cnn-pole-p128-6bank-no-recurrence": 39869446
+  },
+  "diagnostics": {
+    "validation_sequence_limit": 512,
+    "context_segments": [2048, 512, 128, 32, 1],
+    "memory_zero": true,
+    "beta_statistics": true,
+    "evidence": "learned pointwise plus causal depthwise K4 CNN at full token rate",
+    "placement": "one independent bank after every two local blocks",
+    "analysis": "fixed row-orthogonal non-expansive map after learned evidence CNN"
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-CNNPoleP128-6Bank-1M-S501-v1"
+  }
+}
