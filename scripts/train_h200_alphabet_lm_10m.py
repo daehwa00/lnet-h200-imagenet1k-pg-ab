@@ -50,6 +50,9 @@ KAU_FROZEN_LOCAL_SIDECAR_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.frozen_local_sid
 KAU_LOCAL_ONLY_10M_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.local_only_10m.runtime.v1"
 KAU_CHUNKED_SEMANTIC_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.chunked_semantic_1m.runtime.v1"
 KAU_SEMANTIC_EDGE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.semantic_edge_1m.runtime.v1"
+KAU_SEMANTIC_EDGE_EXTENSION_RUNTIME_SCHEMA = (
+    "lnet.kau.alphabet_lm.semantic_edge_extension.runtime.v1"
+)
 _STOP_EVENT = threading.Event()
 
 
@@ -565,6 +568,8 @@ def main() -> None:
     parser.add_argument("--train-manifest", type=Path, required=True)
     parser.add_argument("--validation-manifest", type=Path, required=True)
     parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--target-tokens-override", type=int)
+    parser.add_argument("--resume-extension-checkpoint", type=Path)
     args = parser.parse_args()
     runtime = cast("dict[str, Any]", json.loads(args.runtime.read_text(encoding="utf-8")))
     if runtime.get("schema") not in {
@@ -585,6 +590,7 @@ def main() -> None:
         KAU_LOCAL_ONLY_10M_RUNTIME_SCHEMA,
         KAU_CHUNKED_SEMANTIC_RUNTIME_SCHEMA,
         KAU_SEMANTIC_EDGE_RUNTIME_SCHEMA,
+        KAU_SEMANTIC_EDGE_EXTENSION_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -807,6 +813,20 @@ def main() -> None:
         seed=seed,
         batch_size=int(training["global_sequences"]),
     )
+    target_tokens = (
+        args.target_tokens_override
+        if args.target_tokens_override is not None
+        else int(training["target_tokens"])
+    )
+    if target_tokens <= 0:
+        raise RuntimeError("target token count must be positive")
+    extension_source: dict[str, object] = {"enabled": False}
+    if args.resume_extension_checkpoint is not None:
+        extension_source = {
+            "enabled": True,
+            "checkpoint": str(args.resume_extension_checkpoint),
+            "checkpoint_sha256": sha256_file(args.resume_extension_checkpoint),
+        }
     contract = {
         "schema": "lnet.alphabet_lm.viability_10m.v1",
         "campaign_id": runtime["campaign_id"],
@@ -860,6 +880,8 @@ def main() -> None:
         "trunk_initialization": trunk_initialization,
         "parameters": parameters,
         "total_parameters": total_parameters,
+        "target_tokens": target_tokens,
+        "extension_source": extension_source,
         "training": training,
         "paper": runtime.get("paper"),
         "train_manifest_sha256": sha256_file(args.train_manifest),
@@ -891,6 +913,24 @@ def main() -> None:
         torch.set_rng_state(payload["torch_rng_state"])
         torch.cuda.set_rng_state_all(payload["cuda_rng_state"])
         random.setstate(payload["python_rng_state"])
+    elif args.resume_extension_checkpoint is not None:
+        payload = torch.load(
+            args.resume_extension_checkpoint,
+            map_location="cpu",
+            weights_only=True,
+        )
+        model.load_state_dict(payload["model"])
+        optimizer.load_state_dict(payload["optimizer"])
+        scheduler.load_state_dict(payload["scheduler"])
+        batcher.load_state_dict(payload["batcher"])
+        update = int(payload["update"])
+        tokens_seen = int(payload["tokens_seen"])
+        history = payload["history"]
+        torch.set_rng_state(payload["torch_rng_state"])
+        torch.cuda.set_rng_state_all(payload["cuda_rng_state"])
+        random.setstate(payload["python_rng_state"])
+        if tokens_seen >= target_tokens:
+            raise RuntimeError("extension checkpoint already reached the requested target")
     wandb_run = _wandb_run(runtime, run_label, args.root, contract)
     runtime_model = cast(
         "nn.Module", torch.compile(model, mode="default", fullgraph=False, dynamic=False)
@@ -898,7 +938,6 @@ def main() -> None:
     grad_steps = int(training["global_sequences"]) // int(training["microbatch"])
     if grad_steps < 1 or int(training["global_sequences"]) % int(training["microbatch"]):
         raise RuntimeError("invalid H200 LM gradient accumulation contract")
-    target_tokens = int(training["target_tokens"])
     torch.cuda.reset_peak_memory_stats()
     started = time.perf_counter()
     starting_tokens = tokens_seen

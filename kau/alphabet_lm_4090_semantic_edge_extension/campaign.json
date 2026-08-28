@@ -1,0 +1,106 @@
+{
+  "schema": "lnet.kau.alphabet_lm.semantic_edge_extension.v1",
+  "campaign_id": "kau-alphabet-lm-semantic-edge-p128-extension-s501-v1",
+  "output_namespace": "alphabet-lm-4090-semantic-edge-p128-extension-v1",
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "semantic-edge-recurrent-2m": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "semantic_edge_memory": true,
+        "semantic_edge_stride": 16,
+        "semantic_edge_pole_modes": 128,
+        "semantic_edge_upper_blocks": 4,
+        "semantic_edge_beta_initial": 0.01,
+        "semantic_edge_use_recurrence": true,
+        "semantic_edge_minimum_half_life": 1.0,
+        "semantic_edge_maximum_half_life": 256.0
+      },
+      "semantic-edge-no-recurrence-2m": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "semantic_edge_memory": true,
+        "semantic_edge_stride": 16,
+        "semantic_edge_pole_modes": 128,
+        "semantic_edge_upper_blocks": 4,
+        "semantic_edge_beta_initial": 0.01,
+        "semantic_edge_use_recurrence": false,
+        "semantic_edge_minimum_half_life": 1.0,
+        "semantic_edge_maximum_half_life": 256.0
+      },
+      "semantic-edge-recurrent-4m": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "semantic_edge_memory": true,
+        "semantic_edge_stride": 16,
+        "semantic_edge_pole_modes": 128,
+        "semantic_edge_upper_blocks": 4,
+        "semantic_edge_beta_initial": 0.01,
+        "semantic_edge_use_recurrence": true,
+        "semantic_edge_minimum_half_life": 1.0,
+        "semantic_edge_maximum_half_life": 256.0
+      },
+      "semantic-edge-no-recurrence-4m": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "semantic_edge_memory": true,
+        "semantic_edge_stride": 16,
+        "semantic_edge_pole_modes": 128,
+        "semantic_edge_upper_blocks": 4,
+        "semantic_edge_beta_initial": 0.01,
+        "semantic_edge_use_recurrence": false,
+        "semantic_edge_minimum_half_life": 1.0,
+        "semantic_edge_maximum_half_life": 256.0
+      }
+    }
+  },
+  "sources": {
+    "recurrent_1m": "/home/daehwa/alphabet-lm-4090-semantic-edge-runs/e6438c7c6ada2fd9/recurrent/checkpoint.pt",
+    "no_recurrence_1m": "/home/daehwa/alphabet-lm-4090-semantic-edge-runs/e6438c7c6ada2fd9/no-recurrence/checkpoint.pt"
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 4000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "semantic-edge-recurrent-2m",
+      "semantic-edge-no-recurrence-2m",
+      "semantic-edge-recurrent-4m",
+      "semantic-edge-no-recurrence-4m"
+    ]
+  },
+  "parameter_counts": {
+    "semantic-edge-recurrent-2m": 197124,
+    "semantic-edge-no-recurrence-2m": 197124,
+    "semantic-edge-recurrent-4m": 197124,
+    "semantic-edge-no-recurrence-4m": 197124
+  },
+  "total_parameter_counts": {
+    "semantic-edge-recurrent-2m": 36903940,
+    "semantic-edge-no-recurrence-2m": 36903940,
+    "semantic-edge-recurrent-4m": 36903940,
+    "semantic-edge-no-recurrence-4m": 36903940
+  },
+  "diagnostics": {
+    "milestones": [2000000, 4000000],
+    "context_segments": [2048, 512, 128, 32, 1],
+    "validation_sequence_limit": 512
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-SemanticEdgeP128-Extension-S501-v1"
+  }
+}
