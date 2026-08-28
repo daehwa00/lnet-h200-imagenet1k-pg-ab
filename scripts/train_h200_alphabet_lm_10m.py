@@ -61,6 +61,9 @@ KAU_SLOW_CNN_POLE_EXTENSION_RUNTIME_SCHEMA = (
     "lnet.kau.alphabet_lm.slow_cnn_pole_extension.runtime.v1"
 )
 KAU_ALPHABET2_QUERY_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.alphabet2_query.runtime.v1"
+KAU_ALPHABET2_QUERY_EXTENSION_RUNTIME_SCHEMA = (
+    "lnet.kau.alphabet_lm.alphabet2_query_extension.runtime.v1"
+)
 _STOP_EVENT = threading.Event()
 
 
@@ -780,6 +783,7 @@ def main() -> None:
         KAU_SLOW_CNN_POLE_RUNTIME_SCHEMA,
         KAU_SLOW_CNN_POLE_EXTENSION_RUNTIME_SCHEMA,
         KAU_ALPHABET2_QUERY_RUNTIME_SCHEMA,
+        KAU_ALPHABET2_QUERY_EXTENSION_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
