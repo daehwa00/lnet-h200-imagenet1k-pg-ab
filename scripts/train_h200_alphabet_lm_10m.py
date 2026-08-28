@@ -60,6 +60,7 @@ KAU_SLOW_CNN_POLE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.slow_cnn_pole_1m.runtim
 KAU_SLOW_CNN_POLE_EXTENSION_RUNTIME_SCHEMA = (
     "lnet.kau.alphabet_lm.slow_cnn_pole_extension.runtime.v1"
 )
+KAU_ALPHABET2_QUERY_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.alphabet2_query.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -314,6 +315,41 @@ def _initialize_slow_cnn_pole_from_trunk(
     }
 
 
+def _initialize_slow_query_from_trunk(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.slow_cnn_pole_memory is None:
+        raise RuntimeError("query initialization requires a slow memory bank")
+    if model.slow_cnn_pole_memory.query is None:
+        raise RuntimeError("query initialization requires an addressed slow bank")
+    payload = cast(
+        "dict[str, Any]", torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    prefixes = (
+        "slow_cnn_pole_memory.query_norm.",
+        "slow_cnn_pole_memory.query.",
+    )
+    expected_missing = {
+        name for name in model.state_dict() if name.startswith(prefixes)
+    }
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("V1 checkpoint does not match the addressed slow bank")
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(name.startswith(prefixes))
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": sha256_file(checkpoint_path),
+        "missing_query_tensors": len(expected_missing),
+        "v1_frozen": True,
+    }
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -385,6 +421,8 @@ def _build(
     slow_cnn_pole_use_recurrence: bool = True,
     slow_cnn_pole_minimum_half_life: float = 1.0,
     slow_cnn_pole_maximum_half_life: float = 256.0,
+    slow_cnn_pole_query: str = "none",
+    slow_cnn_pole_query_rho: float = 0.5,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -451,6 +489,8 @@ def _build(
         slow_cnn_pole_use_recurrence=slow_cnn_pole_use_recurrence,
         slow_cnn_pole_minimum_half_life=slow_cnn_pole_minimum_half_life,
         slow_cnn_pole_maximum_half_life=slow_cnn_pole_maximum_half_life,
+        slow_cnn_pole_query=cast("Any", slow_cnn_pole_query),
+        slow_cnn_pole_query_rho=slow_cnn_pole_query_rho,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -698,7 +738,14 @@ def main() -> None:
     )
     parser.add_argument("--slow-cnn-pole-minimum-half-life", type=float, default=1.0)
     parser.add_argument("--slow-cnn-pole-maximum-half-life", type=float, default=256.0)
+    parser.add_argument(
+        "--slow-cnn-pole-query",
+        choices=("none", "anchor", "token"),
+        default="none",
+    )
+    parser.add_argument("--slow-cnn-pole-query-rho", type=float, default=0.5)
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
+    parser.add_argument("--initialize-slow-query-trunk-checkpoint", type=Path)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -732,6 +779,7 @@ def main() -> None:
         KAU_CNN_POLE_RUNTIME_SCHEMA,
         KAU_SLOW_CNN_POLE_RUNTIME_SCHEMA,
         KAU_SLOW_CNN_POLE_EXTENSION_RUNTIME_SCHEMA,
+        KAU_ALPHABET2_QUERY_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -815,6 +863,8 @@ def main() -> None:
         slow_cnn_pole_use_recurrence=args.slow_cnn_pole_use_recurrence,
         slow_cnn_pole_minimum_half_life=args.slow_cnn_pole_minimum_half_life,
         slow_cnn_pole_maximum_half_life=args.slow_cnn_pole_maximum_half_life,
+        slow_cnn_pole_query=args.slow_cnn_pole_query,
+        slow_cnn_pole_query_rho=args.slow_cnn_pole_query_rho,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -829,6 +879,7 @@ def main() -> None:
             or args.initialize_semantic_edge_trunk_checkpoint is not None
             or args.initialize_cnn_pole_trunk_checkpoint is not None
             or args.initialize_slow_cnn_pole_trunk_checkpoint is not None
+            or args.initialize_slow_query_trunk_checkpoint is not None
         ):
             raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
@@ -867,6 +918,10 @@ def main() -> None:
     slow_cnn_pole_initialization = _initialize_slow_cnn_pole_from_trunk(
         model,
         args.initialize_slow_cnn_pole_trunk_checkpoint,
+    )
+    slow_query_initialization = _initialize_slow_query_from_trunk(
+        model,
+        args.initialize_slow_query_trunk_checkpoint,
     )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
@@ -924,6 +979,8 @@ def main() -> None:
             "slow_cnn_pole_use_recurrence": args.slow_cnn_pole_use_recurrence,
             "slow_cnn_pole_minimum_half_life": args.slow_cnn_pole_minimum_half_life,
             "slow_cnn_pole_maximum_half_life": args.slow_cnn_pole_maximum_half_life,
+            "slow_cnn_pole_query": args.slow_cnn_pole_query,
+            "slow_cnn_pole_query_rho": args.slow_cnn_pole_query_rho,
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -1083,6 +1140,9 @@ def main() -> None:
         "slow_cnn_pole_minimum_half_life": args.slow_cnn_pole_minimum_half_life,
         "slow_cnn_pole_maximum_half_life": args.slow_cnn_pole_maximum_half_life,
         "slow_cnn_pole_initialization": slow_cnn_pole_initialization,
+        "slow_cnn_pole_query": args.slow_cnn_pole_query,
+        "slow_cnn_pole_query_rho": args.slow_cnn_pole_query_rho,
+        "slow_query_initialization": slow_query_initialization,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
@@ -1214,6 +1274,10 @@ def main() -> None:
                 row["slow_cnn_pole_beta_mean"] = float(
                     model.slow_cnn_pole_memory.beta.detach().mean()
                 )
+                if model.slow_cnn_pole_memory.query is not None:
+                    row["slow_query_weight_rms"] = float(
+                        model.slow_cnn_pole_memory.query.weight.detach().float().square().mean().sqrt()
+                    )
         if update == 1:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
@@ -1259,6 +1323,8 @@ def main() -> None:
             wandb_metrics["model/slow_cnn_pole_beta_mean"] = row[
                 "slow_cnn_pole_beta_mean"
             ]
+        if "slow_query_weight_rms" in row:
+            wandb_metrics["model/slow_query_weight_rms"] = row["slow_query_weight_rms"]
         wandb_run.log(wandb_metrics, step=update)
         print("ALPHABET_LM_PROGRESS=" + json.dumps(row, sort_keys=True), flush=True)
         if _STOP_EVENT.is_set():

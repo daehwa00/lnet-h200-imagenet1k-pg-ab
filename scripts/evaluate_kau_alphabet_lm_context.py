@@ -162,6 +162,32 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_minimum_half_life=1.0,
             slow_cnn_pole_maximum_half_life=256.0,
         )
+    elif kind in {"alphabet2_anchor_q", "alphabet2_token_q"}:
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            cnn_pole_memory=True,
+            cnn_pole_interval=2,
+            cnn_pole_modes=128,
+            cnn_pole_evidence_width=512,
+            cnn_pole_kernel_size=4,
+            cnn_pole_beta_initial=0.01,
+            cnn_pole_use_recurrence=False,
+            cnn_pole_minimum_half_life=8.0,
+            cnn_pole_maximum_half_life=4_096.0,
+            slow_cnn_pole_memory=True,
+            slow_cnn_pole_stride=16,
+            slow_cnn_pole_modes=128,
+            slow_cnn_pole_evidence_width=512,
+            slow_cnn_pole_kernel_size=4,
+            slow_cnn_pole_upper_blocks=4,
+            slow_cnn_pole_beta_initial=0.01,
+            slow_cnn_pole_use_recurrence=True,
+            slow_cnn_pole_minimum_half_life=1.0,
+            slow_cnn_pole_maximum_half_life=256.0,
+            slow_cnn_pole_query="anchor" if kind == "alphabet2_anchor_q" else "token",
+            slow_cnn_pole_query_rho=0.5,
+        )
     return AlphabetLM(config)
 
 
@@ -217,6 +243,24 @@ def _zero_slow_cnn_memory(model: nn.Module) -> list[torch.utils.hooks.RemovableH
             lambda _module, _inputs, output: torch.zeros_like(cast("Tensor", output))
         )
     ]
+
+
+def _slow_query_override(
+    model: nn.Module,
+    *,
+    shuffle: bool,
+) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM):
+        return []
+    slow = model.slow_cnn_pole_memory
+    if not isinstance(slow, SlowCausalCNNPoleMemory) or slow.query is None:
+        return []
+
+    def override(_module: nn.Module, _inputs: tuple[object, ...], output: object) -> Tensor:
+        logits = cast("Tensor", output)
+        return torch.roll(logits, shifts=1, dims=1) if shuffle else torch.zeros_like(logits)
+
+    return [slow.query.register_forward_hook(override)]
 
 
 @torch.no_grad()
@@ -432,6 +476,32 @@ def _slow_cnn_pole_metrics(
             ):
                 bank_index = (index + 1) // model.config.cnn_pole_interval - 1
                 real, imag = model.cnn_pole_memories[bank_index](real, imag)
+        query_metrics: dict[str, float | str] | None = None
+        if slow.query is not None:
+            query_source = torch.cat((real, imag), dim=-1)
+            if slow.query_mode == "anchor":
+                full_anchors = query_source.shape[1] // slow.stride
+                query_source = query_source[
+                    :, slow.stride - 1 : full_anchors * slow.stride : slow.stride
+                ]
+            gate = slow.query_gate(query_source).float()
+            probability = gate / gate.sum(dim=-1, keepdim=True)
+            entropy = -(probability * probability.clamp_min(1e-12).log()).sum(dim=-1)
+            temporal_delta = (
+                (gate[:, 1:] - gate[:, :-1]).abs().mean()
+                if gate.shape[1] > 1
+                else torch.zeros((), device=gate.device)
+            )
+            query_metrics = {
+                "mode": slow.query_mode,
+                "gate_mean": float(gate.mean()),
+                "gate_std": float(gate.std()),
+                "gate_min": float(gate.min()),
+                "gate_max": float(gate.max()),
+                "normalized_entropy_mean": float(entropy.mean() / math.log(gate.shape[-1])),
+                "temporal_delta_mean": float(temporal_delta),
+                "pole_usage_std": float(gate.mean(dim=(0, 1)).std()),
+            }
         memory = slow(real, imag)
         branch_ratios: list[float] = []
         for upper_index, block in enumerate(model.blocks[memory_start:]):
@@ -459,7 +529,7 @@ def _slow_cnn_pole_metrics(
     weight = slow.analysis.weight.float()
     identity = torch.eye(weight.shape[0], device=weight.device)
     half_lives = math.log(2.0) / slow.memory.damping().float()
-    return {
+    payload: dict[str, object] = {
         "stride": slow.stride,
         "pole_modes": slow.memory.modes,
         "use_recurrence": slow.use_recurrence,
@@ -472,6 +542,9 @@ def _slow_cnn_pole_metrics(
         "half_life_tokens_max": float(half_lives.max()) * slow.stride,
         "analysis_row_gram_max_abs": float((weight @ weight.T - identity).abs().max()),
     }
+    if query_metrics is not None:
+        payload["query"] = query_metrics
+    return payload
 
 
 @torch.no_grad()
@@ -836,6 +909,8 @@ def main() -> None:
             "cnn_pole_p128_6bank_no_recurrence",
             "cnn_pole_p128_6bank_slow_p128",
             "cnn_pole_p128_6bank_slow_p128_no_recurrence",
+            "alphabet2_anchor_q",
+            "alphabet2_token_q",
             "mamba",
         ),
         required=True,
@@ -885,6 +960,29 @@ def main() -> None:
                 device=device,
             )
             for handle in slow_handles:
+                handle.remove()
+        neutral_query_handles = _slow_query_override(model, shuffle=False)
+        if neutral_query_handles:
+            results["query_neutral"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in neutral_query_handles:
+                handle.remove()
+            shuffled_query_handles = _slow_query_override(model, shuffle=True)
+            results["query_shuffled"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in shuffled_query_handles:
                 handle.remove()
     for segment in (512, 128, 32, 1):
         results[f"reset_{segment}"] = _evaluate(

@@ -92,6 +92,8 @@ class AlphabetLMConfig:
     slow_cnn_pole_use_recurrence: bool = True
     slow_cnn_pole_minimum_half_life: float = 1.0
     slow_cnn_pole_maximum_half_life: float = 256.0
+    slow_cnn_pole_query: Literal["none", "anchor", "token"] = "none"
+    slow_cnn_pole_query_rho: float = 0.5
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -222,6 +224,8 @@ class AlphabetLMConfig:
 
     def _validate_slow_cnn_pole_memory(self) -> None:
         if not self.slow_cnn_pole_memory:
+            if self.slow_cnn_pole_query != "none":
+                raise ValueError("slow pole query requires a slow memory bank")
             return
         if (
             self.chunk_memory
@@ -232,6 +236,8 @@ class AlphabetLMConfig:
             or not 0.0 < self.slow_cnn_pole_beta_initial < 1.0
             or self.slow_cnn_pole_minimum_half_life
             >= self.slow_cnn_pole_maximum_half_life
+            or self.slow_cnn_pole_query not in {"none", "anchor", "token"}
+            or not 0.0 < self.slow_cnn_pole_query_rho < 1.0
         ):
             raise ValueError("invalid slow CNN pole memory configuration")
 
@@ -913,6 +919,8 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         minimum_half_life: float,
         maximum_half_life: float,
         epsilon: float,
+        query_mode: Literal["none", "anchor", "token"] = "none",
+        query_rho: float = 0.5,
     ) -> None:
         super().__init__(
             modes,
@@ -928,8 +936,29 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             epsilon=epsilon,
         )
         self.stride = int(stride)
+        self.query_mode = query_mode
+        self.query_rho = float(query_rho)
         initial_beta = float(self.beta.detach())
         self.beta = nn.Parameter(torch.full((upper_blocks,), initial_beta))
+        if query_mode == "none":
+            self.query_norm = None
+            self.query = None
+        else:
+            self.query_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+            self.query = nn.Linear(2 * modes, pole_modes, bias=False)
+            nn.init.zeros_(self.query.weight)
+
+    def query_gate(self, packed: Tensor) -> Tensor:
+        if self.query_norm is None or self.query is None:
+            return torch.ones(
+                *packed.shape[:-1],
+                self.memory.modes,
+                device=packed.device,
+                dtype=packed.dtype,
+            )
+        logits = self.query(self.query_norm(packed))
+        gate = 1.0 + self.query_rho * torch.tanh(logits)
+        return gate / gate.mean(dim=-1, keepdim=True)
 
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         steps = real.shape[1]
@@ -947,6 +976,26 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             torch.cat((zero[0], state[0]), dim=1),
             torch.cat((zero[1], state[1]), dim=1),
         )
+        if self.query_mode == "anchor":
+            packed = torch.cat((real, imag), dim=-1)
+            anchor_features = packed[
+                :, self.stride - 1 : full_anchors * self.stride : self.stride
+            ]
+            anchor_gate = self.query_gate(anchor_features)
+            delayed_gate = torch.cat((torch.ones_like(anchor_gate[:, :1]), anchor_gate), dim=1)
+            delayed_state = (
+                delayed_state[0] * delayed_gate,
+                delayed_state[1] * delayed_gate,
+            )
+        if self.query_mode == "token":
+            repeated_state = (
+                delayed_state[0].repeat_interleave(self.stride, dim=1)[:, :steps],
+                delayed_state[1].repeat_interleave(self.stride, dim=1)[:, :steps],
+            )
+            token_gate = self.query_gate(torch.cat((real, imag), dim=-1))
+            return self.synthesize(
+                (repeated_state[0] * token_gate, repeated_state[1] * token_gate)
+            )
         memory_real, memory_imag = self.synthesize(delayed_state)
         return (
             memory_real.repeat_interleave(self.stride, dim=1)[:, :steps],
@@ -1600,6 +1649,8 @@ class AlphabetLM(nn.Module):
                     minimum_half_life=config.slow_cnn_pole_minimum_half_life,
                     maximum_half_life=config.slow_cnn_pole_maximum_half_life,
                     epsilon=config.rms_epsilon,
+                    query_mode=config.slow_cnn_pole_query,
+                    query_rho=config.slow_cnn_pole_query_rho,
                 )
         else:
             self.slow_cnn_pole_memory = None

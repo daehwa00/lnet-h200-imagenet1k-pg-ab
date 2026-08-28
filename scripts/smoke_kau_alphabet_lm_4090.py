@@ -72,6 +72,8 @@ def main() -> None:
             "cnn_pole_p128_6bank_no_recurrence",
             "cnn_pole_p128_6bank_slow_p128",
             "cnn_pole_p128_6bank_slow_p128_no_recurrence",
+            "alphabet2_anchor_q",
+            "alphabet2_token_q",
         ),
         default="all",
     )
@@ -106,6 +108,8 @@ def main() -> None:
         "cnn_pole_p128_6bank_no_recurrence",
         "cnn_pole_p128_6bank_slow_p128",
         "cnn_pole_p128_6bank_slow_p128_no_recurrence",
+        "alphabet2_anchor_q",
+        "alphabet2_token_q",
     }:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
@@ -360,6 +364,39 @@ def main() -> None:
         )
         full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
         results[args.only] = _step(combined, full_microbatch)
+    if args.only in {"alphabet2_anchor_q", "alphabet2_token_q"}:
+        torch.manual_seed(501)
+        addressed = AlphabetLM(
+            AlphabetLMConfig(
+                reader_type="dense_k3",
+                memory_layout="local_only",
+                cnn_pole_memory=True,
+                cnn_pole_interval=2,
+                cnn_pole_modes=128,
+                cnn_pole_evidence_width=512,
+                cnn_pole_kernel_size=4,
+                cnn_pole_beta_initial=0.01,
+                cnn_pole_use_recurrence=False,
+                cnn_pole_minimum_half_life=8.0,
+                cnn_pole_maximum_half_life=4_096.0,
+                slow_cnn_pole_memory=True,
+                slow_cnn_pole_stride=16,
+                slow_cnn_pole_modes=128,
+                slow_cnn_pole_evidence_width=512,
+                slow_cnn_pole_kernel_size=4,
+                slow_cnn_pole_upper_blocks=4,
+                slow_cnn_pole_beta_initial=0.01,
+                slow_cnn_pole_use_recurrence=True,
+                slow_cnn_pole_minimum_half_life=1.0,
+                slow_cnn_pole_maximum_half_life=256.0,
+                slow_cnn_pole_query=(
+                    "anchor" if args.only == "alphabet2_anchor_q" else "token"
+                ),
+                slow_cnn_pole_query_rho=0.5,
+            )
+        )
+        full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
+        results[args.only] = _step(addressed, full_microbatch)
     if args.only == "all":
         torch.manual_seed(501)
         mamba, parameters, relative_error = build_parameter_matched_mamba(

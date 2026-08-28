@@ -38,6 +38,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_semantic_edge_from_trunk,
     _initialize_sidecar_from_trunk,
     _initialize_slow_cnn_pole_from_trunk,
+    _initialize_slow_query_from_trunk,
 )
 
 
@@ -1256,6 +1257,59 @@ def test_slow_cnn_pole_checkpoint_freezes_fast_sidecars_and_trunk(tmp_path: Path
     for name, value in model.state_dict().items():
         if not name.startswith("slow_cnn_pole_memory."):
             torch.testing.assert_close(value, fast_model.state_dict()[name], atol=0.0, rtol=0.0)
+
+
+def _addressed_slow_config(*, mode: Literal["anchor", "token"]) -> AlphabetLMConfig:
+    return replace(
+        _slow_cnn_pole_config(use_recurrence=True),
+        slow_cnn_pole_query=mode,
+        slow_cnn_pole_query_rho=0.5,
+    )
+
+
+def test_addressed_slow_query_is_identity_centered_and_causal() -> None:
+    torch.manual_seed(501)
+    anchor_query = AlphabetLM(_addressed_slow_config(mode="anchor")).eval()
+    torch.manual_seed(501)
+    token_query = AlphabetLM(_addressed_slow_config(mode="token")).eval()
+    source = AlphabetLM(
+        replace(_addressed_slow_config(mode="anchor"), slow_cnn_pole_query="none")
+    ).eval()
+    anchor_query.load_state_dict(source.state_dict(), strict=False)
+    token_query.load_state_dict(source.state_dict(), strict=False)
+    slow = cast("SlowCausalCNNPoleMemory", token_query.slow_cnn_pole_memory)
+    gate = slow.query_gate(torch.randn(2, 7, 16))
+    torch.testing.assert_close(gate.mean(dim=-1), torch.ones(2, 7), atol=0.0, rtol=0.0)
+    tokens = torch.randint(64, (1, 16))
+    changed = tokens.clone()
+    changed[:, 8:] = torch.randint(64, changed[:, 8:].shape)
+    with torch.no_grad():
+        source_logits = source(tokens)
+        anchor_logits = anchor_query(tokens)
+        token_logits = token_query(tokens)
+        changed_logits = token_query(changed)
+    torch.testing.assert_close(anchor_logits, source_logits, atol=0.0, rtol=0.0)
+    torch.testing.assert_close(token_logits, source_logits, atol=2e-6, rtol=2e-6)
+    torch.testing.assert_close(changed_logits[:, :8], token_logits[:, :8], atol=2e-6, rtol=0.0)
+
+
+def test_addressed_slow_checkpoint_trains_only_query(tmp_path: Path) -> None:
+    config = _addressed_slow_config(mode="token")
+    torch.manual_seed(501)
+    source = AlphabetLM(replace(config, slow_cnn_pole_query="none"))
+    checkpoint = tmp_path / "v1.pt"
+    torch.save({"model": source.state_dict()}, checkpoint)
+    model = AlphabetLM(config)
+    contract = _initialize_slow_query_from_trunk(model, checkpoint)
+    assert contract["enabled"] is True
+    trainable = [name for name, parameter in model.named_parameters() if parameter.requires_grad]
+    assert set(trainable) == {
+        "slow_cnn_pole_memory.query_norm.weight",
+        "slow_cnn_pole_memory.query.weight",
+    }
+    slow = cast("SlowCausalCNNPoleMemory", model.slow_cnn_pole_memory)
+    assert slow.query is not None
+    torch.testing.assert_close(slow.query.weight, torch.zeros_like(slow.query.weight))
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:
