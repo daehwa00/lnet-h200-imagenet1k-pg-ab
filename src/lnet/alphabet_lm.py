@@ -57,6 +57,14 @@ class AlphabetLMConfig:
     sidecar_normalize_memory: bool = False
     sidecar_channelwise_scale: bool = True
     sidecar_use_recurrence: bool = True
+    chunk_memory: bool = False
+    chunk_size: int = 32
+    chunk_summary_width: int = 128
+    chunk_pole_modes: int = 128
+    chunk_upper_blocks: int = 4
+    chunk_beta_initial: float = 0.01
+    chunk_minimum_half_life: float = 1.0
+    chunk_maximum_half_life: float = 128.0
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -85,6 +93,10 @@ class AlphabetLMConfig:
             self.dynamic_write_rank,
             self.query_read_rank,
             self.tensor_temporal_modes,
+            self.chunk_size,
+            self.chunk_summary_width,
+            self.chunk_pole_modes,
+            self.chunk_upper_blocks,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -117,6 +129,7 @@ class AlphabetLMConfig:
         ):
             raise ValueError("invalid ALPHABET-LM dynamic initialization")
         self._validate_memory_layout()
+        self._validate_chunk_memory()
         if self.write_map == "dynamic_low_rank" and (
             self.reader_type != "dense_k3"
             or self.memory_layout != "flat"
@@ -124,6 +137,19 @@ class AlphabetLMConfig:
             or self.pole_routing != "static"
         ):
             raise ValueError("invalid low-rank dynamic write configuration")
+
+    def _validate_chunk_memory(self) -> None:
+        if not self.chunk_memory:
+            return
+        if (
+            self.memory_layout != "local_only"
+            or self.reader_type != "dense_k3"
+            or self.chunk_summary_width % 2
+            or self.chunk_upper_blocks > self.layers
+            or not 0.0 < self.chunk_beta_initial < 1.0
+            or self.chunk_minimum_half_life >= self.chunk_maximum_half_life
+        ):
+            raise ValueError("invalid chunk semantic memory configuration")
 
     def _validate_memory_layout(self) -> None:
         if self.memory_layout == "tensor_product" and (
@@ -482,6 +508,97 @@ class FixedPoleResidualSidecar(nn.Module):
             memory = memory[0] * scale, memory[1] * scale
         beta = self.beta.to(dtype=real.dtype)
         return real + beta * memory[0], imag + beta * memory[1]
+
+
+class ChunkedSemanticPoleMemory(nn.Module):
+    """Compress completed semantic chunks into a slow fixed-pole history."""
+
+    def __init__(
+        self,
+        modes: int,
+        *,
+        chunk_size: int,
+        summary_width: int,
+        pole_modes: int,
+        upper_blocks: int,
+        beta_initial: float,
+        context_length: int,
+        scan_fp32: bool,
+        minimum_half_life: float,
+        maximum_half_life: float,
+        epsilon: float,
+    ) -> None:
+        super().__init__()
+        self.modes = int(modes)
+        self.chunk_size = int(chunk_size)
+        self.summary_modes = int(summary_width) // 2
+        self.epsilon = float(epsilon)
+        self.summary_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+        self.summary = nn.Linear(4 * modes, summary_width, bias=False)
+        self.reader = PackedComplexLinear(self.summary_modes, pole_modes)
+        self.memory = FixedComplexPoleMemory1D(
+            pole_modes,
+            context_length=context_length,
+            scan_fp32=scan_fp32,
+            initialization="lifetime_palette",
+            minimum_half_life=minimum_half_life,
+            maximum_half_life=maximum_half_life,
+            decay_dominant_fraction=0.5,
+        )
+        self.writer = PackedComplexLinear(pole_modes, modes)
+        self.beta = nn.Parameter(torch.full((upper_blocks,), float(beta_initial)))
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        if real.shape != imag.shape or real.ndim != 3 or real.shape[-1] != self.modes:
+            raise ValueError("chunk memory expects matching B,T,K complex coordinates")
+        batch, steps, _modes = real.shape
+        full_chunks = steps // self.chunk_size
+        if full_chunks == 0:
+            return torch.zeros_like(real), torch.zeros_like(imag)
+        packed = self.summary_norm(torch.cat((real, imag), dim=-1))
+        chunks = packed[:, : full_chunks * self.chunk_size].reshape(
+            batch,
+            full_chunks,
+            self.chunk_size,
+            2 * self.modes,
+        )
+        evidence = torch.cat((chunks[:, :, -1], chunks.mean(dim=2)), dim=-1)
+        summary_real, summary_imag = self.summary(evidence).split(self.summary_modes, dim=-1)
+        state = self.memory(*self.reader(summary_real, summary_imag))
+        zero = torch.zeros_like(state[0][:, :1]), torch.zeros_like(state[1][:, :1])
+        delayed_state = (
+            torch.cat((zero[0], state[0]), dim=1),
+            torch.cat((zero[1], state[1]), dim=1),
+        )
+        memory_real, memory_imag = self.writer(*delayed_state)
+        return (
+            memory_real.repeat_interleave(self.chunk_size, dim=1)[:, :steps],
+            memory_imag.repeat_interleave(self.chunk_size, dim=1)[:, :steps],
+        )
+
+    def inject(
+        self,
+        real: Tensor,
+        imag: Tensor,
+        memory_real: Tensor,
+        memory_imag: Tensor,
+        upper_index: int,
+    ) -> ComplexField:
+        trunk_rms = torch.sqrt(
+            real.float().square().add(imag.float().square()).mean(dim=-1, keepdim=True)
+        )
+        memory_rms = torch.sqrt(
+            memory_real.float()
+            .square()
+            .add(memory_imag.float().square())
+            .mean(dim=-1, keepdim=True)
+        )
+        scale = (trunk_rms / (memory_rms + self.epsilon)).detach().to(real.dtype)
+        beta = self.beta[upper_index].to(real.dtype)
+        return (
+            real + beta * memory_real * scale,
+            imag + beta * memory_imag * scale,
+        )
 
 
 class TensorProductPoleMemory1D(nn.Module):
@@ -1044,13 +1161,43 @@ class AlphabetLM(nn.Module):
         self.analysis = nn.Linear(config.model_width, config.model_width, bias=False)
         self.blocks = nn.ModuleList(AlphabetLMBlock(config) for _ in range(config.layers))
         self.final_norm = nn.RMSNorm(config.model_width, eps=config.rms_epsilon)
+        if config.chunk_memory:
+            with torch.random.fork_rng(devices=[]):
+                self.chunk_memory = ChunkedSemanticPoleMemory(
+                    config.modes,
+                    chunk_size=config.chunk_size,
+                    summary_width=config.chunk_summary_width,
+                    pole_modes=config.chunk_pole_modes,
+                    upper_blocks=config.chunk_upper_blocks,
+                    beta_initial=config.chunk_beta_initial,
+                    context_length=config.context_length,
+                    scan_fp32=config.scan_fp32,
+                    minimum_half_life=config.chunk_minimum_half_life,
+                    maximum_half_life=config.chunk_maximum_half_life,
+                    epsilon=config.rms_epsilon,
+                )
+        else:
+            self.chunk_memory = None
         nn.init.normal_(self.embedding.weight, mean=0.0, std=0.02)
         nn.init.orthogonal_(self.analysis.weight)
 
     def hidden(self, input_ids: Tensor) -> Tensor:
         packed = self.analysis(self.embedding(input_ids))
         real, imag = packed.split(self.config.modes, dim=-1)
-        for block in self.blocks:
+        chunk_memory: ComplexField | None = None
+        active_chunk_memory = self.chunk_memory
+        memory_start = self.config.layers - self.config.chunk_upper_blocks
+        for index, block in enumerate(self.blocks):
+            if active_chunk_memory is not None and index == memory_start:
+                chunk_memory = active_chunk_memory(real, imag)
+            if active_chunk_memory is not None and chunk_memory is not None:
+                real, imag = active_chunk_memory.inject(
+                    real,
+                    imag,
+                    chunk_memory[0],
+                    chunk_memory[1],
+                    index - memory_start,
+                )
             real, imag = block(real, imag)
         return self.final_norm(torch.cat((real, imag), dim=-1))
 
@@ -1063,6 +1210,7 @@ __all__ = [
     "AlphabetLMBlock",
     "AlphabetLMConfig",
     "CausalFactorizedComplexConv1dReader",
+    "ChunkedSemanticPoleMemory",
     "DenseComplexConv1dReader",
     "DynamicLowRankWrite",
     "FixedComplexPoleMemory1D",

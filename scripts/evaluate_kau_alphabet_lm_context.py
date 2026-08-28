@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import time
 from pathlib import Path
 from typing import cast
@@ -16,6 +17,7 @@ from torch.nn import functional
 from lnet.alphabet_lm import (
     AlphabetLM,
     AlphabetLMConfig,
+    ChunkedSemanticPoleMemory,
     DynamicLowRankWrite,
     FixedComplexPoleMemory1D,
     FixedPoleResidualSidecar,
@@ -90,6 +92,19 @@ def _build(kind: str) -> nn.Module:
             sidecar_channelwise_scale=False,
             sidecar_use_recurrence=False,
         )
+    elif kind == "chunked_semantic_p128":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            chunk_memory=True,
+            chunk_size=32,
+            chunk_summary_width=128,
+            chunk_pole_modes=128,
+            chunk_upper_blocks=4,
+            chunk_beta_initial=0.01,
+            chunk_minimum_half_life=1.0,
+            chunk_maximum_half_life=128.0,
+        )
     return AlphabetLM(config)
 
 
@@ -101,10 +116,15 @@ def _zero_memory(model: nn.Module) -> list[torch.utils.hooks.RemovableHandle]:
         real, imag = cast("tuple[Tensor, Tensor]", output)
         return torch.zeros_like(real), torch.zeros_like(imag)
 
+    chunk_memories = [
+        module for module in model.modules() if isinstance(module, ChunkedSemanticPoleMemory)
+    ]
     sidecars = [
         module for module in model.modules() if isinstance(module, FixedPoleResidualSidecar)
     ]
-    writers = [sidecar.writer for sidecar in sidecars]
+    writers = [memory.writer for memory in chunk_memories]
+    if not writers:
+        writers = [sidecar.writer for sidecar in sidecars]
     if not writers:
         writers = [
             module
@@ -152,6 +172,53 @@ def _sidecar_metrics(
         "beta_min": float(beta.min()),
         "beta_max": float(beta.max()),
         "beta_by_layer": beta.detach().cpu().tolist(),
+    }
+
+
+@torch.no_grad()
+def _chunk_memory_metrics(
+    model: AlphabetLM,
+    dataset: TokenBlockDataset,
+    device: torch.device,
+) -> dict[str, object] | None:
+    chunk_memory = model.chunk_memory
+    if not isinstance(chunk_memory, ChunkedSemanticPoleMemory):
+        return None
+    sample = dataset[0][:-1].unsqueeze(0).to(device)
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        packed = model.analysis(model.embedding(sample))
+        real, imag = packed.split(model.config.modes, dim=-1)
+        memory_start = model.config.layers - model.config.chunk_upper_blocks
+        for block in model.blocks[:memory_start]:
+            real, imag = block(real, imag)
+        memory = chunk_memory(real, imag)
+        branch_ratios: list[float] = []
+        for upper_index, block in enumerate(model.blocks[memory_start:]):
+            injected_real, injected_imag = chunk_memory.inject(
+                real,
+                imag,
+                memory[0],
+                memory[1],
+                upper_index,
+            )
+            trunk_energy = real.float().square().add(imag.float().square()).mean()
+            branch_energy = (
+                (injected_real - real).float().square() + (injected_imag - imag).float().square()
+            ).mean()
+            branch_ratios.append(float(torch.sqrt(branch_energy / trunk_energy.clamp_min(1.0e-12))))
+            real, imag = block(injected_real, injected_imag)
+    half_lives = math.log(2.0) / chunk_memory.memory.damping().float()
+    return {
+        "chunk_size": chunk_memory.chunk_size,
+        "summary_modes": chunk_memory.summary_modes,
+        "pole_modes": chunk_memory.memory.modes,
+        "beta_by_upper_block": chunk_memory.beta.float().detach().cpu().tolist(),
+        "beta_mean": float(chunk_memory.beta.float().mean()),
+        "branch_to_trunk_rms_by_upper_block": branch_ratios,
+        "branch_to_trunk_rms_mean": sum(branch_ratios) / len(branch_ratios),
+        "half_life_chunks_min": float(half_lives.min()),
+        "half_life_chunks_median": float(half_lives.median()),
+        "half_life_chunks_max": float(half_lives.max()),
     }
 
 
@@ -510,6 +577,7 @@ def main() -> None:
             "dense_local_sidecar",
             "dense_local_sidecar_normalized",
             "dense_local_sidecar_normalized_no_recurrence",
+            "chunked_semantic_p128",
             "mamba",
         ),
         required=True,
@@ -548,7 +616,7 @@ def main() -> None:
         )
         for handle in handles:
             handle.remove()
-    for segment in (128, 32, 1):
+    for segment in (512, 128, 32, 1):
         results[f"reset_{segment}"] = _evaluate(
             model,
             dataset,
@@ -585,6 +653,9 @@ def main() -> None:
         sidecar_metrics = _sidecar_metrics(model, dataset, device)
         if sidecar_metrics is not None:
             payload["sidecar"] = sidecar_metrics
+        chunk_memory_metrics = _chunk_memory_metrics(model, dataset, device)
+        if chunk_memory_metrics is not None:
+            payload["chunk_memory"] = chunk_memory_metrics
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print("KAU_LM_CONTEXT=" + json.dumps(payload, sort_keys=True), flush=True)

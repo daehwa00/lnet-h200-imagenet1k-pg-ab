@@ -48,6 +48,7 @@ KAU_FROZEN_NORMALIZED_SIDECAR_RUNTIME_SCHEMA = (
 )
 KAU_FROZEN_LOCAL_SIDECAR_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.frozen_local_sidecar_1m.runtime.v1"
 KAU_LOCAL_ONLY_10M_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.local_only_10m.runtime.v1"
+KAU_CHUNKED_SEMANTIC_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.chunked_semantic_1m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -169,6 +170,46 @@ def _initialize_sidecar_from_trunk(
     }
 
 
+def _initialize_chunk_memory_from_trunk(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+    *,
+    train_upper_blocks: int,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        if train_upper_blocks:
+            raise RuntimeError("training upper blocks requires a chunk-trunk checkpoint")
+        return {"enabled": False, "train_upper_blocks": 0}
+    if not isinstance(model, AlphabetLM) or model.chunk_memory is None:
+        raise RuntimeError("chunk-trunk initialization requires chunk semantic memory")
+    if not 0 < train_upper_blocks <= model.config.chunk_upper_blocks:
+        raise RuntimeError("invalid number of trainable upper blocks")
+    payload = cast(
+        "dict[str, Any]", torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    expected_missing = {name for name in model.state_dict() if name.startswith("chunk_memory.")}
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("LocalOnly checkpoint does not match the chunk-memory trunk")
+    first_upper = model.config.layers - train_upper_blocks
+    for name, parameter in model.named_parameters():
+        block_index = None
+        if name.startswith("blocks."):
+            block_index = int(name.split(".", 2)[1])
+        parameter.requires_grad_(
+            name.startswith("chunk_memory.")
+            or (block_index is not None and block_index >= first_upper)
+        )
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": sha256_file(checkpoint_path),
+        "missing_chunk_tensors": len(expected_missing),
+        "train_upper_blocks": train_upper_blocks,
+    }
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -205,6 +246,14 @@ def _build(
     sidecar_normalize_memory: bool = False,
     sidecar_channelwise_scale: bool = True,
     sidecar_use_recurrence: bool = True,
+    chunk_memory: bool = False,
+    chunk_size: int = 32,
+    chunk_summary_width: int = 128,
+    chunk_pole_modes: int = 128,
+    chunk_upper_blocks: int = 4,
+    chunk_beta_initial: float = 0.01,
+    chunk_minimum_half_life: float = 1.0,
+    chunk_maximum_half_life: float = 128.0,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -236,6 +285,14 @@ def _build(
         sidecar_normalize_memory=sidecar_normalize_memory,
         sidecar_channelwise_scale=sidecar_channelwise_scale,
         sidecar_use_recurrence=sidecar_use_recurrence,
+        chunk_memory=chunk_memory,
+        chunk_size=chunk_size,
+        chunk_summary_width=chunk_summary_width,
+        chunk_pole_modes=chunk_pole_modes,
+        chunk_upper_blocks=chunk_upper_blocks,
+        chunk_beta_initial=chunk_beta_initial,
+        chunk_minimum_half_life=chunk_minimum_half_life,
+        chunk_maximum_half_life=chunk_maximum_half_life,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -431,6 +488,17 @@ def main() -> None:
         action=argparse.BooleanOptionalAction,
         default=True,
     )
+    parser.add_argument("--chunk-memory", action="store_true")
+    parser.add_argument("--chunk-size", type=int, default=32)
+    parser.add_argument("--chunk-summary-width", type=int, default=128)
+    parser.add_argument("--chunk-pole-modes", type=int, default=128)
+    parser.add_argument("--chunk-upper-blocks", type=int, default=4)
+    parser.add_argument("--chunk-beta-initial", type=float, default=0.01)
+    parser.add_argument("--chunk-minimum-half-life", type=float, default=1.0)
+    parser.add_argument("--chunk-maximum-half-life", type=float, default=128.0)
+    parser.add_argument("--initialize-chunk-trunk-checkpoint", type=Path)
+    parser.add_argument("--train-upper-blocks", type=int, default=0)
+    parser.add_argument("--upper-block-lr-multiplier", type=float, default=0.1)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -456,6 +524,7 @@ def main() -> None:
         KAU_FROZEN_NORMALIZED_SIDECAR_RUNTIME_SCHEMA,
         KAU_FROZEN_LOCAL_SIDECAR_RUNTIME_SCHEMA,
         KAU_LOCAL_ONLY_10M_RUNTIME_SCHEMA,
+        KAU_CHUNKED_SEMANTIC_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -504,6 +573,14 @@ def main() -> None:
         sidecar_normalize_memory=args.sidecar_normalize_memory,
         sidecar_channelwise_scale=args.sidecar_channelwise_scale,
         sidecar_use_recurrence=args.sidecar_use_recurrence,
+        chunk_memory=args.chunk_memory,
+        chunk_size=args.chunk_size,
+        chunk_summary_width=args.chunk_summary_width,
+        chunk_pole_modes=args.chunk_pole_modes,
+        chunk_upper_blocks=args.chunk_upper_blocks,
+        chunk_beta_initial=args.chunk_beta_initial,
+        chunk_minimum_half_life=args.chunk_minimum_half_life,
+        chunk_maximum_half_life=args.chunk_maximum_half_life,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -512,7 +589,10 @@ def main() -> None:
     if args.paired_legacy_initialization and args.paired_dense_initialization:
         raise RuntimeError("paired initialization reference is ambiguous")
     if args.paired_legacy_initialization or args.paired_dense_initialization:
-        if args.initialize_trunk_checkpoint is not None:
+        if (
+            args.initialize_trunk_checkpoint is not None
+            or args.initialize_chunk_trunk_checkpoint is not None
+        ):
             raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
             raise RuntimeError("paired initialization requires ALPHABET-LM")
@@ -534,6 +614,11 @@ def main() -> None:
         args.initialize_trunk_checkpoint,
         freeze_trunk=args.freeze_trunk,
     )
+    chunk_trunk_initialization = _initialize_chunk_memory_from_trunk(
+        model,
+        args.initialize_chunk_trunk_checkpoint,
+        train_upper_blocks=args.train_upper_blocks,
+    )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
         active_arguments = {
@@ -553,6 +638,16 @@ def main() -> None:
             "sidecar_normalize_memory": args.sidecar_normalize_memory,
             "sidecar_channelwise_scale": args.sidecar_channelwise_scale,
             "sidecar_use_recurrence": args.sidecar_use_recurrence,
+            "chunk_memory": args.chunk_memory,
+            "chunk_size": args.chunk_size,
+            "chunk_summary_width": args.chunk_summary_width,
+            "chunk_pole_modes": args.chunk_pole_modes,
+            "chunk_upper_blocks": args.chunk_upper_blocks,
+            "chunk_beta_initial": args.chunk_beta_initial,
+            "chunk_minimum_half_life": args.chunk_minimum_half_life,
+            "chunk_maximum_half_life": args.chunk_maximum_half_life,
+            "train_upper_blocks": args.train_upper_blocks,
+            "upper_block_lr_multiplier": args.upper_block_lr_multiplier,
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -586,11 +681,35 @@ def main() -> None:
     expected_total = runtime.get("total_parameter_counts", {}).get(run_label, total_parameters)
     if total_parameters != expected_total:
         raise RuntimeError(f"{args.model} total parameter contract changed: {total_parameters}")
-    trainable_parameters = [
-        parameter for parameter in model.parameters() if parameter.requires_grad
+    named_trainable = [
+        (name, parameter) for name, parameter in model.named_parameters() if parameter.requires_grad
     ]
+    trainable_parameters = [parameter for _name, parameter in named_trainable]
+    optimizer_parameters: object = trainable_parameters
+    if args.initialize_chunk_trunk_checkpoint is not None:
+        if not 0.0 < args.upper_block_lr_multiplier <= 1.0:
+            raise RuntimeError("invalid upper-block learning-rate multiplier")
+        memory_parameters = [
+            parameter for name, parameter in named_trainable if name.startswith("chunk_memory.")
+        ]
+        upper_parameters = [
+            parameter for name, parameter in named_trainable if name.startswith("blocks.")
+        ]
+        if (
+            not memory_parameters
+            or not upper_parameters
+            or len(memory_parameters) + len(upper_parameters) != len(named_trainable)
+        ):
+            raise RuntimeError("chunk-memory optimizer ownership is incomplete")
+        optimizer_parameters = [
+            {"params": memory_parameters, "lr": float(training["learning_rate"])},
+            {
+                "params": upper_parameters,
+                "lr": float(training["learning_rate"]) * args.upper_block_lr_multiplier,
+            },
+        ]
     optimizer = torch.optim.AdamW(
-        trainable_parameters,
+        optimizer_parameters,
         lr=float(training["learning_rate"]),
         weight_decay=float(training["weight_decay"]),
         fused=True,
@@ -633,6 +752,17 @@ def main() -> None:
         "sidecar_normalize_memory": args.sidecar_normalize_memory,
         "sidecar_channelwise_scale": args.sidecar_channelwise_scale,
         "sidecar_use_recurrence": args.sidecar_use_recurrence,
+        "chunk_memory": args.chunk_memory,
+        "chunk_size": args.chunk_size,
+        "chunk_summary_width": args.chunk_summary_width,
+        "chunk_pole_modes": args.chunk_pole_modes,
+        "chunk_upper_blocks": args.chunk_upper_blocks,
+        "chunk_beta_initial": args.chunk_beta_initial,
+        "chunk_minimum_half_life": args.chunk_minimum_half_life,
+        "chunk_maximum_half_life": args.chunk_maximum_half_life,
+        "chunk_trunk_initialization": chunk_trunk_initialization,
+        "train_upper_blocks": args.train_upper_blocks,
+        "upper_block_lr_multiplier": args.upper_block_lr_multiplier,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
@@ -711,6 +841,8 @@ def main() -> None:
             "peak_memory_bytes": torch.cuda.max_memory_allocated(),
             "gradient_accumulation_steps": grad_steps,
         }
+        if len(optimizer.param_groups) > 1:
+            row["upper_block_learning_rate"] = optimizer.param_groups[1]["lr"]
         if isinstance(model, AlphabetLM):
             query_scales = []
             decay_scales = []

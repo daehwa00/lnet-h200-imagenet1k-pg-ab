@@ -3,6 +3,7 @@ from __future__ import annotations
 # pyright: reportMissingImports=false, reportPrivateUsage=false
 import json
 import math
+from dataclasses import replace
 from pathlib import Path
 from typing import Literal, cast
 
@@ -14,6 +15,7 @@ from lnet.alphabet_lm import (
     AlphabetLM,
     AlphabetLMBlock,
     AlphabetLMConfig,
+    ChunkedSemanticPoleMemory,
     DynamicLowRankWrite,
     FixedComplexPoleMemory1D,
     FixedPoleResidualSidecar,
@@ -28,6 +30,7 @@ from scripts.evaluate_kau_alphabet_lm_context import _zero_memory
 from scripts.prepare_h200_alphabet_lm_data import _parquet_to_jsonl, _split_documents
 from scripts.train_h200_alphabet_lm_10m import (
     _copy_matching_legacy_initialization,
+    _initialize_chunk_memory_from_trunk,
     _initialize_sidecar_from_trunk,
 )
 
@@ -839,6 +842,126 @@ def test_no_recurrence_sidecar_changes_only_temporal_carry() -> None:
         assert sidecar.beta.grad is not None
         assert sidecar.memory.raw_damping.grad is None
         assert sidecar.memory.raw_frequency.grad is None
+
+
+def test_chunk_memory_is_delayed_causal_and_preserves_the_first_chunk() -> None:
+    def config(*, chunk_memory: bool) -> AlphabetLMConfig:
+        return AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=4,
+            post_hidden=12,
+            context_length=64,
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            chunk_memory=chunk_memory,
+            chunk_size=4,
+            chunk_summary_width=8,
+            chunk_pole_modes=8,
+            chunk_upper_blocks=2,
+            chunk_beta_initial=0.01,
+            chunk_minimum_half_life=1.0,
+            chunk_maximum_half_life=8.0,
+        )
+
+    torch.manual_seed(501)
+    local = AlphabetLM(config(chunk_memory=False)).eval()
+    torch.manual_seed(501)
+    chunked = AlphabetLM(config(chunk_memory=True)).eval()
+    local_parameters = dict(local.named_parameters())
+    for name, parameter in chunked.named_parameters():
+        if not name.startswith("chunk_memory."):
+            torch.testing.assert_close(parameter, local_parameters[name], atol=0.0, rtol=0.0)
+    tokens = torch.randint(64, (2, 17))
+    with torch.no_grad():
+        local_logits = local(tokens)
+        chunked_logits = chunked(tokens)
+    torch.testing.assert_close(chunked_logits[:, :4], local_logits[:, :4], atol=0.0, rtol=0.0)
+
+    memory = cast("ChunkedSemanticPoleMemory", chunked.chunk_memory)
+    memory.beta.data.zero_()
+    with torch.no_grad():
+        torch.testing.assert_close(chunked(tokens), local_logits, atol=0.0, rtol=0.0)
+
+
+def test_chunk_memory_handles_partial_chunks_without_leakage() -> None:
+    torch.manual_seed(501)
+    model = AlphabetLM(
+        AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=4,
+            post_hidden=12,
+            context_length=64,
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            chunk_memory=True,
+            chunk_size=4,
+            chunk_summary_width=8,
+            chunk_pole_modes=8,
+            chunk_upper_blocks=2,
+            chunk_minimum_half_life=1.0,
+            chunk_maximum_half_life=8.0,
+        )
+    ).eval()
+    for steps in (1, 4, 5, 9, 16):
+        tokens = torch.randint(64, (2, steps))
+        with torch.no_grad():
+            assert model(tokens).shape == (2, steps, 64)
+    tokens = torch.randint(64, (1, 16))
+    changed = tokens.clone()
+    changed[:, 8:] = torch.randint(64, changed[:, 8:].shape)
+    with torch.no_grad():
+        expected = model(tokens)
+        actual = model(changed)
+    torch.testing.assert_close(actual[:, :8], expected[:, :8], atol=1.0e-6, rtol=0.0)
+
+
+def test_chunk_memory_checkpoint_freezes_lower_trunk_and_trains_upper_blocks(
+    tmp_path: Path,
+) -> None:
+    base = AlphabetLMConfig(
+        vocab_size=64,
+        modes=8,
+        pole_modes=12,
+        layers=4,
+        post_hidden=12,
+        context_length=64,
+        reader_type="dense_k3",
+        memory_layout="local_only",
+    )
+    torch.manual_seed(501)
+    local = AlphabetLM(base)
+    checkpoint = tmp_path / "local.pt"
+    torch.save({"model": local.state_dict()}, checkpoint)
+    torch.manual_seed(9)
+    chunked = AlphabetLM(
+        replace(
+            base,
+            chunk_memory=True,
+            chunk_size=4,
+            chunk_summary_width=8,
+            chunk_pole_modes=8,
+            chunk_upper_blocks=2,
+            chunk_minimum_half_life=1.0,
+            chunk_maximum_half_life=8.0,
+        )
+    )
+    contract = _initialize_chunk_memory_from_trunk(
+        chunked,
+        checkpoint,
+        train_upper_blocks=2,
+    )
+    assert contract["enabled"] is True
+    trainable = [name for name, parameter in chunked.named_parameters() if parameter.requires_grad]
+    assert trainable
+    assert all(name.startswith(("chunk_memory.", "blocks.2.", "blocks.3.")) for name in trainable)
+    frozen_state = local.state_dict()
+    for name, value in chunked.state_dict().items():
+        if not name.startswith("chunk_memory."):
+            torch.testing.assert_close(value, frozen_state[name], atol=0.0, rtol=0.0)
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:

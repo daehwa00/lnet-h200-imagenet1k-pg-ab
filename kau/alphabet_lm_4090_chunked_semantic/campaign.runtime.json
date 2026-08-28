@@ -1,0 +1,91 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "alphabet-chunk32-semantic-p128-upper4": {
+        "chunk_beta_initial": 0.01,
+        "chunk_maximum_half_life": 128.0,
+        "chunk_memory": true,
+        "chunk_minimum_half_life": 1.0,
+        "chunk_pole_modes": 128,
+        "chunk_size": 32,
+        "chunk_summary_width": 128,
+        "chunk_upper_blocks": 4,
+        "equation": "summary=Linear([last;mean]); z_j=a*z_(j-1)+B*summary_j; chunk_j_uses_z_(j-1)",
+        "memory_layout": "local_only",
+        "post_hidden": 384,
+        "reader_type": "dense_k3",
+        "train_upper_blocks": 4,
+        "upper_block_lr_multiplier": 0.1
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-chunked-semantic-p128-1m-s501-v1",
+  "campaign_manifest_sha256": "a659b8ffd07f16e971d966ff71d3f9250bd2c3b1f415ff2e1d4cb617b4302973",
+  "diagnostics": {
+    "beta_statistics": true,
+    "chunk_memory_zero": true,
+    "context_segments": [
+      2048,
+      512,
+      128,
+      32,
+      1
+    ],
+    "throughput": true,
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-ChunkedSemanticP128-1M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-chunked-semantic-p128-1m-v1",
+  "parameter_counts": {
+    "alphabet-chunk32-semantic-p128-upper4": 6769412
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet-chunk32-semantic-p128-upper4": {
+      "display_name": "RTX4090-S501-ALPHABET-Chunk32-SemanticP128-1M",
+      "id": "75ec8c0844cc20ee",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "Chunk32",
+        "SemanticMemory",
+        "P128",
+        "Upper4",
+        "1M",
+        "seed501"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.chunked_semantic_1m.runtime.v1",
+  "total_parameter_counts": {
+    "alphabet-chunk32-semantic-p128-upper4": 36920580
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-chunk32-semantic-p128-upper4"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 1000000,
+    "upper_block_learning_rate": 3e-05,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  },
+  "trunk": {
+    "checkpoint": "/home/daehwa/alphabet-lm-4090-local-only-10m-runs/3b958854c3c988cb/run/checkpoint.pt",
+    "checkpoint_sha256": "e52c4a7f169d33517c21493ef762d6754003334584ff923603c4b7997fa216d3",
+    "validation_loss": 5.864740199879449,
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/c2e3a82c4b605e40"
+  }
+}

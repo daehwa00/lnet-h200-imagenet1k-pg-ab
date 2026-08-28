@@ -1,0 +1,68 @@
+{
+  "schema": "lnet.kau.alphabet_lm.chunked_semantic_1m.v1",
+  "campaign_id": "kau-alphabet-lm-chunked-semantic-p128-1m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-chunked-semantic-p128-1m-v1",
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "alphabet-chunk32-semantic-p128-upper4": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "post_hidden": 384,
+        "chunk_memory": true,
+        "chunk_size": 32,
+        "chunk_summary_width": 128,
+        "chunk_pole_modes": 128,
+        "chunk_upper_blocks": 4,
+        "chunk_beta_initial": 0.01,
+        "chunk_minimum_half_life": 1.0,
+        "chunk_maximum_half_life": 128.0,
+        "train_upper_blocks": 4,
+        "upper_block_lr_multiplier": 0.1,
+        "equation": "summary=Linear([last;mean]); z_j=a*z_(j-1)+B*summary_j; chunk_j_uses_z_(j-1)"
+      }
+    }
+  },
+  "trunk": {
+    "checkpoint": "/home/daehwa/alphabet-lm-4090-local-only-10m-runs/3b958854c3c988cb/run/checkpoint.pt",
+    "checkpoint_sha256": "e52c4a7f169d33517c21493ef762d6754003334584ff923603c4b7997fa216d3",
+    "validation_loss": 5.864740199879449,
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/c2e3a82c4b605e40"
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 1000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "upper_block_learning_rate": 0.00003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": ["alphabet-chunk32-semantic-p128-upper4"]
+  },
+  "parameter_counts": {
+    "alphabet-chunk32-semantic-p128-upper4": 6769412
+  },
+  "total_parameter_counts": {
+    "alphabet-chunk32-semantic-p128-upper4": 36920580
+  },
+  "diagnostics": {
+    "validation_sequence_limit": 512,
+    "context_segments": [2048, 512, 128, 32, 1],
+    "chunk_memory_zero": true,
+    "beta_statistics": true,
+    "throughput": true
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-ChunkedSemanticP128-1M-S501-v1"
+  }
+}

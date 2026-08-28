@@ -65,6 +65,7 @@ def main() -> None:
             "local_sidecar",
             "normalized_sidecar",
             "normalized_local_sidecar",
+            "chunked_semantic_p128",
         ),
         default="all",
     )
@@ -92,6 +93,7 @@ def main() -> None:
         "local_sidecar",
         "normalized_sidecar",
         "normalized_local_sidecar",
+        "chunked_semantic_p128",
     }:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
@@ -254,6 +256,26 @@ def main() -> None:
             normalized_local_sidecar,
             full_microbatch,
         )
+    if args.only == "chunked_semantic_p128":
+        torch.manual_seed(501)
+        chunked = AlphabetLM(
+            AlphabetLMConfig(
+                reader_type="dense_k3",
+                memory_layout="local_only",
+                chunk_memory=True,
+                chunk_size=32,
+                chunk_summary_width=128,
+                chunk_pole_modes=128,
+                chunk_upper_blocks=4,
+                chunk_beta_initial=0.01,
+                chunk_minimum_half_life=1.0,
+                chunk_maximum_half_life=128.0,
+            )
+        )
+        if sum(parameter.numel() for parameter in chunked.parameters()) != 36_920_580:
+            raise RuntimeError("Chunked Semantic P128 parameter contract changed")
+        full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
+        results["alphabet-chunked-semantic-p128"] = _step(chunked, full_microbatch)
     if args.only == "all":
         torch.manual_seed(501)
         mamba, parameters, relative_error = build_parameter_matched_mamba(
