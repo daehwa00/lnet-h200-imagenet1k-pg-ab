@@ -1,0 +1,329 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "cascade-a-no-recurrence-1m": {
+        "additional_slow_cnn_pole_beta_initial": 0.01,
+        "additional_slow_cnn_pole_depths": [
+          4
+        ],
+        "additional_slow_cnn_pole_use_recurrence": false,
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true
+      },
+      "cascade-a-no-recurrence-2m": {
+        "additional_slow_cnn_pole_beta_initial": 0.01,
+        "additional_slow_cnn_pole_depths": [
+          4
+        ],
+        "additional_slow_cnn_pole_use_recurrence": false,
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true
+      },
+      "cascade-a-no-recurrence-4m": {
+        "additional_slow_cnn_pole_beta_initial": 0.01,
+        "additional_slow_cnn_pole_depths": [
+          4
+        ],
+        "additional_slow_cnn_pole_use_recurrence": false,
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true
+      },
+      "cascade-a-recurrent-1m": {
+        "additional_slow_cnn_pole_beta_initial": 0.01,
+        "additional_slow_cnn_pole_depths": [
+          4
+        ],
+        "additional_slow_cnn_pole_use_recurrence": true,
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true
+      },
+      "cascade-a-recurrent-2m": {
+        "additional_slow_cnn_pole_beta_initial": 0.01,
+        "additional_slow_cnn_pole_depths": [
+          4
+        ],
+        "additional_slow_cnn_pole_use_recurrence": true,
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true
+      },
+      "cascade-a-recurrent-4m": {
+        "additional_slow_cnn_pole_beta_initial": 0.01,
+        "additional_slow_cnn_pole_depths": [
+          4
+        ],
+        "additional_slow_cnn_pole_use_recurrence": true,
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-cascaded-depth4-depth8-p128-s501-v1",
+  "campaign_manifest_sha256": "adf123e7a8894104dad6736803d5af6a5f5118bdc341f4a688c1b7e8ca9fe2da",
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      512,
+      128,
+      32,
+      1
+    ],
+    "factorial_states": [
+      "L00",
+      "L10",
+      "L01",
+      "L11"
+    ],
+    "milestones": [
+      1000000,
+      2000000,
+      4000000
+    ],
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-CascadeD4D8P128-S501-v1",
+  "output_namespace": "alphabet-lm-4090-cascaded-depth4-depth8-p128-v1",
+  "parameter_counts": {
+    "cascade-a-no-recurrence-1m": 396036,
+    "cascade-a-no-recurrence-2m": 396036,
+    "cascade-a-no-recurrence-4m": 396036,
+    "cascade-a-recurrent-1m": 396036,
+    "cascade-a-recurrent-2m": 396036,
+    "cascade-a-recurrent-4m": 396036
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "cascade-a-no-recurrence-1m": {
+      "display_name": "RTX4090-S501-ALPHABET-CascadeD4D8-ANoRecurrence-1M",
+      "id": "41f747b1c54c14e8",
+      "tags": [
+        "RTX4090",
+        "CascadeD4D8",
+        "Stride16",
+        "P128x2",
+        "NoRecurrence",
+        "1M",
+        "seed501"
+      ]
+    },
+    "cascade-a-no-recurrence-2m": {
+      "display_name": "RTX4090-S501-ALPHABET-CascadeD4D8-ANoRecurrence-2M",
+      "id": "2c8ffd28e4e4553a",
+      "tags": [
+        "RTX4090",
+        "CascadeD4D8",
+        "Stride16",
+        "P128x2",
+        "NoRecurrence",
+        "2M",
+        "seed501"
+      ]
+    },
+    "cascade-a-no-recurrence-4m": {
+      "display_name": "RTX4090-S501-ALPHABET-CascadeD4D8-ANoRecurrence-4M",
+      "id": "16cab1e0b601c567",
+      "tags": [
+        "RTX4090",
+        "CascadeD4D8",
+        "Stride16",
+        "P128x2",
+        "NoRecurrence",
+        "4M",
+        "seed501"
+      ]
+    },
+    "cascade-a-recurrent-1m": {
+      "display_name": "RTX4090-S501-ALPHABET-CascadeD4D8-ARecurrent-1M",
+      "id": "3f1e06fbd23b3ba5",
+      "tags": [
+        "RTX4090",
+        "CascadeD4D8",
+        "Stride16",
+        "P128x2",
+        "Recurrent",
+        "1M",
+        "seed501"
+      ]
+    },
+    "cascade-a-recurrent-2m": {
+      "display_name": "RTX4090-S501-ALPHABET-CascadeD4D8-ARecurrent-2M",
+      "id": "3131245fff6661b1",
+      "tags": [
+        "RTX4090",
+        "CascadeD4D8",
+        "Stride16",
+        "P128x2",
+        "Recurrent",
+        "2M",
+        "seed501"
+      ]
+    },
+    "cascade-a-recurrent-4m": {
+      "display_name": "RTX4090-S501-ALPHABET-CascadeD4D8-ARecurrent-4M",
+      "id": "539e7839981cd5ae",
+      "tags": [
+        "RTX4090",
+        "CascadeD4D8",
+        "Stride16",
+        "P128x2",
+        "Recurrent",
+        "4M",
+        "seed501"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.cascaded_slow_cnn_pole.runtime.v1",
+  "source": {
+    "anchor_checkpoint": "/home/daehwa/alphabet-lm-4090-slow-cnn-pole-extension-runs/ed69f7768dc8a844/recurrent-4m/checkpoint.pt",
+    "anchor_checkpoint_sha256": "bbf58b774cecd3302fbdd07b5d45d3bca673c656612ee9f0e451e6ff8074f2d1",
+    "anchor_validation_loss": 5.8417140835479975,
+    "anchor_wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/109df6e47f99acfc"
+  },
+  "total_parameter_counts": {
+    "cascade-a-no-recurrence-1m": 40923662,
+    "cascade-a-no-recurrence-2m": 40923662,
+    "cascade-a-no-recurrence-4m": 40923662,
+    "cascade-a-recurrent-1m": 40923662,
+    "cascade-a-recurrent-2m": 40923662,
+    "cascade-a-recurrent-4m": 40923662
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "cascade-a-recurrent-1m",
+      "cascade-a-no-recurrence-1m",
+      "cascade-a-recurrent-2m",
+      "cascade-a-no-recurrence-2m",
+      "cascade-a-recurrent-4m",
+      "cascade-a-no-recurrence-4m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 4000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

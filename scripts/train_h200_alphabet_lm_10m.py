@@ -60,6 +60,9 @@ KAU_SLOW_CNN_POLE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.slow_cnn_pole_1m.runtim
 KAU_SLOW_CNN_POLE_EXTENSION_RUNTIME_SCHEMA = (
     "lnet.kau.alphabet_lm.slow_cnn_pole_extension.runtime.v1"
 )
+KAU_CASCADED_SLOW_CNN_POLE_RUNTIME_SCHEMA = (
+    "lnet.kau.alphabet_lm.cascaded_slow_cnn_pole.runtime.v1"
+)
 _STOP_EVENT = threading.Event()
 
 
@@ -314,6 +317,35 @@ def _initialize_slow_cnn_pole_from_trunk(
     }
 
 
+def _initialize_additional_slow_cnn_poles_from_trunk(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.additional_slow_cnn_pole_memories is None:
+        raise RuntimeError("additional slow-bank initialization requires additional banks")
+    payload = cast(
+        "dict[str, Any]", torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    prefix = "additional_slow_cnn_pole_memories."
+    expected_missing = {name for name in model.state_dict() if name.startswith(prefix)}
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("anchor-bank checkpoint does not match the cascaded model")
+    for name, parameter in model.named_parameters():
+        trainable = name.startswith(prefix) and not name.endswith(".analysis.weight")
+        parameter.requires_grad_(trainable)
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": sha256_file(checkpoint_path),
+        "missing_additional_slow_bank_tensors": len(expected_missing),
+        "anchor_bank_and_trunk_frozen": True,
+    }
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -385,6 +417,9 @@ def _build(
     slow_cnn_pole_use_recurrence: bool = True,
     slow_cnn_pole_minimum_half_life: float = 1.0,
     slow_cnn_pole_maximum_half_life: float = 256.0,
+    additional_slow_cnn_pole_depths: tuple[int, ...] = (),
+    additional_slow_cnn_pole_beta_initial: float = 0.01,
+    additional_slow_cnn_pole_use_recurrence: bool = True,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -451,6 +486,9 @@ def _build(
         slow_cnn_pole_use_recurrence=slow_cnn_pole_use_recurrence,
         slow_cnn_pole_minimum_half_life=slow_cnn_pole_minimum_half_life,
         slow_cnn_pole_maximum_half_life=slow_cnn_pole_maximum_half_life,
+        additional_slow_cnn_pole_depths=additional_slow_cnn_pole_depths,
+        additional_slow_cnn_pole_beta_initial=additional_slow_cnn_pole_beta_initial,
+        additional_slow_cnn_pole_use_recurrence=additional_slow_cnn_pole_use_recurrence,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -699,6 +737,19 @@ def main() -> None:
     parser.add_argument("--slow-cnn-pole-minimum-half-life", type=float, default=1.0)
     parser.add_argument("--slow-cnn-pole-maximum-half-life", type=float, default=256.0)
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
+    parser.add_argument(
+        "--additional-slow-cnn-pole-depths",
+        type=int,
+        nargs="*",
+        default=(),
+    )
+    parser.add_argument("--additional-slow-cnn-pole-beta-initial", type=float, default=0.01)
+    parser.add_argument(
+        "--additional-slow-cnn-pole-use-recurrence",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--initialize-additional-slow-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -732,6 +783,7 @@ def main() -> None:
         KAU_CNN_POLE_RUNTIME_SCHEMA,
         KAU_SLOW_CNN_POLE_RUNTIME_SCHEMA,
         KAU_SLOW_CNN_POLE_EXTENSION_RUNTIME_SCHEMA,
+        KAU_CASCADED_SLOW_CNN_POLE_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -815,6 +867,11 @@ def main() -> None:
         slow_cnn_pole_use_recurrence=args.slow_cnn_pole_use_recurrence,
         slow_cnn_pole_minimum_half_life=args.slow_cnn_pole_minimum_half_life,
         slow_cnn_pole_maximum_half_life=args.slow_cnn_pole_maximum_half_life,
+        additional_slow_cnn_pole_depths=tuple(args.additional_slow_cnn_pole_depths),
+        additional_slow_cnn_pole_beta_initial=args.additional_slow_cnn_pole_beta_initial,
+        additional_slow_cnn_pole_use_recurrence=(
+            args.additional_slow_cnn_pole_use_recurrence
+        ),
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -829,6 +886,7 @@ def main() -> None:
             or args.initialize_semantic_edge_trunk_checkpoint is not None
             or args.initialize_cnn_pole_trunk_checkpoint is not None
             or args.initialize_slow_cnn_pole_trunk_checkpoint is not None
+            or args.initialize_additional_slow_cnn_pole_trunk_checkpoint is not None
         ):
             raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
@@ -867,6 +925,12 @@ def main() -> None:
     slow_cnn_pole_initialization = _initialize_slow_cnn_pole_from_trunk(
         model,
         args.initialize_slow_cnn_pole_trunk_checkpoint,
+    )
+    additional_slow_cnn_pole_initialization = (
+        _initialize_additional_slow_cnn_poles_from_trunk(
+            model,
+            args.initialize_additional_slow_cnn_pole_trunk_checkpoint,
+        )
     )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
@@ -924,6 +988,15 @@ def main() -> None:
             "slow_cnn_pole_use_recurrence": args.slow_cnn_pole_use_recurrence,
             "slow_cnn_pole_minimum_half_life": args.slow_cnn_pole_minimum_half_life,
             "slow_cnn_pole_maximum_half_life": args.slow_cnn_pole_maximum_half_life,
+            "additional_slow_cnn_pole_depths": list(
+                args.additional_slow_cnn_pole_depths
+            ),
+            "additional_slow_cnn_pole_beta_initial": (
+                args.additional_slow_cnn_pole_beta_initial
+            ),
+            "additional_slow_cnn_pole_use_recurrence": (
+                args.additional_slow_cnn_pole_use_recurrence
+            ),
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -1083,6 +1156,14 @@ def main() -> None:
         "slow_cnn_pole_minimum_half_life": args.slow_cnn_pole_minimum_half_life,
         "slow_cnn_pole_maximum_half_life": args.slow_cnn_pole_maximum_half_life,
         "slow_cnn_pole_initialization": slow_cnn_pole_initialization,
+        "additional_slow_cnn_pole_depths": list(args.additional_slow_cnn_pole_depths),
+        "additional_slow_cnn_pole_beta_initial": (
+            args.additional_slow_cnn_pole_beta_initial
+        ),
+        "additional_slow_cnn_pole_use_recurrence": (
+            args.additional_slow_cnn_pole_use_recurrence
+        ),
+        "additional_slow_cnn_pole_initialization": additional_slow_cnn_pole_initialization,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
@@ -1214,6 +1295,14 @@ def main() -> None:
                 row["slow_cnn_pole_beta_mean"] = float(
                     model.slow_cnn_pole_memory.beta.detach().mean()
                 )
+            if model.additional_slow_cnn_pole_memories is not None:
+                additional_beta = [
+                    cast("SlowCausalCNNPoleMemory", bank).beta.detach().mean()
+                    for bank in model.additional_slow_cnn_pole_memories
+                ]
+                row["additional_slow_cnn_pole_beta_mean"] = float(
+                    torch.stack(additional_beta).mean()
+                )
         if update == 1:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
@@ -1258,6 +1347,10 @@ def main() -> None:
         if "slow_cnn_pole_beta_mean" in row:
             wandb_metrics["model/slow_cnn_pole_beta_mean"] = row[
                 "slow_cnn_pole_beta_mean"
+            ]
+        if "additional_slow_cnn_pole_beta_mean" in row:
+            wandb_metrics["model/additional_slow_cnn_pole_beta_mean"] = row[
+                "additional_slow_cnn_pole_beta_mean"
             ]
         wandb_run.log(wandb_metrics, step=update)
         print("ALPHABET_LM_PROGRESS=" + json.dumps(row, sort_keys=True), flush=True)

@@ -33,6 +33,7 @@ from scripts.evaluate_kau_alphabet_lm_context import _zero_memory
 from scripts.prepare_h200_alphabet_lm_data import _parquet_to_jsonl, _split_documents
 from scripts.train_h200_alphabet_lm_10m import (
     _copy_matching_legacy_initialization,
+    _initialize_additional_slow_cnn_poles_from_trunk,
     _initialize_chunk_memory_from_trunk,
     _initialize_cnn_pole_from_trunk,
     _initialize_semantic_edge_from_trunk,
@@ -1256,6 +1257,54 @@ def test_slow_cnn_pole_checkpoint_freezes_fast_sidecars_and_trunk(tmp_path: Path
     for name, value in model.state_dict().items():
         if not name.startswith("slow_cnn_pole_memory."):
             torch.testing.assert_close(value, fast_model.state_dict()[name], atol=0.0, rtol=0.0)
+
+
+def _cascaded_slow_cnn_config(*, use_recurrence: bool = True) -> AlphabetLMConfig:
+    return replace(
+        _slow_cnn_pole_config(use_recurrence=True),
+        additional_slow_cnn_pole_depths=(1,),
+        additional_slow_cnn_pole_beta_initial=0.01,
+        additional_slow_cnn_pole_use_recurrence=use_recurrence,
+    )
+
+
+def test_additional_slow_bank_is_paired_and_zero_beta_preserves_anchor() -> None:
+    torch.manual_seed(501)
+    recurrent = AlphabetLM(_cascaded_slow_cnn_config(use_recurrence=True)).eval()
+    torch.manual_seed(501)
+    control = AlphabetLM(_cascaded_slow_cnn_config(use_recurrence=False)).eval()
+    for name, value in recurrent.state_dict().items():
+        torch.testing.assert_close(value, control.state_dict()[name], atol=0.0, rtol=0.0)
+
+    anchor = AlphabetLM(
+        replace(_cascaded_slow_cnn_config(), additional_slow_cnn_pole_depths=())
+    ).eval()
+    recurrent.load_state_dict(anchor.state_dict(), strict=False)
+    additional = cast("torch.nn.ModuleList", recurrent.additional_slow_cnn_pole_memories)
+    for module in additional:
+        cast("SlowCausalCNNPoleMemory", module).beta.data.zero_()
+    tokens = torch.randint(64, (2, 17))
+    with torch.no_grad():
+        torch.testing.assert_close(recurrent(tokens), anchor(tokens), atol=0.0, rtol=0.0)
+
+
+def test_additional_slow_bank_checkpoint_freezes_anchor_and_trunk(tmp_path: Path) -> None:
+    config = _cascaded_slow_cnn_config()
+    torch.manual_seed(501)
+    anchor = AlphabetLM(replace(config, additional_slow_cnn_pole_depths=()))
+    checkpoint = tmp_path / "anchor.pt"
+    torch.save({"model": anchor.state_dict()}, checkpoint)
+    torch.manual_seed(9)
+    model = AlphabetLM(config)
+    contract = _initialize_additional_slow_cnn_poles_from_trunk(model, checkpoint)
+    assert contract["enabled"] is True
+    trainable = [name for name, parameter in model.named_parameters() if parameter.requires_grad]
+    assert trainable
+    assert all(name.startswith("additional_slow_cnn_pole_memories.") for name in trainable)
+    assert not any(name.endswith(".analysis.weight") for name in trainable)
+    for name, value in model.state_dict().items():
+        if not name.startswith("additional_slow_cnn_pole_memories."):
+            torch.testing.assert_close(value, anchor.state_dict()[name], atol=0.0, rtol=0.0)
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:

@@ -92,6 +92,9 @@ class AlphabetLMConfig:
     slow_cnn_pole_use_recurrence: bool = True
     slow_cnn_pole_minimum_half_life: float = 1.0
     slow_cnn_pole_maximum_half_life: float = 256.0
+    additional_slow_cnn_pole_depths: tuple[int, ...] = ()
+    additional_slow_cnn_pole_beta_initial: float = 0.01
+    additional_slow_cnn_pole_use_recurrence: bool = True
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -222,6 +225,8 @@ class AlphabetLMConfig:
 
     def _validate_slow_cnn_pole_memory(self) -> None:
         if not self.slow_cnn_pole_memory:
+            if self.additional_slow_cnn_pole_depths:
+                raise ValueError("additional slow banks require the anchor slow bank")
             return
         if (
             self.chunk_memory
@@ -234,6 +239,14 @@ class AlphabetLMConfig:
             >= self.slow_cnn_pole_maximum_half_life
         ):
             raise ValueError("invalid slow CNN pole memory configuration")
+        base_depth = self.layers - self.slow_cnn_pole_upper_blocks
+        depths = self.additional_slow_cnn_pole_depths
+        if depths and (
+            tuple(sorted(set(depths))) != depths
+            or any(not 0 < depth < base_depth for depth in depths)
+            or not 0.0 < self.additional_slow_cnn_pole_beta_initial < 1.0
+        ):
+            raise ValueError("invalid additional slow CNN pole depths")
 
     def _validate_memory_layout(self) -> None:
         if self.memory_layout == "tensor_product" and (
@@ -1603,8 +1616,67 @@ class AlphabetLM(nn.Module):
                 )
         else:
             self.slow_cnn_pole_memory = None
+        additional_depths = config.additional_slow_cnn_pole_depths
+        if additional_depths:
+            base_depth = config.layers - config.slow_cnn_pole_upper_blocks
+            boundaries = (*additional_depths[1:], base_depth)
+            with torch.random.fork_rng(devices=[]):
+                self.additional_slow_cnn_pole_memories = nn.ModuleList(
+                    SlowCausalCNNPoleMemory(
+                        config.modes,
+                        stride=config.slow_cnn_pole_stride,
+                        upper_blocks=boundary - depth,
+                        evidence_width=config.slow_cnn_pole_evidence_width,
+                        kernel_size=config.slow_cnn_pole_kernel_size,
+                        pole_modes=config.slow_cnn_pole_modes,
+                        beta_initial=config.additional_slow_cnn_pole_beta_initial,
+                        use_recurrence=config.additional_slow_cnn_pole_use_recurrence,
+                        context_length=config.context_length,
+                        scan_fp32=config.scan_fp32,
+                        minimum_half_life=config.slow_cnn_pole_minimum_half_life,
+                        maximum_half_life=config.slow_cnn_pole_maximum_half_life,
+                        epsilon=config.rms_epsilon,
+                    )
+                    for depth, boundary in zip(additional_depths, boundaries, strict=True)
+                )
+        else:
+            self.additional_slow_cnn_pole_memories = None
         nn.init.normal_(self.embedding.weight, mean=0.0, std=0.02)
         nn.init.orthogonal_(self.analysis.weight)
+
+    def _inject_additional_slow_memories(
+        self,
+        real: Tensor,
+        imag: Tensor,
+        index: int,
+        memories: list[ComplexField | None],
+        boundaries: tuple[int, ...],
+    ) -> ComplexField:
+        banks = self.additional_slow_cnn_pole_memories
+        if banks is None:
+            return real, imag
+        for bank_index, (depth, boundary) in enumerate(
+            zip(
+                self.config.additional_slow_cnn_pole_depths,
+                boundaries,
+                strict=True,
+            )
+        ):
+            bank = banks[bank_index]
+            if not isinstance(bank, SlowCausalCNNPoleMemory):
+                raise TypeError("additional slow-bank module type changed")
+            if index == depth:
+                memories[bank_index] = bank(real, imag)
+            memory = memories[bank_index]
+            if memory is not None and depth <= index < boundary:
+                real, imag = bank.inject(
+                    real,
+                    imag,
+                    memory[0],
+                    memory[1],
+                    index - depth,
+                )
+        return real, imag
 
     def hidden(self, input_ids: Tensor) -> Tensor:
         packed = self.analysis(self.embedding(input_ids))
@@ -1621,6 +1693,13 @@ class AlphabetLM(nn.Module):
         memory_start = self.config.layers - upper_blocks
         slow_memory: ComplexField | None = None
         slow_memory_start = self.config.layers - self.config.slow_cnn_pole_upper_blocks
+        additional_slow_memories: list[ComplexField | None] = [
+            None for _ in self.config.additional_slow_cnn_pole_depths
+        ]
+        additional_boundaries = (
+            *self.config.additional_slow_cnn_pole_depths[1:],
+            slow_memory_start,
+        )
         for index, block in enumerate(self.blocks):
             if active_chunk_memory is not None and index == memory_start:
                 chunk_memory = active_chunk_memory(real, imag)
@@ -1642,6 +1721,13 @@ class AlphabetLM(nn.Module):
                     chunk_memory[1],
                     index - memory_start,
                 )
+            real, imag = self._inject_additional_slow_memories(
+                real,
+                imag,
+                index,
+                additional_slow_memories,
+                additional_boundaries,
+            )
             if active_slow_memory is not None and index == slow_memory_start:
                 slow_memory = active_slow_memory(real, imag)
             if active_slow_memory is not None and slow_memory is not None:
