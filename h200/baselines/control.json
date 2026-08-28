@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
-  "campaign_id": "h200-imagenet1k-matched-baselines-300ep-v1",
-  "target_commit": "8b63306328204b977cc4edd34f972ae2adafc966",
-  "generation": 1,
+  "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v1",
+  "target_commit": "50525e68decb9925fba1f195318de12200ce3bf3",
+  "generation": 2,
   "action": "run",
-  "updated_at": "2026-08-28T15:37:12+09:00",
-  "reason": "arm owner control for all future ImageNet-1K baseline launches"
+  "updated_at": "2026-08-28T21:49:19+09:00",
+  "reason": "arm owner control for the two-model 100-epoch H200 backlog"
 }
