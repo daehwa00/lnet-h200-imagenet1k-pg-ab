@@ -63,6 +63,9 @@ KAU_SLOW_CNN_POLE_EXTENSION_RUNTIME_SCHEMA = (
 KAU_CASCADED_SLOW_CNN_POLE_RUNTIME_SCHEMA = (
     "lnet.kau.alphabet_lm.cascaded_slow_cnn_pole.runtime.v1"
 )
+KAU_FACTORIZED_SLOW_READER_RUNTIME_SCHEMA = (
+    "lnet.kau.alphabet_lm.factorized_slow_reader.runtime.v1"
+)
 _STOP_EVENT = threading.Event()
 
 
@@ -417,6 +420,8 @@ def _build(
     slow_cnn_pole_use_recurrence: bool = True,
     slow_cnn_pole_minimum_half_life: float = 1.0,
     slow_cnn_pole_maximum_half_life: float = 256.0,
+    slow_cnn_pole_reader: str = "shared_cnn",
+    slow_cnn_pole_reader_rank: int = 2,
     additional_slow_cnn_pole_depths: tuple[int, ...] = (),
     additional_slow_cnn_pole_beta_initial: float = 0.01,
     additional_slow_cnn_pole_use_recurrence: bool = True,
@@ -486,6 +491,8 @@ def _build(
         slow_cnn_pole_use_recurrence=slow_cnn_pole_use_recurrence,
         slow_cnn_pole_minimum_half_life=slow_cnn_pole_minimum_half_life,
         slow_cnn_pole_maximum_half_life=slow_cnn_pole_maximum_half_life,
+        slow_cnn_pole_reader=cast("Any", slow_cnn_pole_reader),
+        slow_cnn_pole_reader_rank=slow_cnn_pole_reader_rank,
         additional_slow_cnn_pole_depths=additional_slow_cnn_pole_depths,
         additional_slow_cnn_pole_beta_initial=additional_slow_cnn_pole_beta_initial,
         additional_slow_cnn_pole_use_recurrence=additional_slow_cnn_pole_use_recurrence,
@@ -736,6 +743,12 @@ def main() -> None:
     )
     parser.add_argument("--slow-cnn-pole-minimum-half-life", type=float, default=1.0)
     parser.add_argument("--slow-cnn-pole-maximum-half-life", type=float, default=256.0)
+    parser.add_argument(
+        "--slow-cnn-pole-reader",
+        choices=("shared_cnn", "factorized_complex"),
+        default="shared_cnn",
+    )
+    parser.add_argument("--slow-cnn-pole-reader-rank", type=int, default=2)
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument(
         "--additional-slow-cnn-pole-depths",
@@ -784,6 +797,7 @@ def main() -> None:
         KAU_SLOW_CNN_POLE_RUNTIME_SCHEMA,
         KAU_SLOW_CNN_POLE_EXTENSION_RUNTIME_SCHEMA,
         KAU_CASCADED_SLOW_CNN_POLE_RUNTIME_SCHEMA,
+        KAU_FACTORIZED_SLOW_READER_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -867,6 +881,8 @@ def main() -> None:
         slow_cnn_pole_use_recurrence=args.slow_cnn_pole_use_recurrence,
         slow_cnn_pole_minimum_half_life=args.slow_cnn_pole_minimum_half_life,
         slow_cnn_pole_maximum_half_life=args.slow_cnn_pole_maximum_half_life,
+        slow_cnn_pole_reader=args.slow_cnn_pole_reader,
+        slow_cnn_pole_reader_rank=args.slow_cnn_pole_reader_rank,
         additional_slow_cnn_pole_depths=tuple(args.additional_slow_cnn_pole_depths),
         additional_slow_cnn_pole_beta_initial=args.additional_slow_cnn_pole_beta_initial,
         additional_slow_cnn_pole_use_recurrence=(
@@ -988,6 +1004,8 @@ def main() -> None:
             "slow_cnn_pole_use_recurrence": args.slow_cnn_pole_use_recurrence,
             "slow_cnn_pole_minimum_half_life": args.slow_cnn_pole_minimum_half_life,
             "slow_cnn_pole_maximum_half_life": args.slow_cnn_pole_maximum_half_life,
+            "slow_cnn_pole_reader": args.slow_cnn_pole_reader,
+            "slow_cnn_pole_reader_rank": args.slow_cnn_pole_reader_rank,
             "additional_slow_cnn_pole_depths": list(
                 args.additional_slow_cnn_pole_depths
             ),
@@ -1155,6 +1173,8 @@ def main() -> None:
         "slow_cnn_pole_use_recurrence": args.slow_cnn_pole_use_recurrence,
         "slow_cnn_pole_minimum_half_life": args.slow_cnn_pole_minimum_half_life,
         "slow_cnn_pole_maximum_half_life": args.slow_cnn_pole_maximum_half_life,
+        "slow_cnn_pole_reader": args.slow_cnn_pole_reader,
+        "slow_cnn_pole_reader_rank": args.slow_cnn_pole_reader_rank,
         "slow_cnn_pole_initialization": slow_cnn_pole_initialization,
         "additional_slow_cnn_pole_depths": list(args.additional_slow_cnn_pole_depths),
         "additional_slow_cnn_pole_beta_initial": (

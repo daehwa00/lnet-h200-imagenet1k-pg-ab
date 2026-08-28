@@ -18,6 +18,7 @@ from lnet.alphabet_lm import (
     AlphabetLM,
     AlphabetLMConfig,
     CausalCNNPoleMemory,
+    CausalFactorizedComplexConv1dReader,
     ChunkedSemanticPoleMemory,
     DynamicLowRankWrite,
     FixedComplexPoleMemory1D,
@@ -193,6 +194,38 @@ def _build(kind: str) -> nn.Module:
             additional_slow_cnn_pole_use_recurrence=(
                 kind == "cnn_pole_p128_6bank_cascade_p128"
             ),
+        )
+    elif kind in {
+        "slow_r2k4_p128",
+        "slow_r2k4_p128_no_recurrence",
+        "slow_r4k4_p128",
+        "slow_r4k4_p128_no_recurrence",
+    }:
+        rank = 2 if "r2k4" in kind else 4
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            cnn_pole_memory=True,
+            cnn_pole_interval=2,
+            cnn_pole_modes=128,
+            cnn_pole_evidence_width=512,
+            cnn_pole_kernel_size=4,
+            cnn_pole_beta_initial=0.01,
+            cnn_pole_use_recurrence=False,
+            cnn_pole_minimum_half_life=8.0,
+            cnn_pole_maximum_half_life=4_096.0,
+            slow_cnn_pole_memory=True,
+            slow_cnn_pole_stride=16,
+            slow_cnn_pole_modes=128,
+            slow_cnn_pole_evidence_width=512,
+            slow_cnn_pole_kernel_size=4,
+            slow_cnn_pole_upper_blocks=4,
+            slow_cnn_pole_beta_initial=0.01,
+            slow_cnn_pole_use_recurrence="no_recurrence" not in kind,
+            slow_cnn_pole_minimum_half_life=1.0,
+            slow_cnn_pole_maximum_half_life=256.0,
+            slow_cnn_pole_reader="factorized_complex",
+            slow_cnn_pole_reader_rank=rank,
         )
     return AlphabetLM(config)
 
@@ -431,6 +464,8 @@ def _cnn_pole_metrics(
     beta = torch.stack([memory.beta.float() for memory in typed_memories])
     gram_errors = []
     for memory in typed_memories:
+        if memory.analysis is None:
+            raise RuntimeError("fast CNN memory unexpectedly lacks its analysis map")
         weight = memory.analysis.weight.float()
         identity = torch.eye(weight.shape[0], device=weight.device)
         gram_errors.append(float((weight @ weight.T - identity).abs().max()))
@@ -452,6 +487,71 @@ def _cnn_pole_metrics(
         "half_life_tokens_median": sum(float(value.median()) for value in half_lives)
         / len(half_lives),
         "half_life_tokens_max": max(float(value.max()) for value in half_lives),
+    }
+
+
+def _off_diagonal(values: Tensor) -> Tensor:
+    mask = ~torch.eye(values.shape[0], dtype=torch.bool, device=values.device)
+    return values[mask]
+
+
+@torch.no_grad()
+def _factorized_reader_metrics(
+    reader: CausalFactorizedComplexConv1dReader,
+    drive: tuple[Tensor, Tensor],
+) -> dict[str, float | int]:
+    point_real = reader.point_weight_real.float()
+    point_imag = reader.point_weight_imag.float()
+    temporal_real = reader.temporal_weight_real.float()
+    temporal_imag = reader.temporal_weight_imag.float()
+    filter_real = (
+        temporal_real.unsqueeze(2) * point_real.unsqueeze(-1)
+        - temporal_imag.unsqueeze(2) * point_imag.unsqueeze(-1)
+    ).sum(dim=1)
+    filter_imag = (
+        temporal_real.unsqueeze(2) * point_imag.unsqueeze(-1)
+        + temporal_imag.unsqueeze(2) * point_real.unsqueeze(-1)
+    ).sum(dim=1)
+    flat_real = filter_real.flatten(1)
+    flat_imag = filter_imag.flatten(1)
+    inverse_norm = torch.rsqrt(
+        flat_real.square().add(flat_imag.square()).sum(dim=1, keepdim=True).clamp_min(1e-12)
+    )
+    flat_real = flat_real * inverse_norm
+    flat_imag = flat_imag * inverse_norm
+    gram_real = flat_real @ flat_real.T + flat_imag @ flat_imag.T
+    gram_imag = flat_imag @ flat_real.T - flat_real @ flat_imag.T
+    filter_similarity = _off_diagonal(torch.sqrt(gram_real.square() + gram_imag.square()))
+
+    drive_real, drive_imag = (value.float() for value in drive)
+    energy = torch.sqrt(drive_real.square() + drive_imag.square() + 1e-12)
+    mean = energy.mean(dim=(0, 1), keepdim=True)
+    std = energy.std(dim=(0, 1), keepdim=True).clamp_min(1e-6)
+    kurtosis = ((energy - mean) / std).pow(4).mean(dim=(0, 1))
+    duty = (energy > mean + 2.0 * std).float().mean(dim=(0, 1))
+    centered_real = drive_real - drive_real.mean(dim=(0, 1), keepdim=True)
+    centered_imag = drive_imag - drive_imag.mean(dim=(0, 1), keepdim=True)
+    rows_real = centered_real.flatten(0, 1).T
+    rows_imag = centered_imag.flatten(0, 1).T
+    inverse_drive_norm = torch.rsqrt(
+        rows_real.square().add(rows_imag.square()).sum(dim=1, keepdim=True).clamp_min(1e-12)
+    )
+    rows_real = rows_real * inverse_drive_norm
+    rows_imag = rows_imag * inverse_drive_norm
+    drive_gram_real = rows_real @ rows_real.T + rows_imag @ rows_imag.T
+    drive_gram_imag = rows_imag @ rows_real.T - rows_real @ rows_imag.T
+    drive_correlation = _off_diagonal(
+        torch.sqrt(drive_gram_real.square() + drive_gram_imag.square())
+    )
+    return {
+        "rank": reader.rank,
+        "kernel_size": reader.kernel_size,
+        "effective_filter_similarity_mean": float(filter_similarity.mean()),
+        "effective_filter_similarity_max": float(filter_similarity.max()),
+        "excitation_correlation_mean": float(drive_correlation.mean()),
+        "excitation_correlation_max": float(drive_correlation.max()),
+        "excitation_kurtosis_mean": float(kurtosis.mean()),
+        "excitation_duty_cycle_mean": float(duty.mean()),
     }
 
 
@@ -477,6 +577,7 @@ def _slow_cnn_pole_metrics(
             ):
                 bank_index = (index + 1) // model.config.cnn_pole_interval - 1
                 real, imag = model.cnn_pole_memories[bank_index](real, imag)
+        drive = slow.pole_drive(real, imag)
         memory = slow(real, imag)
         branch_ratios: list[float] = []
         for upper_index, block in enumerate(model.blocks[memory_start:]):
@@ -501,13 +602,12 @@ def _slow_cnn_pole_metrics(
             ):
                 bank_index = (block_index + 1) // model.config.cnn_pole_interval - 1
                 real, imag = model.cnn_pole_memories[bank_index](real, imag)
-    weight = slow.analysis.weight.float()
-    identity = torch.eye(weight.shape[0], device=weight.device)
     half_lives = math.log(2.0) / slow.memory.damping().float()
-    return {
+    payload: dict[str, object] = {
         "stride": slow.stride,
         "pole_modes": slow.memory.modes,
         "use_recurrence": slow.use_recurrence,
+        "reader_kind": slow.reader_kind,
         "beta_by_upper_block": slow.beta.float().detach().cpu().tolist(),
         "beta_mean": float(slow.beta.float().mean()),
         "branch_to_trunk_rms_by_upper_block": branch_ratios,
@@ -515,8 +615,19 @@ def _slow_cnn_pole_metrics(
         "half_life_tokens_min": float(half_lives.min()) * slow.stride,
         "half_life_tokens_median": float(half_lives.median()) * slow.stride,
         "half_life_tokens_max": float(half_lives.max()) * slow.stride,
-        "analysis_row_gram_max_abs": float((weight @ weight.T - identity).abs().max()),
     }
+    if slow.analysis is not None:
+        weight = slow.analysis.weight.float()
+        identity = torch.eye(weight.shape[0], device=weight.device)
+        payload["analysis_row_gram_max_abs"] = float(
+            (weight @ weight.T - identity).abs().max()
+        )
+    if isinstance(slow.factorized_reader, CausalFactorizedComplexConv1dReader):
+        payload["factorized_reader"] = _factorized_reader_metrics(
+            slow.factorized_reader,
+            drive,
+        )
+    return payload
 
 
 @torch.no_grad()
@@ -577,6 +688,8 @@ def _additional_slow_cnn_pole_metrics(
         branch_ratios,
         strict=True,
     ):
+        if bank.analysis is None:
+            raise RuntimeError("additional shared CNN memory lacks its analysis map")
         weight = bank.analysis.weight.float()
         identity = torch.eye(weight.shape[0], device=weight.device)
         half_lives = math.log(2.0) / bank.memory.damping().float()
@@ -966,6 +1079,10 @@ def main() -> None:
             "cnn_pole_p128_6bank_slow_p128_no_recurrence",
             "cnn_pole_p128_6bank_cascade_p128",
             "cnn_pole_p128_6bank_cascade_p128_no_recurrence",
+            "slow_r2k4_p128",
+            "slow_r2k4_p128_no_recurrence",
+            "slow_r4k4_p128",
+            "slow_r4k4_p128_no_recurrence",
             "mamba",
         ),
         required=True,

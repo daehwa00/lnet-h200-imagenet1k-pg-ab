@@ -1,0 +1,229 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "slow-r2k4-no-recurrence-1m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_reader": "factorized_complex",
+        "slow_cnn_pole_reader_rank": 2,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": false
+      },
+      "slow-r2k4-recurrent-1m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_reader": "factorized_complex",
+        "slow_cnn_pole_reader_rank": 2,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true
+      },
+      "slow-r4k4-no-recurrence-1m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_reader": "factorized_complex",
+        "slow_cnn_pole_reader_rank": 4,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": false
+      },
+      "slow-r4k4-recurrent-1m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_reader": "factorized_complex",
+        "slow_cnn_pole_reader_rank": 4,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-factorized-slow-reader-p128-1m-s501-v1",
+  "campaign_manifest_sha256": "42e22d6be83a34e55a40ce2d0d7bd7fb022ab1173d230193add2fa01cd355a6e",
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      512,
+      128,
+      32,
+      1
+    ],
+    "memory_zero": true,
+    "reader_metrics": [
+      "effective_filter_similarity",
+      "excitation_correlation",
+      "excitation_kurtosis",
+      "excitation_duty_cycle"
+    ],
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-FactorizedSlowReaderP128-1M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-factorized-slow-reader-p128-1m-v1",
+  "parameter_counts": {
+    "slow-r2k4-no-recurrence-1m": 264708,
+    "slow-r2k4-recurrent-1m": 264708,
+    "slow-r4k4-no-recurrence-1m": 397828,
+    "slow-r4k4-recurrent-1m": 397828
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "slow-r2k4-no-recurrence-1m": {
+      "display_name": "RTX4090-S501-ALPHABET-SlowR2K4-NoRecurrence-1M",
+      "id": "fd31f3c00463d7c8",
+      "tags": [
+        "RTX4090",
+        "R2K4",
+        "PoleSpecific",
+        "Stride16",
+        "P128",
+        "NoRecurrence",
+        "1M",
+        "seed501"
+      ]
+    },
+    "slow-r2k4-recurrent-1m": {
+      "display_name": "RTX4090-S501-ALPHABET-SlowR2K4-Recurrent-1M",
+      "id": "7e5c0dcbd533409e",
+      "tags": [
+        "RTX4090",
+        "R2K4",
+        "PoleSpecific",
+        "Stride16",
+        "P128",
+        "Recurrent",
+        "1M",
+        "seed501"
+      ]
+    },
+    "slow-r4k4-no-recurrence-1m": {
+      "display_name": "RTX4090-S501-ALPHABET-SlowR4K4-NoRecurrence-1M",
+      "id": "8bf87e0b0cabb5e6",
+      "tags": [
+        "RTX4090",
+        "R4K4",
+        "PoleSpecific",
+        "Stride16",
+        "P128",
+        "NoRecurrence",
+        "1M",
+        "seed501"
+      ]
+    },
+    "slow-r4k4-recurrent-1m": {
+      "display_name": "RTX4090-S501-ALPHABET-SlowR4K4-Recurrent-1M",
+      "id": "88724e537b39e44a",
+      "tags": [
+        "RTX4090",
+        "R4K4",
+        "PoleSpecific",
+        "Stride16",
+        "P128",
+        "Recurrent",
+        "1M",
+        "seed501"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.factorized_slow_reader.runtime.v1",
+  "source": {
+    "checkpoint": "/home/daehwa/alphabet-lm-4090-cnn-pole-runs/ebcba2aa1aceca5c/no-recurrence/checkpoint.pt",
+    "checkpoint_sha256": "bff5f0c357d7655ef8059445722158ef584de38d3cf95aa2c7deaf6e4891e9a2",
+    "validation_loss": 5.853573210331142,
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/5b681f6f34a8e460"
+  },
+  "total_parameter_counts": {
+    "slow-r2k4-no-recurrence-1m": 40134154,
+    "slow-r2k4-recurrent-1m": 40134154,
+    "slow-r4k4-no-recurrence-1m": 40267274,
+    "slow-r4k4-recurrent-1m": 40267274
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "slow-r2k4-recurrent-1m",
+      "slow-r2k4-no-recurrence-1m",
+      "slow-r4k4-recurrent-1m",
+      "slow-r4k4-no-recurrence-1m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 1000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

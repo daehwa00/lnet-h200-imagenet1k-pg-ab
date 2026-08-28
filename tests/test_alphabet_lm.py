@@ -1131,6 +1131,7 @@ def test_cnn_pole_memory_is_repeated_causal_and_non_expansive() -> None:
     assert len(memories) == 2
     for module in memories:
         assert isinstance(module, CausalCNNPoleMemory)
+        assert module.analysis is not None
         gram = module.analysis.weight @ module.analysis.weight.T
         torch.testing.assert_close(gram, torch.eye(16), atol=2.0e-6, rtol=0.0)
         assert not module.analysis.weight.requires_grad
@@ -1253,10 +1254,55 @@ def test_slow_cnn_pole_checkpoint_freezes_fast_sidecars_and_trunk(tmp_path: Path
     trainable = [name for name, parameter in model.named_parameters() if parameter.requires_grad]
     assert trainable
     assert all(name.startswith("slow_cnn_pole_memory.") for name in trainable)
+    assert slow.analysis is not None
     assert not slow.analysis.weight.requires_grad
     for name, value in model.state_dict().items():
         if not name.startswith("slow_cnn_pole_memory."):
             torch.testing.assert_close(value, fast_model.state_dict()[name], atol=0.0, rtol=0.0)
+
+
+def _factorized_slow_config(*, rank: int, use_recurrence: bool) -> AlphabetLMConfig:
+    return replace(
+        _slow_cnn_pole_config(use_recurrence=use_recurrence),
+        slow_cnn_pole_reader="factorized_complex",
+        slow_cnn_pole_reader_rank=rank,
+    )
+
+
+def test_factorized_slow_reader_supports_causal_k4_and_paired_recurrence() -> None:
+    torch.manual_seed(501)
+    recurrent = AlphabetLM(_factorized_slow_config(rank=2, use_recurrence=True)).eval()
+    torch.manual_seed(501)
+    control = AlphabetLM(_factorized_slow_config(rank=2, use_recurrence=False)).eval()
+    for name, value in recurrent.state_dict().items():
+        torch.testing.assert_close(value, control.state_dict()[name], atol=0.0, rtol=0.0)
+    slow = cast("SlowCausalCNNPoleMemory", recurrent.slow_cnn_pole_memory)
+    assert slow.analysis is None
+    assert slow.factorized_reader is not None
+    assert slow.factorized_reader.kernel_size == 4
+    assert slow.factorized_reader.rank == 2
+    tokens = torch.randint(64, (1, 16))
+    changed = tokens.clone()
+    changed[:, 8:] = torch.randint(64, changed[:, 8:].shape)
+    with torch.no_grad():
+        expected = recurrent(tokens)
+        actual = recurrent(changed)
+    torch.testing.assert_close(actual[:, :8], expected[:, :8], atol=2e-6, rtol=0.0)
+
+
+def test_factorized_slow_reader_checkpoint_trains_only_the_new_bank(tmp_path: Path) -> None:
+    config = _factorized_slow_config(rank=4, use_recurrence=True)
+    torch.manual_seed(501)
+    fast = AlphabetLM(replace(config, slow_cnn_pole_memory=False))
+    checkpoint = tmp_path / "fast.pt"
+    torch.save({"model": fast.state_dict()}, checkpoint)
+    model = AlphabetLM(config)
+    contract = _initialize_slow_cnn_pole_from_trunk(model, checkpoint)
+    assert contract["enabled"] is True
+    trainable = [name for name, parameter in model.named_parameters() if parameter.requires_grad]
+    assert trainable
+    assert all(name.startswith("slow_cnn_pole_memory.") for name in trainable)
+    assert any("factorized_reader" in name for name in trainable)
 
 
 def _cascaded_slow_cnn_config(*, use_recurrence: bool = True) -> AlphabetLMConfig:

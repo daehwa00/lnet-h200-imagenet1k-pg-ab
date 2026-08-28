@@ -92,6 +92,8 @@ class AlphabetLMConfig:
     slow_cnn_pole_use_recurrence: bool = True
     slow_cnn_pole_minimum_half_life: float = 1.0
     slow_cnn_pole_maximum_half_life: float = 256.0
+    slow_cnn_pole_reader: Literal["shared_cnn", "factorized_complex"] = "shared_cnn"
+    slow_cnn_pole_reader_rank: int = 2
     additional_slow_cnn_pole_depths: tuple[int, ...] = ()
     additional_slow_cnn_pole_beta_initial: float = 0.01
     additional_slow_cnn_pole_use_recurrence: bool = True
@@ -139,6 +141,7 @@ class AlphabetLMConfig:
             self.slow_cnn_pole_evidence_width,
             self.slow_cnn_pole_kernel_size,
             self.slow_cnn_pole_upper_blocks,
+            self.slow_cnn_pole_reader_rank,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -237,6 +240,7 @@ class AlphabetLMConfig:
             or not 0.0 < self.slow_cnn_pole_beta_initial < 1.0
             or self.slow_cnn_pole_minimum_half_life
             >= self.slow_cnn_pole_maximum_half_life
+            or self.slow_cnn_pole_reader not in {"shared_cnn", "factorized_complex"}
         ):
             raise ValueError("invalid slow CNN pole memory configuration")
         base_depth = self.layers - self.slow_cnn_pole_upper_blocks
@@ -309,7 +313,7 @@ class CausalFactorizedComplexConv1dReader(nn.Module):
         self.output_modes = int(output_modes)
         self.rank = int(rank)
         self.kernel_size = int(kernel_size)
-        if min(input_modes, output_modes, rank, kernel_size) <= 0 or kernel_size % 2 == 0:
+        if min(input_modes, output_modes, rank, kernel_size) <= 0:
             raise ValueError("invalid causal reader configuration")
         self.input_norm = ComplexRMSNorm(input_modes)
         self.point_weight_real = nn.Parameter(torch.empty(output_modes, rank, input_modes))
@@ -817,6 +821,8 @@ class CausalCNNPoleMemory(nn.Module):
         minimum_half_life: float,
         maximum_half_life: float,
         epsilon: float,
+        reader_kind: Literal["shared_cnn", "factorized_complex"] = "shared_cnn",
+        reader_rank: int = 2,
     ) -> None:
         super().__init__()
         self.modes = int(modes)
@@ -824,17 +830,33 @@ class CausalCNNPoleMemory(nn.Module):
         self.kernel_size = int(kernel_size)
         self.use_recurrence = bool(use_recurrence)
         self.epsilon = float(epsilon)
+        self.reader_kind = reader_kind
         packed_width = 2 * modes
-        self.norm = nn.RMSNorm(packed_width, eps=epsilon)
-        self.pointwise = nn.Linear(packed_width, evidence_width, bias=False)
-        self.temporal = nn.Conv1d(
-            evidence_width,
-            evidence_width,
-            kernel_size,
-            groups=evidence_width,
-            bias=False,
-        )
-        self.analysis = nn.Linear(evidence_width, 2 * pole_modes, bias=False)
+        if reader_kind == "shared_cnn":
+            self.norm = nn.RMSNorm(packed_width, eps=epsilon)
+            self.pointwise = nn.Linear(packed_width, evidence_width, bias=False)
+            self.temporal = nn.Conv1d(
+                evidence_width,
+                evidence_width,
+                kernel_size,
+                groups=evidence_width,
+                bias=False,
+            )
+            self.analysis = nn.Linear(evidence_width, 2 * pole_modes, bias=False)
+            self.factorized_reader = None
+        elif reader_kind == "factorized_complex":
+            self.norm = None
+            self.pointwise = None
+            self.temporal = None
+            self.analysis = None
+            self.factorized_reader = CausalFactorizedComplexConv1dReader(
+                modes,
+                pole_modes,
+                rank=reader_rank,
+                kernel_size=kernel_size,
+            )
+        else:
+            raise ValueError("unknown slow pole reader")
         self.memory = FixedComplexPoleMemory1D(
             pole_modes,
             context_length=context_length,
@@ -846,25 +868,39 @@ class CausalCNNPoleMemory(nn.Module):
         )
         self.synthesis = nn.Linear(2 * pole_modes, packed_width, bias=False)
         self.beta = nn.Parameter(torch.tensor(float(beta_initial)))
-        nn.init.orthogonal_(self.pointwise.weight)
-        with torch.no_grad():
-            self.temporal.weight.zero_()
-            self.temporal.weight[:, 0, -1] = 1.0
-            nn.init.orthogonal_(self.analysis.weight)
-        # The learned pointwise map can absorb any analysis basis. Keeping this
-        # final map fixed preserves the non-expansive row-Stiefel contract
-        # without a costly matrix parametrization in every forward pass.
-        self.analysis.weight.requires_grad = False
+        if self.reader_kind == "shared_cnn":
+            pointwise, temporal, analysis = self.pointwise, self.temporal, self.analysis
+            if pointwise is None or temporal is None or analysis is None:
+                raise RuntimeError("shared CNN reader modules are incomplete")
+            nn.init.orthogonal_(pointwise.weight)
+            with torch.no_grad():
+                temporal.weight.zero_()
+                temporal.weight[:, 0, -1] = 1.0
+                nn.init.orthogonal_(analysis.weight)
+            # The learned pointwise map can absorb any analysis basis. Keeping this
+            # final map fixed preserves the non-expansive row-Stiefel contract
+            # without a costly matrix parametrization in every forward pass.
+            analysis.weight.requires_grad = False
         nn.init.xavier_uniform_(self.synthesis.weight)
 
     def pole_drive(self, real: Tensor, imag: Tensor) -> ComplexField:
         if real.shape != imag.shape or real.ndim != 3 or real.shape[-1] != self.modes:
             raise ValueError("CNN pole memory expects matching B,T,K coordinates")
-        packed = self.norm(torch.cat((real, imag), dim=-1))
-        evidence = self.pointwise(packed)
+        if self.factorized_reader is not None:
+            return self.factorized_reader(real, imag)
+        norm, pointwise, temporal, analysis = (
+            self.norm,
+            self.pointwise,
+            self.temporal,
+            self.analysis,
+        )
+        if norm is None or pointwise is None or temporal is None or analysis is None:
+            raise RuntimeError("shared CNN reader modules are incomplete")
+        packed = norm(torch.cat((real, imag), dim=-1))
+        evidence = pointwise(packed)
         evidence = functional.pad(evidence.transpose(1, 2), (self.kernel_size - 1, 0))
-        evidence = functional.silu(self.temporal(evidence).transpose(1, 2))
-        return self.analysis(evidence).chunk(2, dim=-1)
+        evidence = functional.silu(temporal(evidence).transpose(1, 2))
+        return analysis(evidence).chunk(2, dim=-1)
 
     def synthesize(self, state: ComplexField) -> ComplexField:
         return self.synthesis(torch.cat(state, dim=-1)).chunk(2, dim=-1)
@@ -926,6 +962,8 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         minimum_half_life: float,
         maximum_half_life: float,
         epsilon: float,
+        reader_kind: Literal["shared_cnn", "factorized_complex"] = "shared_cnn",
+        reader_rank: int = 2,
     ) -> None:
         super().__init__(
             modes,
@@ -939,6 +977,8 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             minimum_half_life=minimum_half_life,
             maximum_half_life=maximum_half_life,
             epsilon=epsilon,
+            reader_kind=reader_kind,
+            reader_rank=reader_rank,
         )
         self.stride = int(stride)
         initial_beta = float(self.beta.detach())
@@ -1613,6 +1653,8 @@ class AlphabetLM(nn.Module):
                     minimum_half_life=config.slow_cnn_pole_minimum_half_life,
                     maximum_half_life=config.slow_cnn_pole_maximum_half_life,
                     epsilon=config.rms_epsilon,
+                    reader_kind=config.slow_cnn_pole_reader,
+                    reader_rank=config.slow_cnn_pole_reader_rank,
                 )
         else:
             self.slow_cnn_pole_memory = None
@@ -1636,6 +1678,8 @@ class AlphabetLM(nn.Module):
                         minimum_half_life=config.slow_cnn_pole_minimum_half_life,
                         maximum_half_life=config.slow_cnn_pole_maximum_half_life,
                         epsilon=config.rms_epsilon,
+                        reader_kind=config.slow_cnn_pole_reader,
+                        reader_rank=config.slow_cnn_pole_reader_rank,
                     )
                     for depth, boundary in zip(additional_depths, boundaries, strict=True)
                 )
