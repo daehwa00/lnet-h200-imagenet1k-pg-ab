@@ -38,6 +38,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_semantic_edge_from_trunk,
     _initialize_sidecar_from_trunk,
     _initialize_slow_cnn_pole_from_trunk,
+    _initialize_slow_key_from_trunk,
     _initialize_slow_query_from_trunk,
 )
 
@@ -1310,6 +1311,52 @@ def test_addressed_slow_checkpoint_trains_only_query(tmp_path: Path) -> None:
     slow = cast("SlowCausalCNNPoleMemory", model.slow_cnn_pole_memory)
     assert slow.query is not None
     torch.testing.assert_close(slow.query.weight, torch.zeros_like(slow.query.weight))
+
+
+def _qk_slow_config() -> AlphabetLMConfig:
+    return replace(
+        _addressed_slow_config(mode="token"),
+        slow_cnn_pole_key=True,
+        slow_cnn_pole_key_rho=0.5,
+    )
+
+
+def test_qk_slow_memory_is_identity_initialized_mean_one_and_causal() -> None:
+    torch.manual_seed(501)
+    token_q = AlphabetLM(_addressed_slow_config(mode="token")).eval()
+    torch.manual_seed(501)
+    qk = AlphabetLM(_qk_slow_config()).eval()
+    qk.load_state_dict(token_q.state_dict(), strict=False)
+    slow = cast("SlowCausalCNNPoleMemory", qk.slow_cnn_pole_memory)
+    key_gate = slow.key_gate(torch.randn(2, 7, 16))
+    torch.testing.assert_close(key_gate.mean(dim=-1), torch.ones(2, 7), atol=0.0, rtol=0.0)
+    tokens = torch.randint(64, (1, 16))
+    changed = tokens.clone()
+    changed[:, 8:] = torch.randint(64, changed[:, 8:].shape)
+    with torch.no_grad():
+        expected = token_q(tokens)
+        actual = qk(tokens)
+        changed_logits = qk(changed)
+    torch.testing.assert_close(actual, expected, atol=2e-6, rtol=2e-6)
+    torch.testing.assert_close(changed_logits[:, :8], actual[:, :8], atol=2e-6, rtol=0.0)
+
+
+def test_qk_checkpoint_trains_only_mandatory_key(tmp_path: Path) -> None:
+    torch.manual_seed(501)
+    token_q = AlphabetLM(_addressed_slow_config(mode="token"))
+    checkpoint = tmp_path / "token-q.pt"
+    torch.save({"model": token_q.state_dict()}, checkpoint)
+    qk = AlphabetLM(_qk_slow_config())
+    contract = _initialize_slow_key_from_trunk(qk, checkpoint)
+    assert contract["enabled"] is True
+    trainable = [name for name, parameter in qk.named_parameters() if parameter.requires_grad]
+    assert set(trainable) == {
+        "slow_cnn_pole_memory.key_norm.weight",
+        "slow_cnn_pole_memory.key.weight",
+    }
+    slow = cast("SlowCausalCNNPoleMemory", qk.slow_cnn_pole_memory)
+    assert slow.key is not None
+    torch.testing.assert_close(slow.key.weight, torch.zeros_like(slow.key.weight))
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:

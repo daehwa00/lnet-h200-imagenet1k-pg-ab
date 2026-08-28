@@ -94,6 +94,8 @@ class AlphabetLMConfig:
     slow_cnn_pole_maximum_half_life: float = 256.0
     slow_cnn_pole_query: Literal["none", "anchor", "token"] = "none"
     slow_cnn_pole_query_rho: float = 0.5
+    slow_cnn_pole_key: bool = False
+    slow_cnn_pole_key_rho: float = 0.5
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -224,8 +226,8 @@ class AlphabetLMConfig:
 
     def _validate_slow_cnn_pole_memory(self) -> None:
         if not self.slow_cnn_pole_memory:
-            if self.slow_cnn_pole_query != "none":
-                raise ValueError("slow pole query requires a slow memory bank")
+            if self.slow_cnn_pole_query != "none" or self.slow_cnn_pole_key:
+                raise ValueError("slow pole addressing requires a slow memory bank")
             return
         if (
             self.chunk_memory
@@ -238,6 +240,7 @@ class AlphabetLMConfig:
             >= self.slow_cnn_pole_maximum_half_life
             or self.slow_cnn_pole_query not in {"none", "anchor", "token"}
             or not 0.0 < self.slow_cnn_pole_query_rho < 1.0
+            or not 0.0 < self.slow_cnn_pole_key_rho < 1.0
         ):
             raise ValueError("invalid slow CNN pole memory configuration")
 
@@ -921,6 +924,8 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         epsilon: float,
         query_mode: Literal["none", "anchor", "token"] = "none",
         query_rho: float = 0.5,
+        key_enabled: bool = False,
+        key_rho: float = 0.5,
     ) -> None:
         super().__init__(
             modes,
@@ -938,6 +943,7 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         self.stride = int(stride)
         self.query_mode = query_mode
         self.query_rho = float(query_rho)
+        self.key_rho = float(key_rho)
         initial_beta = float(self.beta.detach())
         self.beta = nn.Parameter(torch.full((upper_blocks,), initial_beta))
         if query_mode == "none":
@@ -947,6 +953,13 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             self.query_norm = nn.RMSNorm(2 * modes, eps=epsilon)
             self.query = nn.Linear(2 * modes, pole_modes, bias=False)
             nn.init.zeros_(self.query.weight)
+        if key_enabled:
+            self.key_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+            self.key = nn.Linear(2 * modes, pole_modes, bias=False)
+            nn.init.zeros_(self.key.weight)
+        else:
+            self.key_norm = None
+            self.key = None
 
     def query_gate(self, packed: Tensor) -> Tensor:
         if self.query_norm is None or self.query is None:
@@ -960,6 +973,18 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         gate = 1.0 + self.query_rho * torch.tanh(logits)
         return gate / gate.mean(dim=-1, keepdim=True)
 
+    def key_gate(self, packed: Tensor) -> Tensor:
+        if self.key_norm is None or self.key is None:
+            return torch.ones(
+                *packed.shape[:-1],
+                self.memory.modes,
+                device=packed.device,
+                dtype=packed.dtype,
+            )
+        logits = self.key(self.key_norm(packed))
+        gate = 1.0 + self.key_rho * torch.tanh(logits)
+        return gate / gate.mean(dim=-1, keepdim=True)
+
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         steps = real.shape[1]
         full_anchors = steps // self.stride
@@ -970,6 +995,12 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             drive_real[:, self.stride - 1 : full_anchors * self.stride : self.stride],
             drive_imag[:, self.stride - 1 : full_anchors * self.stride : self.stride],
         )
+        packed = torch.cat((real, imag), dim=-1)
+        anchor_features = packed[
+            :, self.stride - 1 : full_anchors * self.stride : self.stride
+        ]
+        key_gate = self.key_gate(anchor_features)
+        anchors = anchors[0] * key_gate, anchors[1] * key_gate
         state = self.memory(*anchors) if self.use_recurrence else anchors
         zero = torch.zeros_like(state[0][:, :1]), torch.zeros_like(state[1][:, :1])
         delayed_state = (
@@ -977,10 +1008,6 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             torch.cat((zero[1], state[1]), dim=1),
         )
         if self.query_mode == "anchor":
-            packed = torch.cat((real, imag), dim=-1)
-            anchor_features = packed[
-                :, self.stride - 1 : full_anchors * self.stride : self.stride
-            ]
             anchor_gate = self.query_gate(anchor_features)
             delayed_gate = torch.cat((torch.ones_like(anchor_gate[:, :1]), anchor_gate), dim=1)
             delayed_state = (
@@ -1651,6 +1678,8 @@ class AlphabetLM(nn.Module):
                     epsilon=config.rms_epsilon,
                     query_mode=config.slow_cnn_pole_query,
                     query_rho=config.slow_cnn_pole_query_rho,
+                    key_enabled=config.slow_cnn_pole_key,
+                    key_rho=config.slow_cnn_pole_key_rho,
                 )
         else:
             self.slow_cnn_pole_memory = None
