@@ -58,7 +58,18 @@ def test_baseline_entrypoint_freezes_environment_sources_and_parallel_queue() ->
     assert "DCNV3_WHEEL_SHA_FILE" in script
     assert "H200_DCNV3_WHEEL_SHA256" in script
     assert "--reuse-existing" in script
-    assert '"${QUEUE[@]}" --mode auto-run' in script
+    assert '"${QUEUE[@]}" --mps auto --mode auto-run' in script
+
+
+def test_baseline_entrypoint_is_always_owner_controlled() -> None:
+    script = (ROOT / "h200/run_baselines.sh").read_text()
+    guard = 'if [[ "${H200_OWNER_CONTROL_INNER:-0}" != "1" ]]; then'
+    assert guard in script
+    assert "scripts/run_h200_owner_controlled.py" in script
+    assert 'CONTROL_REF="refs/heads/control/imagenet1k-baselines"' in script
+    assert 'CONTROL_PATH="h200/baselines/control.json"' in script
+    assert '-- env H200_OWNER_CONTROL_INNER=1 bash "$0"' in script
+    assert script.index(guard) < script.index('ACTUAL_COMMIT="$(git rev-parse --verify HEAD)"')
 
 
 def test_baseline_dependency_lock_is_exact_and_hashed() -> None:

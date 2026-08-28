@@ -8,6 +8,9 @@ readonly SOURCE_MANIFEST="${PROJECT_ROOT}/h200/baselines/sources.json"
 readonly UNICONV_PATCH="${PROJECT_ROOT}/h200/baselines/patches/uniconvnet-dcnv3-torch29.patch"
 readonly WANDB_RUNTIME="${PROJECT_ROOT}/h200/baselines/wandb.runtime.json"
 readonly REQUIREMENTS_LOCK="${PROJECT_ROOT}/h200/baselines/requirements.lock"
+readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab.git"
+readonly CONTROL_REF="refs/heads/control/imagenet1k-baselines"
+readonly CONTROL_PATH="h200/baselines/control.json"
 readonly PYTHON_VERSION="3.13.11"
 readonly UV_VERSION="0.9.26"
 readonly DUMMY_WANDB_API_KEY="0000000000000000000000000000000000000000"
@@ -17,6 +20,39 @@ if [[ ! "${H200_EXPECTED_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "ERROR: H200_EXPECTED_COMMIT must be the exact 40-character deployment commit" >&2
   exit 2
 fi
+
+if [[ "${H200_OWNER_CONTROL_INNER:-0}" != "1" ]]; then
+  CONTROL_CAMPAIGN_ID="$(
+    python3 - "${CAMPAIGN_MANIFEST}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("campaign_id")
+if value != "h200-imagenet1k-matched-baselines-300ep-v1":
+    raise SystemExit("invalid ImageNet-1K baseline control campaign identity")
+print(value)
+PY
+  )"
+  readonly CONTROL_CAMPAIGN_ID
+  readonly CONTROL_STATE_ROOT="/app/output/daehwa00/run-control/${CONTROL_CAMPAIGN_ID}/${H200_EXPECTED_COMMIT}"
+  readonly CONTROL_STOP_MARKER="${CONTROL_STATE_ROOT}/stopped.json"
+  readonly CONTROL_FAST_STOP_MARKER="/dev/shm/lnet-owner-stop-${CONTROL_CAMPAIGN_ID}-${H200_EXPECTED_COMMIT}.json"
+  exec python3 scripts/run_h200_owner_controlled.py \
+    --repo-root "${PROJECT_ROOT}" \
+    --repo-url "${CONTROL_REPO_URL}" \
+    --ref "${CONTROL_REF}" \
+    --control-path "${CONTROL_PATH}" \
+    --campaign-id "${CONTROL_CAMPAIGN_ID}" \
+    --target-commit "${H200_EXPECTED_COMMIT}" \
+    --stop-marker "${CONTROL_STOP_MARKER}" \
+    --fast-stop-marker "${CONTROL_FAST_STOP_MARKER}" \
+    --poll-seconds 15 \
+    --grace-seconds 120 \
+    --term-seconds 30 \
+    -- env H200_OWNER_CONTROL_INNER=1 bash "$0"
+fi
+
 if [[ "${H200_ALLOW_NOASSERTION_SOURCES:-}" != "research-only" ]]; then
   echo "ERROR: ParC-Net/EMOv2 require explicit research-only NOASSERTION opt-in" >&2
   exit 2
