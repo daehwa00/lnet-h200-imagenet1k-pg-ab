@@ -404,25 +404,33 @@ else
   echo "H200_BASELINE_UNICONV_DISABLED=source_checkout_unavailable" >&2
 fi
 
+QUEUE_SCRIPT="scripts/run_h200_baseline_queue.py"
+if [[ "${H200_BASELINE_BACKLOG_ONLY:-0}" == "1" ]]; then
+  QUEUE_SCRIPT="scripts/run_h200_baseline_backlog.py"
+fi
+readonly QUEUE_SCRIPT
 QUEUE=(
-  "${ENV_ROOT}/bin/python" scripts/run_h200_baseline_queue.py
+  "${ENV_ROOT}/bin/python" "${QUEUE_SCRIPT}"
   --manifest "${CAMPAIGN_MANIFEST}"
   --root "${RUN_ROOT}"
   --repo "${PROJECT_ROOT}"
   --worker "${PROJECT_ROOT}/scripts/run_h200_baseline_worker.py"
   --python "${ENV_ROOT}/bin/python"
   --data-root "${DATA_ROOT}"
-  --mps auto
 )
 
 QUEUE_EXIT_CODE=0
-"${QUEUE[@]}" --mode auto-run || QUEUE_EXIT_CODE=$?
-"${ENV_ROOT}/bin/python" scripts/summarize_h200_baselines.py \
-  --campaign "${CAMPAIGN_MANIFEST}" \
-  --root "${RUN_ROOT}" \
-  --output "${RUN_ROOT}/summary.json"
+if [[ "${H200_BASELINE_BACKLOG_ONLY:-0}" == "1" ]]; then
+  "${QUEUE[@]}" || QUEUE_EXIT_CODE=$?
+else
+  "${QUEUE[@]}" --mps auto --mode auto-run || QUEUE_EXIT_CODE=$?
+  "${ENV_ROOT}/bin/python" scripts/summarize_h200_baselines.py \
+    --campaign "${CAMPAIGN_MANIFEST}" \
+    --root "${RUN_ROOT}" \
+    --output "${RUN_ROOT}/summary.json"
+fi
 echo "H200_BASELINE_CAMPAIGN_COMPLETE=${RUN_ROOT}/queue-status.json"
 if (( QUEUE_EXIT_CODE != 0 )); then
-  echo "H200_BASELINE_CAMPAIGN_INCOMPLETE=${RUN_ROOT}/summary.json" >&2
+  echo "H200_BASELINE_CAMPAIGN_INCOMPLETE=${RUN_ROOT}/queue-status.json" >&2
   exit "${QUEUE_EXIT_CODE}"
 fi
