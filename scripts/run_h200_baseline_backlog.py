@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the four unstarted seed-501 ImageNet-1K baselines on one H200."""
+"""Run the two slowest remaining 100-epoch ImageNet-1K baselines on H200."""
 
 from __future__ import annotations
 
@@ -13,13 +13,11 @@ import run_h200_baseline_queue as queue
 
 MODEL_KEYS = (
     "moganet_xt",
-    "convnextv2_atto",
     "emov2_1m",
-    "tinynext_t",
 )
 SEED = 501
 LEARNING_RATE = 3.0e-3
-GPU_MEMORY_FRACTION = 0.5
+GPU_MEMORY_FRACTION = 0.9
 
 
 def _args() -> argparse.Namespace:
@@ -31,7 +29,7 @@ def _args() -> argparse.Namespace:
     parser.add_argument("--python", type=Path, required=True)
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--max-attempts", type=int, default=2)
-    parser.add_argument("--max-parallel", type=int, choices=(1, 2, 4), default=2)
+    parser.add_argument("--max-parallel", type=int, choices=(1,), default=1)
     parser.add_argument("--poll-seconds", type=float, default=0.25)
     return parser.parse_args()
 
@@ -55,7 +53,7 @@ def main() -> int:
         "gpu_memory_fraction": GPU_MEMORY_FRACTION,
         "calibration_source": "completed RTX4090 fixed-grid screen",
     }
-    session = queue.start_mps(root, "auto")
+    session = queue.start_mps(root, "off")
 
     def stop(_signal_number: int, _frame: object) -> None:
         queue._terminate_active_processes()

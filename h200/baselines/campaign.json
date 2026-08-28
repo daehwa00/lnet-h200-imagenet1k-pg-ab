@@ -1,6 +1,6 @@
 {
   "schema": "lnet.h200.imagenet1k.baselines.v1",
-  "campaign_id": "h200-imagenet1k-matched-baselines-300ep-v1",
+  "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v1",
   "models": [
     {"key": "parc_net_xs", "display_name": "ParC-Net XS"},
     {"key": "parc_net_s", "display_name": "ParC-Net S"},
@@ -32,7 +32,7 @@
     "wandb_mode": "disabled"
   },
   "full_training": {
-    "epochs": 300,
+    "epochs": 100,
     "wandb_mode": "online"
   },
   "worker": {

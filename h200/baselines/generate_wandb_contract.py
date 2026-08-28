@@ -73,6 +73,7 @@ def _records(campaign: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
                     "H200",
                     "ImageNet-1K",
                     "matched-baseline",
+                    "100ep",
                     "three-seed",
                     "ip-scoped-untrusted",
                 ],

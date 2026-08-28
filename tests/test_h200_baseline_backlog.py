@@ -8,7 +8,7 @@ from scripts import run_h200_baseline_queue as queue
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_backlog_contains_only_four_unstarted_seed501_models(tmp_path: Path) -> None:
+def test_backlog_contains_only_two_100ep_seed501_models(tmp_path: Path) -> None:
     campaign = queue.load_campaign(ROOT / "h200/baselines/campaign.json")
     selected: dict[str, float] = dict.fromkeys(backlog.MODEL_KEYS, backlog.LEARNING_RATE)
     tasks = [
@@ -17,9 +17,14 @@ def test_backlog_contains_only_four_unstarted_seed501_models(tmp_path: Path) -> 
         if task.seed == backlog.SEED and task.model_key in backlog.MODEL_KEYS
     ]
     assert tuple(task.model_key for task in tasks) == backlog.MODEL_KEYS
+    assert backlog.MODEL_KEYS == ("moganet_xt", "emov2_1m")
     assert {task.seed for task in tasks} == {501}
     assert {task.learning_rate for task in tasks} == {3.0e-3}
-    assert backlog.GPU_MEMORY_FRACTION == 0.5
+    assert {task.epochs for task in tasks} == {100}
+    assert backlog.GPU_MEMORY_FRACTION == 0.9
+    source = (ROOT / "scripts/run_h200_baseline_backlog.py").read_text(encoding="utf-8")
+    assert 'queue.start_mps(root, "off")' in source
+    assert "default=1" in source
 
 
 def test_h200_entrypoint_routes_backlog_without_global_summary() -> None:
