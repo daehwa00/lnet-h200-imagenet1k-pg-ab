@@ -24,6 +24,7 @@ from lnet.alphabet_lm import (
     GroupedPackedComplexLinear,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
+    SemanticEdgePoleMemory,
     TensorProductPoleMemory1D,
 )
 from lnet.alphabet_lm_data import TokenBlockDataset
@@ -105,6 +106,19 @@ def _build(kind: str) -> nn.Module:
             chunk_minimum_half_life=1.0,
             chunk_maximum_half_life=128.0,
         )
+    elif kind in {"semantic_edge_p128", "semantic_edge_p128_no_recurrence"}:
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            semantic_edge_memory=True,
+            semantic_edge_stride=16,
+            semantic_edge_pole_modes=128,
+            semantic_edge_upper_blocks=4,
+            semantic_edge_beta_initial=0.01,
+            semantic_edge_use_recurrence=kind == "semantic_edge_p128",
+            semantic_edge_minimum_half_life=1.0,
+            semantic_edge_maximum_half_life=256.0,
+        )
     return AlphabetLM(config)
 
 
@@ -119,10 +133,13 @@ def _zero_memory(model: nn.Module) -> list[torch.utils.hooks.RemovableHandle]:
     chunk_memories = [
         module for module in model.modules() if isinstance(module, ChunkedSemanticPoleMemory)
     ]
+    edge_memories = [
+        module for module in model.modules() if isinstance(module, SemanticEdgePoleMemory)
+    ]
     sidecars = [
         module for module in model.modules() if isinstance(module, FixedPoleResidualSidecar)
     ]
-    writers = [memory.writer for memory in chunk_memories]
+    writers = [memory.writer for memory in (*chunk_memories, *edge_memories)]
     if not writers:
         writers = [sidecar.writer for sidecar in sidecars]
     if not writers:
@@ -219,6 +236,58 @@ def _chunk_memory_metrics(
         "half_life_chunks_min": float(half_lives.min()),
         "half_life_chunks_median": float(half_lives.median()),
         "half_life_chunks_max": float(half_lives.max()),
+    }
+
+
+@torch.no_grad()
+def _semantic_edge_metrics(
+    model: AlphabetLM,
+    dataset: TokenBlockDataset,
+    device: torch.device,
+) -> dict[str, object] | None:
+    edge_memory = model.semantic_edge_memory
+    if not isinstance(edge_memory, SemanticEdgePoleMemory):
+        return None
+    sample = dataset[0][:-1].unsqueeze(0).to(device)
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        packed = model.analysis(model.embedding(sample))
+        real, imag = packed.split(model.config.modes, dim=-1)
+        memory_start = model.config.layers - model.config.semantic_edge_upper_blocks
+        for block in model.blocks[:memory_start]:
+            real, imag = block(real, imag)
+        memory = edge_memory(real, imag)
+        branch_ratios: list[float] = []
+        for upper_index, block in enumerate(model.blocks[memory_start:]):
+            injected_real, injected_imag = edge_memory.inject(
+                real,
+                imag,
+                memory[0],
+                memory[1],
+                upper_index,
+            )
+            trunk_energy = real.float().square().add(imag.float().square()).mean()
+            branch_energy = (
+                (injected_real - real).float().square() + (injected_imag - imag).float().square()
+            ).mean()
+            branch_ratios.append(float(torch.sqrt(branch_energy / trunk_energy.clamp_min(1.0e-12))))
+            real, imag = block(injected_real, injected_imag)
+    half_lives = math.log(2.0) / edge_memory.memory.damping().float()
+    weight_real = edge_memory.excitation.weight_real.float()
+    weight_imag = edge_memory.excitation.weight_imag.float()
+    gram = weight_real @ weight_real.T + weight_imag @ weight_imag.T
+    identity = torch.eye(gram.shape[0], device=gram.device)
+    return {
+        "stride": edge_memory.stride,
+        "pole_modes": edge_memory.memory.modes,
+        "use_recurrence": edge_memory.use_recurrence,
+        "beta_by_upper_block": edge_memory.beta.float().detach().cpu().tolist(),
+        "beta_mean": float(edge_memory.beta.float().mean()),
+        "branch_to_trunk_rms_by_upper_block": branch_ratios,
+        "branch_to_trunk_rms_mean": sum(branch_ratios) / len(branch_ratios),
+        "half_life_anchors_min": float(half_lives.min()),
+        "half_life_anchors_median": float(half_lives.median()),
+        "half_life_anchors_max": float(half_lives.max()),
+        "excitation_row_gram_max_abs": float((gram - identity).abs().max()),
     }
 
 
@@ -578,6 +647,8 @@ def main() -> None:
             "dense_local_sidecar_normalized",
             "dense_local_sidecar_normalized_no_recurrence",
             "chunked_semantic_p128",
+            "semantic_edge_p128",
+            "semantic_edge_p128_no_recurrence",
             "mamba",
         ),
         required=True,
@@ -656,6 +727,9 @@ def main() -> None:
         chunk_memory_metrics = _chunk_memory_metrics(model, dataset, device)
         if chunk_memory_metrics is not None:
             payload["chunk_memory"] = chunk_memory_metrics
+        semantic_edge_metrics = _semantic_edge_metrics(model, dataset, device)
+        if semantic_edge_metrics is not None:
+            payload["semantic_edge"] = semantic_edge_metrics
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print("KAU_LM_CONTEXT=" + json.dumps(payload, sort_keys=True), flush=True)

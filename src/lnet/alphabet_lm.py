@@ -65,6 +65,14 @@ class AlphabetLMConfig:
     chunk_beta_initial: float = 0.01
     chunk_minimum_half_life: float = 1.0
     chunk_maximum_half_life: float = 128.0
+    semantic_edge_memory: bool = False
+    semantic_edge_stride: int = 16
+    semantic_edge_pole_modes: int = 128
+    semantic_edge_upper_blocks: int = 4
+    semantic_edge_beta_initial: float = 0.01
+    semantic_edge_use_recurrence: bool = True
+    semantic_edge_minimum_half_life: float = 1.0
+    semantic_edge_maximum_half_life: float = 256.0
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -97,6 +105,9 @@ class AlphabetLMConfig:
             self.chunk_summary_width,
             self.chunk_pole_modes,
             self.chunk_upper_blocks,
+            self.semantic_edge_stride,
+            self.semantic_edge_pole_modes,
+            self.semantic_edge_upper_blocks,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -130,6 +141,7 @@ class AlphabetLMConfig:
             raise ValueError("invalid ALPHABET-LM dynamic initialization")
         self._validate_memory_layout()
         self._validate_chunk_memory()
+        self._validate_semantic_edge_memory()
         if self.write_map == "dynamic_low_rank" and (
             self.reader_type != "dense_k3"
             or self.memory_layout != "flat"
@@ -150,6 +162,19 @@ class AlphabetLMConfig:
             or self.chunk_minimum_half_life >= self.chunk_maximum_half_life
         ):
             raise ValueError("invalid chunk semantic memory configuration")
+
+    def _validate_semantic_edge_memory(self) -> None:
+        if not self.semantic_edge_memory:
+            return
+        if (
+            self.chunk_memory
+            or self.memory_layout != "local_only"
+            or self.reader_type != "dense_k3"
+            or self.semantic_edge_upper_blocks > self.layers
+            or not 0.0 < self.semantic_edge_beta_initial < 1.0
+            or self.semantic_edge_minimum_half_life >= self.semantic_edge_maximum_half_life
+        ):
+            raise ValueError("invalid semantic edge memory configuration")
 
     def _validate_memory_layout(self) -> None:
         if self.memory_layout == "tensor_product" and (
@@ -574,6 +599,108 @@ class ChunkedSemanticPoleMemory(nn.Module):
         return (
             memory_real.repeat_interleave(self.chunk_size, dim=1)[:, :steps],
             memory_imag.repeat_interleave(self.chunk_size, dim=1)[:, :steps],
+        )
+
+    def inject(
+        self,
+        real: Tensor,
+        imag: Tensor,
+        memory_real: Tensor,
+        memory_imag: Tensor,
+        upper_index: int,
+    ) -> ComplexField:
+        trunk_rms = torch.sqrt(
+            real.float().square().add(imag.float().square()).mean(dim=-1, keepdim=True)
+        )
+        memory_rms = torch.sqrt(
+            memory_real.float()
+            .square()
+            .add(memory_imag.float().square())
+            .mean(dim=-1, keepdim=True)
+        )
+        scale = (trunk_rms / (memory_rms + self.epsilon)).detach().to(real.dtype)
+        beta = self.beta[upper_index].to(real.dtype)
+        return (
+            real + beta * memory_real * scale,
+            imag + beta * memory_imag * scale,
+        )
+
+
+class SemanticEdgePoleMemory(nn.Module):
+    """Persist complementary level/detail evidence on a slower semantic clock."""
+
+    def __init__(
+        self,
+        modes: int,
+        *,
+        stride: int,
+        pole_modes: int,
+        upper_blocks: int,
+        beta_initial: float,
+        use_recurrence: bool,
+        context_length: int,
+        scan_fp32: bool,
+        minimum_half_life: float,
+        maximum_half_life: float,
+        epsilon: float,
+    ) -> None:
+        super().__init__()
+        self.modes = int(modes)
+        self.stride = int(stride)
+        self.use_recurrence = bool(use_recurrence)
+        self.epsilon = float(epsilon)
+        self.norm = ComplexRMSNorm(modes)
+        self.excitation = PackedComplexLinear(2 * modes, pole_modes)
+        with torch.no_grad():
+            nn.init.orthogonal_(self.excitation.weight_real)
+            self.excitation.weight_imag.zero_()
+        self.memory = FixedComplexPoleMemory1D(
+            pole_modes,
+            context_length=context_length,
+            scan_fp32=scan_fp32,
+            initialization="lifetime_palette",
+            minimum_half_life=minimum_half_life,
+            maximum_half_life=maximum_half_life,
+            decay_dominant_fraction=0.5,
+        )
+        self.writer = PackedComplexLinear(pole_modes, modes)
+        self.beta = nn.Parameter(torch.full((upper_blocks,), float(beta_initial)))
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        if real.shape != imag.shape or real.ndim != 3 or real.shape[-1] != self.modes:
+            raise ValueError("semantic edge memory expects matching B,T,K coordinates")
+        steps = real.shape[1]
+        full_anchors = steps // self.stride
+        if full_anchors == 0:
+            return torch.zeros_like(real), torch.zeros_like(imag)
+        unit_real, unit_imag = self.norm(real, imag)
+        anchors_real = unit_real[:, self.stride - 1 : full_anchors * self.stride : self.stride]
+        anchors_imag = unit_imag[:, self.stride - 1 : full_anchors * self.stride : self.stride]
+        previous_real = torch.cat(
+            (torch.zeros_like(anchors_real[:, :1]), anchors_real[:, :-1]), dim=1
+        )
+        previous_imag = torch.cat(
+            (torch.zeros_like(anchors_imag[:, :1]), anchors_imag[:, :-1]), dim=1
+        )
+        inverse_sqrt_two = math.sqrt(0.5)
+        level_real = inverse_sqrt_two * (previous_real + anchors_real)
+        level_imag = inverse_sqrt_two * (previous_imag + anchors_imag)
+        detail_real = inverse_sqrt_two * (anchors_real - previous_real)
+        detail_imag = inverse_sqrt_two * (anchors_imag - previous_imag)
+        drive = self.excitation(
+            torch.cat((level_real, detail_real), dim=-1),
+            torch.cat((level_imag, detail_imag), dim=-1),
+        )
+        state = self.memory(*drive) if self.use_recurrence else drive
+        zero = torch.zeros_like(state[0][:, :1]), torch.zeros_like(state[1][:, :1])
+        delayed_state = (
+            torch.cat((zero[0], state[0]), dim=1),
+            torch.cat((zero[1], state[1]), dim=1),
+        )
+        memory_real, memory_imag = self.writer(*delayed_state)
+        return (
+            memory_real.repeat_interleave(self.stride, dim=1)[:, :steps],
+            memory_imag.repeat_interleave(self.stride, dim=1)[:, :steps],
         )
 
     def inject(
@@ -1178,6 +1305,23 @@ class AlphabetLM(nn.Module):
                 )
         else:
             self.chunk_memory = None
+        if config.semantic_edge_memory:
+            with torch.random.fork_rng(devices=[]):
+                self.semantic_edge_memory = SemanticEdgePoleMemory(
+                    config.modes,
+                    stride=config.semantic_edge_stride,
+                    pole_modes=config.semantic_edge_pole_modes,
+                    upper_blocks=config.semantic_edge_upper_blocks,
+                    beta_initial=config.semantic_edge_beta_initial,
+                    use_recurrence=config.semantic_edge_use_recurrence,
+                    context_length=config.context_length,
+                    scan_fp32=config.scan_fp32,
+                    minimum_half_life=config.semantic_edge_minimum_half_life,
+                    maximum_half_life=config.semantic_edge_maximum_half_life,
+                    epsilon=config.rms_epsilon,
+                )
+        else:
+            self.semantic_edge_memory = None
         nn.init.normal_(self.embedding.weight, mean=0.0, std=0.02)
         nn.init.orthogonal_(self.analysis.weight)
 
@@ -1186,12 +1330,28 @@ class AlphabetLM(nn.Module):
         real, imag = packed.split(self.config.modes, dim=-1)
         chunk_memory: ComplexField | None = None
         active_chunk_memory = self.chunk_memory
-        memory_start = self.config.layers - self.config.chunk_upper_blocks
+        active_edge_memory = self.semantic_edge_memory
+        upper_blocks = (
+            self.config.chunk_upper_blocks
+            if active_chunk_memory is not None
+            else self.config.semantic_edge_upper_blocks
+        )
+        memory_start = self.config.layers - upper_blocks
         for index, block in enumerate(self.blocks):
             if active_chunk_memory is not None and index == memory_start:
                 chunk_memory = active_chunk_memory(real, imag)
             if active_chunk_memory is not None and chunk_memory is not None:
                 real, imag = active_chunk_memory.inject(
+                    real,
+                    imag,
+                    chunk_memory[0],
+                    chunk_memory[1],
+                    index - memory_start,
+                )
+            if active_edge_memory is not None and index == memory_start:
+                chunk_memory = active_edge_memory(real, imag)
+            if active_edge_memory is not None and chunk_memory is not None:
+                real, imag = active_edge_memory.inject(
                     real,
                     imag,
                     chunk_memory[0],
@@ -1221,5 +1381,6 @@ __all__ = [
     "LowRankDecaySelector",
     "LowRankPoleRouter",
     "QueryConditionedLowRankReadout",
+    "SemanticEdgePoleMemory",
     "TensorProductPoleMemory1D",
 ]

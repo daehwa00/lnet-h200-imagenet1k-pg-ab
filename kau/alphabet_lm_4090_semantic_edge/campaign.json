@@ -1,0 +1,80 @@
+{
+  "schema": "lnet.kau.alphabet_lm.semantic_edge_1m.v1",
+  "campaign_id": "kau-alphabet-lm-semantic-edge-p128-1m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-semantic-edge-p128-1m-v1",
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "alphabet-semantic-edge-p128-recurrent": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "semantic_edge_memory": true,
+        "semantic_edge_stride": 16,
+        "semantic_edge_pole_modes": 128,
+        "semantic_edge_upper_blocks": 4,
+        "semantic_edge_beta_initial": 0.01,
+        "semantic_edge_use_recurrence": true,
+        "semantic_edge_minimum_half_life": 1.0,
+        "semantic_edge_maximum_half_life": 256.0
+      },
+      "alphabet-semantic-edge-p128-no-recurrence": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "semantic_edge_memory": true,
+        "semantic_edge_stride": 16,
+        "semantic_edge_pole_modes": 128,
+        "semantic_edge_upper_blocks": 4,
+        "semantic_edge_beta_initial": 0.01,
+        "semantic_edge_use_recurrence": false,
+        "semantic_edge_minimum_half_life": 1.0,
+        "semantic_edge_maximum_half_life": 256.0
+      }
+    }
+  },
+  "trunk": {
+    "checkpoint": "/home/daehwa/alphabet-lm-4090-local-only-10m-runs/3b958854c3c988cb/run/checkpoint.pt",
+    "checkpoint_sha256": "e52c4a7f169d33517c21493ef762d6754003334584ff923603c4b7997fa216d3",
+    "validation_loss": 5.864740199879449,
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/c2e3a82c4b605e40"
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 1000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-semantic-edge-p128-recurrent",
+      "alphabet-semantic-edge-p128-no-recurrence"
+    ]
+  },
+  "parameter_counts": {
+    "alphabet-semantic-edge-p128-recurrent": 197124,
+    "alphabet-semantic-edge-p128-no-recurrence": 197124
+  },
+  "total_parameter_counts": {
+    "alphabet-semantic-edge-p128-recurrent": 36903940,
+    "alphabet-semantic-edge-p128-no-recurrence": 36903940
+  },
+  "diagnostics": {
+    "validation_sequence_limit": 512,
+    "context_segments": [2048, 512, 128, 32, 1],
+    "memory_zero": true,
+    "beta_statistics": true,
+    "evidence": "complex unitary level/detail over stride-16 semantic anchors"
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-SemanticEdgeP128-1M-S501-v1"
+  }
+}

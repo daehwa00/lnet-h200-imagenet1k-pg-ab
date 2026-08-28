@@ -1,0 +1,115 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "alphabet-semantic-edge-p128-no-recurrence": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "semantic_edge_beta_initial": 0.01,
+        "semantic_edge_maximum_half_life": 256.0,
+        "semantic_edge_memory": true,
+        "semantic_edge_minimum_half_life": 1.0,
+        "semantic_edge_pole_modes": 128,
+        "semantic_edge_stride": 16,
+        "semantic_edge_upper_blocks": 4,
+        "semantic_edge_use_recurrence": false
+      },
+      "alphabet-semantic-edge-p128-recurrent": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "semantic_edge_beta_initial": 0.01,
+        "semantic_edge_maximum_half_life": 256.0,
+        "semantic_edge_memory": true,
+        "semantic_edge_minimum_half_life": 1.0,
+        "semantic_edge_pole_modes": 128,
+        "semantic_edge_stride": 16,
+        "semantic_edge_upper_blocks": 4,
+        "semantic_edge_use_recurrence": true
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-semantic-edge-p128-1m-s501-v1",
+  "campaign_manifest_sha256": "4ed6c163a6bf504f279ce2fa081bb566b034a8c4ac2a7cc1b1a5c829402f219c",
+  "diagnostics": {
+    "beta_statistics": true,
+    "context_segments": [
+      2048,
+      512,
+      128,
+      32,
+      1
+    ],
+    "evidence": "complex unitary level/detail over stride-16 semantic anchors",
+    "memory_zero": true,
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-SemanticEdgeP128-1M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-semantic-edge-p128-1m-v1",
+  "parameter_counts": {
+    "alphabet-semantic-edge-p128-no-recurrence": 197124,
+    "alphabet-semantic-edge-p128-recurrent": 197124
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet-semantic-edge-p128-no-recurrence": {
+      "display_name": "RTX4090-S501-ALPHABET-SemanticEdgeP128-NoRecurrence-1M",
+      "id": "76bc957783c6843c",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "SemanticEdge",
+        "Stride16",
+        "P128",
+        "NoRecurrence",
+        "1M",
+        "seed501"
+      ]
+    },
+    "alphabet-semantic-edge-p128-recurrent": {
+      "display_name": "RTX4090-S501-ALPHABET-SemanticEdgeP128-Recurrent-1M",
+      "id": "f7c62786e9fd8e4e",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "SemanticEdge",
+        "Stride16",
+        "P128",
+        "Recurrent",
+        "1M",
+        "seed501"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.semantic_edge_1m.runtime.v1",
+  "total_parameter_counts": {
+    "alphabet-semantic-edge-p128-no-recurrence": 36903940,
+    "alphabet-semantic-edge-p128-recurrent": 36903940
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-semantic-edge-p128-recurrent",
+      "alphabet-semantic-edge-p128-no-recurrence"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 1000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  },
+  "trunk": {
+    "checkpoint": "/home/daehwa/alphabet-lm-4090-local-only-10m-runs/3b958854c3c988cb/run/checkpoint.pt",
+    "checkpoint_sha256": "e52c4a7f169d33517c21493ef762d6754003334584ff923603c4b7997fa216d3",
+    "validation_loss": 5.864740199879449,
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/c2e3a82c4b605e40"
+  }
+}

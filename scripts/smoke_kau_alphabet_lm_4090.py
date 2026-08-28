@@ -66,6 +66,8 @@ def main() -> None:
             "normalized_sidecar",
             "normalized_local_sidecar",
             "chunked_semantic_p128",
+            "semantic_edge_p128",
+            "semantic_edge_p128_no_recurrence",
         ),
         default="all",
     )
@@ -94,6 +96,8 @@ def main() -> None:
         "normalized_sidecar",
         "normalized_local_sidecar",
         "chunked_semantic_p128",
+        "semantic_edge_p128",
+        "semantic_edge_p128_no_recurrence",
     }:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
@@ -276,6 +280,26 @@ def main() -> None:
             raise RuntimeError("Chunked Semantic P128 parameter contract changed")
         full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
         results["alphabet-chunked-semantic-p128"] = _step(chunked, full_microbatch)
+    if args.only in {"semantic_edge_p128", "semantic_edge_p128_no_recurrence"}:
+        torch.manual_seed(501)
+        edge = AlphabetLM(
+            AlphabetLMConfig(
+                reader_type="dense_k3",
+                memory_layout="local_only",
+                semantic_edge_memory=True,
+                semantic_edge_stride=16,
+                semantic_edge_pole_modes=128,
+                semantic_edge_upper_blocks=4,
+                semantic_edge_beta_initial=0.01,
+                semantic_edge_use_recurrence=args.only == "semantic_edge_p128",
+                semantic_edge_minimum_half_life=1.0,
+                semantic_edge_maximum_half_life=256.0,
+            )
+        )
+        if sum(parameter.numel() for parameter in edge.parameters()) != 36_903_940:
+            raise RuntimeError("Semantic Edge P128 parameter contract changed")
+        full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
+        results[args.only] = _step(edge, full_microbatch)
     if args.only == "all":
         torch.manual_seed(501)
         mamba, parameters, relative_error = build_parameter_matched_mamba(

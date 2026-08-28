@@ -22,6 +22,7 @@ from lnet.alphabet_lm import (
     IdentityComplexMemory1D,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
+    SemanticEdgePoleMemory,
     TensorProductPoleMemory1D,
 )
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
@@ -31,6 +32,7 @@ from scripts.prepare_h200_alphabet_lm_data import _parquet_to_jsonl, _split_docu
 from scripts.train_h200_alphabet_lm_10m import (
     _copy_matching_legacy_initialization,
     _initialize_chunk_memory_from_trunk,
+    _initialize_semantic_edge_from_trunk,
     _initialize_sidecar_from_trunk,
 )
 
@@ -962,6 +964,137 @@ def test_chunk_memory_checkpoint_freezes_lower_trunk_and_trains_upper_blocks(
     for name, value in chunked.state_dict().items():
         if not name.startswith("chunk_memory."):
             torch.testing.assert_close(value, frozen_state[name], atol=0.0, rtol=0.0)
+
+
+def test_semantic_level_detail_is_energy_preserving() -> None:
+    previous = torch.randn(3, 5, 16, dtype=torch.complex64)
+    current = torch.randn_like(previous)
+    level = math.sqrt(0.5) * (previous + current)
+    detail = math.sqrt(0.5) * (current - previous)
+    source_energy = previous.abs().square() + current.abs().square()
+    edge_energy = level.abs().square() + detail.abs().square()
+    torch.testing.assert_close(edge_energy, source_energy, atol=2.0e-6, rtol=2.0e-6)
+
+
+def test_semantic_edge_memory_is_delayed_and_semi_orthogonal() -> None:
+    def config(*, use_recurrence: bool) -> AlphabetLMConfig:
+        return AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=4,
+            post_hidden=12,
+            context_length=64,
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            semantic_edge_memory=True,
+            semantic_edge_stride=4,
+            semantic_edge_pole_modes=8,
+            semantic_edge_upper_blocks=2,
+            semantic_edge_beta_initial=0.01,
+            semantic_edge_use_recurrence=use_recurrence,
+            semantic_edge_minimum_half_life=1.0,
+            semantic_edge_maximum_half_life=8.0,
+        )
+
+    torch.manual_seed(501)
+    recurrent = AlphabetLM(config(use_recurrence=True)).eval()
+    torch.manual_seed(501)
+    control = AlphabetLM(config(use_recurrence=False)).eval()
+    for name, parameter in recurrent.named_parameters():
+        torch.testing.assert_close(
+            parameter,
+            dict(control.named_parameters())[name],
+            atol=0.0,
+            rtol=0.0,
+        )
+    edge = cast("SemanticEdgePoleMemory", recurrent.semantic_edge_memory)
+    gram = (
+        edge.excitation.weight_real @ edge.excitation.weight_real.T
+        + edge.excitation.weight_imag @ edge.excitation.weight_imag.T
+    )
+    torch.testing.assert_close(gram, torch.eye(8), atol=2.0e-6, rtol=0.0)
+
+    torch.manual_seed(501)
+    local = AlphabetLM(replace(config(use_recurrence=True), semantic_edge_memory=False)).eval()
+    tokens = torch.randint(64, (2, 17))
+    with torch.no_grad():
+        recurrent_logits = recurrent(tokens)
+        local_logits = local(tokens)
+    torch.testing.assert_close(recurrent_logits[:, :4], local_logits[:, :4], atol=0.0, rtol=0.0)
+
+
+def test_semantic_edge_memory_is_causal_for_partial_anchor_sequences() -> None:
+    torch.manual_seed(501)
+    model = AlphabetLM(
+        AlphabetLMConfig(
+            vocab_size=64,
+            modes=8,
+            pole_modes=12,
+            layers=4,
+            post_hidden=12,
+            context_length=64,
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            semantic_edge_memory=True,
+            semantic_edge_stride=4,
+            semantic_edge_pole_modes=8,
+            semantic_edge_upper_blocks=2,
+            semantic_edge_minimum_half_life=1.0,
+            semantic_edge_maximum_half_life=8.0,
+        )
+    ).eval()
+    for steps in (1, 4, 5, 9, 16):
+        tokens = torch.randint(64, (2, steps))
+        with torch.no_grad():
+            assert model(tokens).shape == (2, steps, 64)
+    tokens = torch.randint(64, (1, 16))
+    changed = tokens.clone()
+    changed[:, 8:] = torch.randint(64, changed[:, 8:].shape)
+    with torch.no_grad():
+        expected = model(tokens)
+        actual = model(changed)
+    torch.testing.assert_close(actual[:, :8], expected[:, :8], atol=1.0e-6, rtol=0.0)
+
+
+def test_semantic_edge_checkpoint_freezes_every_local_parameter(tmp_path: Path) -> None:
+    base = AlphabetLMConfig(
+        vocab_size=64,
+        modes=8,
+        pole_modes=12,
+        layers=4,
+        post_hidden=12,
+        context_length=64,
+        reader_type="dense_k3",
+        memory_layout="local_only",
+    )
+    torch.manual_seed(501)
+    local = AlphabetLM(base)
+    checkpoint = tmp_path / "local.pt"
+    torch.save({"model": local.state_dict()}, checkpoint)
+    torch.manual_seed(9)
+    edge_model = AlphabetLM(
+        replace(
+            base,
+            semantic_edge_memory=True,
+            semantic_edge_stride=4,
+            semantic_edge_pole_modes=8,
+            semantic_edge_upper_blocks=2,
+            semantic_edge_minimum_half_life=1.0,
+            semantic_edge_maximum_half_life=8.0,
+        )
+    )
+    contract = _initialize_semantic_edge_from_trunk(edge_model, checkpoint)
+    assert contract["enabled"] is True
+    trainable = [
+        name for name, parameter in edge_model.named_parameters() if parameter.requires_grad
+    ]
+    assert trainable
+    assert all(name.startswith("semantic_edge_memory.") for name in trainable)
+    local_state = local.state_dict()
+    for name, value in edge_model.state_dict().items():
+        if not name.startswith("semantic_edge_memory."):
+            torch.testing.assert_close(value, local_state[name], atol=0.0, rtol=0.0)
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:

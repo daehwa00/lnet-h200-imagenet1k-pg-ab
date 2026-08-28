@@ -49,6 +49,7 @@ KAU_FROZEN_NORMALIZED_SIDECAR_RUNTIME_SCHEMA = (
 KAU_FROZEN_LOCAL_SIDECAR_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.frozen_local_sidecar_1m.runtime.v1"
 KAU_LOCAL_ONLY_10M_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.local_only_10m.runtime.v1"
 KAU_CHUNKED_SEMANTIC_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.chunked_semantic_1m.runtime.v1"
+KAU_SEMANTIC_EDGE_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.semantic_edge_1m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -210,6 +211,35 @@ def _initialize_chunk_memory_from_trunk(
     }
 
 
+def _initialize_semantic_edge_from_trunk(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.semantic_edge_memory is None:
+        raise RuntimeError("semantic-edge initialization requires semantic edge memory")
+    payload = cast(
+        "dict[str, Any]", torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    expected_missing = {
+        name for name in model.state_dict() if name.startswith("semantic_edge_memory.")
+    }
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("LocalOnly checkpoint does not match the semantic-edge trunk")
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(name.startswith("semantic_edge_memory."))
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": sha256_file(checkpoint_path),
+        "missing_edge_tensors": len(expected_missing),
+        "trunk_frozen": True,
+    }
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -254,6 +284,14 @@ def _build(
     chunk_beta_initial: float = 0.01,
     chunk_minimum_half_life: float = 1.0,
     chunk_maximum_half_life: float = 128.0,
+    semantic_edge_memory: bool = False,
+    semantic_edge_stride: int = 16,
+    semantic_edge_pole_modes: int = 128,
+    semantic_edge_upper_blocks: int = 4,
+    semantic_edge_beta_initial: float = 0.01,
+    semantic_edge_use_recurrence: bool = True,
+    semantic_edge_minimum_half_life: float = 1.0,
+    semantic_edge_maximum_half_life: float = 256.0,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -293,6 +331,14 @@ def _build(
         chunk_beta_initial=chunk_beta_initial,
         chunk_minimum_half_life=chunk_minimum_half_life,
         chunk_maximum_half_life=chunk_maximum_half_life,
+        semantic_edge_memory=semantic_edge_memory,
+        semantic_edge_stride=semantic_edge_stride,
+        semantic_edge_pole_modes=semantic_edge_pole_modes,
+        semantic_edge_upper_blocks=semantic_edge_upper_blocks,
+        semantic_edge_beta_initial=semantic_edge_beta_initial,
+        semantic_edge_use_recurrence=semantic_edge_use_recurrence,
+        semantic_edge_minimum_half_life=semantic_edge_minimum_half_life,
+        semantic_edge_maximum_half_life=semantic_edge_maximum_half_life,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -499,6 +545,19 @@ def main() -> None:
     parser.add_argument("--initialize-chunk-trunk-checkpoint", type=Path)
     parser.add_argument("--train-upper-blocks", type=int, default=0)
     parser.add_argument("--upper-block-lr-multiplier", type=float, default=0.1)
+    parser.add_argument("--semantic-edge-memory", action="store_true")
+    parser.add_argument("--semantic-edge-stride", type=int, default=16)
+    parser.add_argument("--semantic-edge-pole-modes", type=int, default=128)
+    parser.add_argument("--semantic-edge-upper-blocks", type=int, default=4)
+    parser.add_argument("--semantic-edge-beta-initial", type=float, default=0.01)
+    parser.add_argument(
+        "--semantic-edge-use-recurrence",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--semantic-edge-minimum-half-life", type=float, default=1.0)
+    parser.add_argument("--semantic-edge-maximum-half-life", type=float, default=256.0)
+    parser.add_argument("--initialize-semantic-edge-trunk-checkpoint", type=Path)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -525,6 +584,7 @@ def main() -> None:
         KAU_FROZEN_LOCAL_SIDECAR_RUNTIME_SCHEMA,
         KAU_LOCAL_ONLY_10M_RUNTIME_SCHEMA,
         KAU_CHUNKED_SEMANTIC_RUNTIME_SCHEMA,
+        KAU_SEMANTIC_EDGE_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -581,6 +641,14 @@ def main() -> None:
         chunk_beta_initial=args.chunk_beta_initial,
         chunk_minimum_half_life=args.chunk_minimum_half_life,
         chunk_maximum_half_life=args.chunk_maximum_half_life,
+        semantic_edge_memory=args.semantic_edge_memory,
+        semantic_edge_stride=args.semantic_edge_stride,
+        semantic_edge_pole_modes=args.semantic_edge_pole_modes,
+        semantic_edge_upper_blocks=args.semantic_edge_upper_blocks,
+        semantic_edge_beta_initial=args.semantic_edge_beta_initial,
+        semantic_edge_use_recurrence=args.semantic_edge_use_recurrence,
+        semantic_edge_minimum_half_life=args.semantic_edge_minimum_half_life,
+        semantic_edge_maximum_half_life=args.semantic_edge_maximum_half_life,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -592,6 +660,7 @@ def main() -> None:
         if (
             args.initialize_trunk_checkpoint is not None
             or args.initialize_chunk_trunk_checkpoint is not None
+            or args.initialize_semantic_edge_trunk_checkpoint is not None
         ):
             raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
@@ -618,6 +687,10 @@ def main() -> None:
         model,
         args.initialize_chunk_trunk_checkpoint,
         train_upper_blocks=args.train_upper_blocks,
+    )
+    semantic_edge_initialization = _initialize_semantic_edge_from_trunk(
+        model,
+        args.initialize_semantic_edge_trunk_checkpoint,
     )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
@@ -648,6 +721,14 @@ def main() -> None:
             "chunk_maximum_half_life": args.chunk_maximum_half_life,
             "train_upper_blocks": args.train_upper_blocks,
             "upper_block_lr_multiplier": args.upper_block_lr_multiplier,
+            "semantic_edge_memory": args.semantic_edge_memory,
+            "semantic_edge_stride": args.semantic_edge_stride,
+            "semantic_edge_pole_modes": args.semantic_edge_pole_modes,
+            "semantic_edge_upper_blocks": args.semantic_edge_upper_blocks,
+            "semantic_edge_beta_initial": args.semantic_edge_beta_initial,
+            "semantic_edge_use_recurrence": args.semantic_edge_use_recurrence,
+            "semantic_edge_minimum_half_life": args.semantic_edge_minimum_half_life,
+            "semantic_edge_maximum_half_life": args.semantic_edge_maximum_half_life,
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -763,6 +844,15 @@ def main() -> None:
         "chunk_trunk_initialization": chunk_trunk_initialization,
         "train_upper_blocks": args.train_upper_blocks,
         "upper_block_lr_multiplier": args.upper_block_lr_multiplier,
+        "semantic_edge_memory": args.semantic_edge_memory,
+        "semantic_edge_stride": args.semantic_edge_stride,
+        "semantic_edge_pole_modes": args.semantic_edge_pole_modes,
+        "semantic_edge_upper_blocks": args.semantic_edge_upper_blocks,
+        "semantic_edge_beta_initial": args.semantic_edge_beta_initial,
+        "semantic_edge_use_recurrence": args.semantic_edge_use_recurrence,
+        "semantic_edge_minimum_half_life": args.semantic_edge_minimum_half_life,
+        "semantic_edge_maximum_half_life": args.semantic_edge_maximum_half_life,
+        "semantic_edge_initialization": semantic_edge_initialization,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
