@@ -1187,6 +1187,11 @@ def test_cnn_pole_checkpoint_freezes_the_complete_local_trunk(tmp_path: Path) ->
     trainable = [name for name, parameter in model.named_parameters() if parameter.requires_grad]
     assert trainable
     assert all(name.startswith("cnn_pole_memories.") for name in trainable)
+    assert not any(name.endswith(".analysis.weight") for name in trainable)
+    trainable_parameters = sum(
+        parameter.numel() for parameter in model.parameters() if parameter.requires_grad
+    )
+    assert trainable_parameters == 1_218
     for name, value in model.state_dict().items():
         if not name.startswith("cnn_pole_memories."):
             torch.testing.assert_close(value, local.state_dict()[name], atol=0.0, rtol=0.0)

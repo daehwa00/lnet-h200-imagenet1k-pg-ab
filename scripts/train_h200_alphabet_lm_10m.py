@@ -264,7 +264,10 @@ def _initialize_cnn_pole_from_trunk(
     if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
         raise RuntimeError("LocalOnly checkpoint does not match the CNN-pole trunk")
     for name, parameter in model.named_parameters():
-        parameter.requires_grad_(name.startswith("cnn_pole_memories."))
+        trainable = name.startswith("cnn_pole_memories.") and not name.endswith(
+            ".analysis.weight"
+        )
+        parameter.requires_grad_(trainable)
     return {
         "enabled": True,
         "checkpoint": str(checkpoint_path),
