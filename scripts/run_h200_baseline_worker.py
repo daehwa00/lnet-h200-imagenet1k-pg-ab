@@ -448,7 +448,9 @@ def _build_loaders(task: BaselineTask, device: torch.device) -> LoaderBundle:
     train = DataLoader(
         train_dataset,
         shuffle=True,
-        drop_last=False,
+        # timm Mixup requires even batches; ImageNet-1K leaves an odd final
+        # partial batch at effective batch 256.
+        drop_last=True,
         generator=train_generator,
         **common,
     )

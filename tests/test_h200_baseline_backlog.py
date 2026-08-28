@@ -38,3 +38,11 @@ def test_preflight_jobs_are_added_to_the_authoritative_status_mapping(tmp_path: 
     jobs[task.task_id] = queue._new_job(task)
     authoritative = cast("dict[str, object]", status["jobs"])
     assert task.task_id in authoritative
+
+
+def test_worker_drops_the_odd_imagenet_training_tail() -> None:
+    source = (ROOT / "scripts/run_h200_baseline_worker.py").read_text(encoding="utf-8")
+    train_loader = source[
+        source.index("train = DataLoader(") : source.index("validation = DataLoader(")
+    ]
+    assert "drop_last=True" in train_loader

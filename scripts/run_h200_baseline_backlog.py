@@ -31,6 +31,7 @@ def _args() -> argparse.Namespace:
     parser.add_argument("--python", type=Path, required=True)
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--max-attempts", type=int, default=2)
+    parser.add_argument("--max-parallel", type=int, choices=(1, 2, 4), default=2)
     parser.add_argument("--poll-seconds", type=float, default=0.25)
     return parser.parse_args()
 
@@ -63,29 +64,7 @@ def main() -> int:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     try:
-        preflight_path = root / "preflight-result.json"
-        if not preflight_path.is_file():
-            status_code = queue._run_preflight(
-                campaign,
-                root,
-                status,
-                repo=args.repo.resolve(),
-                worker=args.worker.resolve(),
-                python=args.python.absolute(),
-                data_root=args.data_root.resolve(),
-                session=session,
-                max_attempts=args.max_attempts,
-                poll_seconds=args.poll_seconds,
-            )
-            if status_code:
-                raise RuntimeError("H200 backlog concurrency preflight failed")
-        preflight = queue._json_object(preflight_path)
-        max_parallel = queue._integer(
-            preflight.get("selected_max_parallel"),
-            "selected H200 backlog parallelism",
-        )
-        if max_parallel not in campaign.preflight_parallelism:
-            raise RuntimeError("H200 backlog selected invalid parallelism")
+        max_parallel = args.max_parallel
         selected: dict[str, float] = dict.fromkeys(MODEL_KEYS, LEARNING_RATE)
         tasks = [
             task
@@ -118,6 +97,14 @@ def main() -> int:
         )
         jobs = queue._jobs(status)
         completed = all(jobs[task.task_id].get("status") == "COMPLETED" for task in tasks)
+        if not completed:
+            for task in tasks:
+                if jobs[task.task_id].get("status") == "COMPLETED":
+                    continue
+                log_path = task.output_dir / "worker.log"
+                print(f"H200_BACKLOG_FAILURE_LOG={log_path}")
+                if log_path.is_file():
+                    print(log_path.read_text(encoding="utf-8")[-20_000:])
         status["backlog_status"] = "COMPLETE" if completed else "COMPLETE_WITH_FAILURES"
         queue._write_status(root, status)
         print(json.dumps(queue._status_summary(status), indent=2, sort_keys=True))
