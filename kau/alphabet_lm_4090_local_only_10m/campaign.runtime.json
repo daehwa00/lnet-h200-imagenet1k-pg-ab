@@ -1,0 +1,81 @@
+{
+  "architecture": {
+    "K": 256,
+    "P": 320,
+    "layers": 12,
+    "variants": {
+      "alphabet-dense-k3-local-only-10m": {
+        "memory_layout": "local_only",
+        "memory_readout": "fixed",
+        "paired_dense_copied_parameters": 36706816,
+        "pole_dynamics": "fixed",
+        "post_hidden": 384,
+        "reader_type": "dense_k3",
+        "write_map": "static"
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-local-only-10m-s501-v1",
+  "campaign_manifest_sha256": "7a811894453d93593e3c7d376e4263d9c11594a1e4f883e5b05aaf06d2b8de01",
+  "controls": {
+    "local_only_2m": {
+      "validation_loss": 6.760133224275417,
+      "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/e7453322a3a33629"
+    },
+    "mamba_10m": {
+      "validation_loss": 5.6978587456397625,
+      "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/54bfa60106163c27"
+    }
+  },
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      128,
+      32,
+      1
+    ],
+    "memory_zero": true,
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-LocalOnly-10M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-local-only-10m-v1",
+  "parameter_counts": {
+    "alphabet-dense-k3-local-only-10m": 36706816
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet-dense-k3-local-only-10m": {
+      "display_name": "RTX4090-S501-ALPHABET-DenseK3-LocalOnly-10M",
+      "id": "c2e3a82c4b605e40",
+      "tags": [
+        "RTX4090",
+        "FineWeb-Edu",
+        "10M",
+        "DenseK3",
+        "LocalOnly",
+        "end-to-end",
+        "seed501"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.local_only_10m.runtime.v1",
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-dense-k3-local-only-10m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 10000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

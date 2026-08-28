@@ -47,6 +47,7 @@ KAU_FROZEN_NORMALIZED_SIDECAR_RUNTIME_SCHEMA = (
     "lnet.kau.alphabet_lm.frozen_normalized_sidecar_1m.runtime.v1"
 )
 KAU_FROZEN_LOCAL_SIDECAR_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.frozen_local_sidecar_1m.runtime.v1"
+KAU_LOCAL_ONLY_10M_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.local_only_10m.runtime.v1"
 _STOP_EVENT = threading.Event()
 
 
@@ -454,6 +455,7 @@ def main() -> None:
         KAU_LOCAL_SIDECAR_RUNTIME_SCHEMA,
         KAU_FROZEN_NORMALIZED_SIDECAR_RUNTIME_SCHEMA,
         KAU_FROZEN_LOCAL_SIDECAR_RUNTIME_SCHEMA,
+        KAU_LOCAL_ONLY_10M_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
