@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("campaign_id")
-if value != "h200-imagenet1k-matched-baselines-300ep-v1":
+if value != "h200-imagenet1k-moga-emo-100ep-s501-v1":
     raise SystemExit("invalid ImageNet-1K baseline control campaign identity")
 print(value)
 PY
