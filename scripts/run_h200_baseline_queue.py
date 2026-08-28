@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 # pyright: reportAny=false, reportExplicitAny=false
-# ruff: noqa: C901, EM101, EM102, FBT003, PLR0911, PLR0912, PLR0915, S603, T201, TRY003
+# ruff: noqa: FBT003, PLR0911
 import argparse
 import fcntl
 import hashlib
@@ -335,17 +335,11 @@ def preflight_tasks(
     for slot, model_key in enumerate(preflight_keys[:parallelism]):
         model = models_by_key[model_key]
         output_dir = (
-            root
-            / "preflight"
-            / execution_mode
-            / f"parallel_{parallelism}"
-            / f"slot_{slot}"
+            root / "preflight" / execution_mode / f"parallel_{parallelism}" / f"slot_{slot}"
         )
         tasks.append(
             Task(
-                task_id=(
-                    f"preflight:{execution_mode}:p{parallelism}:slot{slot}:{model.key}"
-                ),
+                task_id=(f"preflight:{execution_mode}:p{parallelism}:slot{slot}:{model.key}"),
                 phase="preflight",
                 model_key=model.key,
                 seed=campaign.calibration_seed,
@@ -442,8 +436,9 @@ def _result_payload(task: Task) -> dict[str, object] | None:
     ):
         return None
     task_name = (
-        f"{task.model_key}__{task.phase}__seed{task.seed}__"
-        f"lr{task.learning_rate:.8g}".replace(".", "p")
+        f"{task.model_key}__{task.phase}__seed{task.seed}__lr{task.learning_rate:.8g}".replace(
+            ".", "p"
+        )
     )
     contract_path = task.output_dir / "contracts" / f"{task_name}.json"
     if not contract_path.is_file():
@@ -539,12 +534,10 @@ def _jobs(status: dict[str, object]) -> dict[str, dict[str, object]]:
     raw_jobs = status.get("jobs")
     if not isinstance(raw_jobs, dict):
         raise TypeError("queue status has no jobs object")
-    jobs: dict[str, dict[str, object]] = {}
     for task_id, raw_job in raw_jobs.items():
         if not isinstance(task_id, str) or not isinstance(raw_job, dict):
             raise TypeError("queue status jobs are invalid")
-        jobs[task_id] = cast("dict[str, object]", raw_job)
-    return jobs
+    return cast("dict[str, dict[str, object]]", raw_jobs)
 
 
 def _load_or_create_status(
@@ -799,10 +792,7 @@ def run_task_pool(
     pending = deque(
         task
         for task in tasks
-        if (
-            jobs[task.task_id].get("status") != "COMPLETED"
-            or _needs_telemetry_replay(task)
-        )
+        if (jobs[task.task_id].get("status") != "COMPLETED" or _needs_telemetry_replay(task))
         and task.learning_rate is not None
         and (
             _integer(jobs[task.task_id].get("attempts", 0), "job attempts") < max_attempts
@@ -1260,9 +1250,7 @@ def _run_campaign(
     print(json.dumps(summary, indent=2, sort_keys=True))
     campaign_tasks = [*calibration, *full]
     jobs = _jobs(status)
-    all_completed = all(
-        jobs[task.task_id].get("status") == "COMPLETED" for task in campaign_tasks
-    )
+    all_completed = all(jobs[task.task_id].get("status") == "COMPLETED" for task in campaign_tasks)
     return 0 if all_completed else 1
 
 

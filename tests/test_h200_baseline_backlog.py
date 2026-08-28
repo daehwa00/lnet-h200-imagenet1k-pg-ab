@@ -1,4 +1,6 @@
+# pyright: reportPrivateUsage=false
 from pathlib import Path
+from typing import cast
 
 from scripts import run_h200_baseline_backlog as backlog
 from scripts import run_h200_baseline_queue as queue
@@ -25,3 +27,14 @@ def test_h200_entrypoint_routes_backlog_without_global_summary() -> None:
     assert 'H200_BASELINE_BACKLOG_ONLY:-0}" == "1"' in script
     assert 'QUEUE_SCRIPT="scripts/run_h200_baseline_backlog.py"' in script
     assert '"${QUEUE[@]}" || QUEUE_EXIT_CODE=$?' in script
+    assert "H200_BASELINE_UNICONV_DISABLED=not_requested_by_backlog" in script
+
+
+def test_preflight_jobs_are_added_to_the_authoritative_status_mapping(tmp_path: Path) -> None:
+    campaign = queue.load_campaign(ROOT / "h200/baselines/campaign.json")
+    status = queue._new_status(campaign, "0" * 64, tmp_path)
+    task = queue.preflight_tasks(campaign, tmp_path, 1)[0]
+    jobs = queue._jobs(status)
+    jobs[task.task_id] = queue._new_job(task)
+    authoritative = cast("dict[str, object]", status["jobs"])
+    assert task.task_id in authoritative
