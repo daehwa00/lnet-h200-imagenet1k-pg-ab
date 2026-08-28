@@ -243,6 +243,34 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_query_rho=0.5,
             slow_cnn_pole_value_width=4,
         )
+    elif kind == "alphabet2_matrix_k4v4":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            cnn_pole_memory=True,
+            cnn_pole_interval=2,
+            cnn_pole_modes=128,
+            cnn_pole_evidence_width=512,
+            cnn_pole_kernel_size=4,
+            cnn_pole_beta_initial=0.01,
+            cnn_pole_use_recurrence=False,
+            cnn_pole_minimum_half_life=8.0,
+            cnn_pole_maximum_half_life=4_096.0,
+            slow_cnn_pole_memory=True,
+            slow_cnn_pole_stride=16,
+            slow_cnn_pole_modes=128,
+            slow_cnn_pole_evidence_width=512,
+            slow_cnn_pole_kernel_size=4,
+            slow_cnn_pole_upper_blocks=4,
+            slow_cnn_pole_beta_initial=0.01,
+            slow_cnn_pole_use_recurrence=True,
+            slow_cnn_pole_minimum_half_life=1.0,
+            slow_cnn_pole_maximum_half_life=256.0,
+            slow_cnn_pole_query="token",
+            slow_cnn_pole_query_rho=0.5,
+            slow_cnn_pole_value_width=4,
+            slow_cnn_pole_matrix_key_width=4,
+        )
     return AlphabetLM(config)
 
 
@@ -373,6 +401,32 @@ def _slow_value_override(
         return value.mean(dim=1, keepdim=True).expand_as(value)
 
     return [slow.value.register_forward_hook(override)]
+
+
+def _slow_matrix_override(
+    model: nn.Module,
+    *,
+    target: Literal["key", "query"],
+    mode: Literal["off", "shift", "time_mean"],
+) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM):
+        return []
+    slow = model.slow_cnn_pole_memory
+    if not isinstance(slow, SlowCausalCNNPoleMemory):
+        return []
+    module = slow.matrix_key if target == "key" else slow.matrix_query
+    if module is None:
+        return []
+
+    def override(_module: nn.Module, _inputs: tuple[object, ...], output: object) -> Tensor:
+        value = cast("Tensor", output)
+        if mode == "off":
+            return torch.zeros_like(value)
+        if mode == "shift":
+            return torch.roll(value, shifts=1, dims=1)
+        return value.mean(dim=1, keepdim=True).expand_as(value)
+
+    return [module.register_forward_hook(override)]
 
 
 @torch.no_grad()
@@ -624,32 +678,73 @@ def _slow_cnn_pole_metrics(
         key_metrics = gate_metrics(slow.key_gate(anchor_source)) if slow.key is not None else None
         vector_metrics: dict[str, object] | None = None
         if slow.value_width > 1:
+            def spectrum(rows: Tensor) -> tuple[Tensor, Tensor]:
+                gram = rows.mH @ rows / max(1, rows.shape[0])
+                eigenvalues = torch.linalg.eigvalsh(gram).real.clamp_min(0.0)
+                effective_rank = eigenvalues.sum().square() / eigenvalues.square().sum().clamp_min(
+                    1e-12
+                )
+                return eigenvalues, effective_rank
+
             drive_real, drive_imag = slow.pole_drive(real, imag)
             anchors = (
                 drive_real[:, slow.stride - 1 : full_anchors * slow.stride : slow.stride],
                 drive_imag[:, slow.stride - 1 : full_anchors * slow.stride : slow.stride],
             )
             value = slow.anchor_value(anchor_source)
-            state_real, state_imag = slow.memory(
-                anchors[0].unsqueeze(-1) * value.unsqueeze(-2),
-                anchors[1].unsqueeze(-1) * value.unsqueeze(-2),
-            )
-            coordinate_rms = torch.sqrt(
-                state_real.float().square().add(state_imag.float().square()).mean(dim=(0, 1, 2))
-            )
-            rows = torch.complex(state_real.float(), state_imag.float()).flatten(0, 2)
-            gram = rows.mH @ rows / max(1, rows.shape[0])
-            eigenvalues = torch.linalg.eigvalsh(gram).real.clamp_min(0.0)
-            effective_rank = eigenvalues.sum().square() / eigenvalues.square().sum().clamp_min(
-                1e-12
-            )
-            vector_metrics = {
-                "value_width": slow.value_width,
-                "value_extra_rms": float(value[..., 1:].float().square().mean().sqrt()),
-                "state_coordinate_rms": coordinate_rms.detach().cpu().tolist(),
-                "state_effective_rank": float(effective_rank),
-                "state_eigenvalues": eigenvalues.detach().cpu().tolist(),
-            }
+            if slow.matrix_key_width > 1:
+                matrix_key = slow.matrix_key_axes(anchor_source)
+                state_real, state_imag = slow.memory(
+                    anchors[0].unsqueeze(-1).unsqueeze(-1)
+                    * matrix_key.unsqueeze(-1)
+                    * value.unsqueeze(-2).unsqueeze(-2),
+                    anchors[1].unsqueeze(-1).unsqueeze(-1)
+                    * matrix_key.unsqueeze(-1)
+                    * value.unsqueeze(-2).unsqueeze(-2),
+                )
+                complex_state = torch.complex(state_real.float(), state_imag.float())
+                key_rows = complex_state.permute(0, 1, 2, 4, 3).reshape(
+                    -1, slow.matrix_key_width
+                )
+                value_rows = complex_state.reshape(-1, slow.value_width)
+                key_eigenvalues, key_rank = spectrum(key_rows)
+                value_eigenvalues, value_rank = spectrum(value_rows)
+                scalar_query = slow.query_gate(packed_source)
+                matrix_query = slow.matrix_query_axes(packed_source, scalar_query)
+                vector_metrics = {
+                    "value_width": slow.value_width,
+                    "matrix_key_width": slow.matrix_key_width,
+                    "value_extra_rms": float(value[..., 1:].float().square().mean().sqrt()),
+                    "matrix_key_extra_rms": float(
+                        matrix_key[..., 1:].float().square().mean().sqrt()
+                    ),
+                    "matrix_query_extra_rms": float(
+                        matrix_query[..., 1:].float().square().mean().sqrt()
+                    ),
+                    "state_key_effective_rank": float(key_rank),
+                    "state_key_eigenvalues": key_eigenvalues.detach().cpu().tolist(),
+                    "state_value_effective_rank": float(value_rank),
+                    "state_value_eigenvalues": value_eigenvalues.detach().cpu().tolist(),
+                }
+            else:
+                state_real, state_imag = slow.memory(
+                    anchors[0].unsqueeze(-1) * value.unsqueeze(-2),
+                    anchors[1].unsqueeze(-1) * value.unsqueeze(-2),
+                )
+                coordinate_rms = torch.sqrt(
+                    state_real.float().square().add(state_imag.float().square()).mean(
+                        dim=(0, 1, 2)
+                    )
+                )
+                rows = torch.complex(state_real.float(), state_imag.float()).flatten(0, 2)
+                eigenvalues, effective_rank = spectrum(rows)
+                vector_metrics = {
+                    "value_width": slow.value_width,
+                    "value_extra_rms": float(value[..., 1:].float().square().mean().sqrt()),
+                    "state_coordinate_rms": coordinate_rms.detach().cpu().tolist(),
+                    "state_effective_rank": float(effective_rank),
+                    "state_eigenvalues": eigenvalues.detach().cpu().tolist(),
+                }
         memory = slow(real, imag)
         branch_ratios: list[float] = []
         for upper_index, block in enumerate(model.blocks[memory_start:]):
@@ -1065,6 +1160,7 @@ def main() -> None:
             "alphabet2_token_q",
             "alphabet2_qk",
             "alphabet2_vector_d4",
+            "alphabet2_matrix_k4v4",
             "mamba",
         ),
         required=True,
@@ -1208,6 +1304,53 @@ def main() -> None:
                 device=device,
             )
             for handle in mean_value_handles:
+                handle.remove()
+        matrix_off_handles = _slow_matrix_override(model, target="query", mode="off")
+        if matrix_off_handles:
+            results["matrix_extra_off"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in matrix_off_handles:
+                handle.remove()
+            shifted_matrix_query = _slow_matrix_override(
+                model, target="query", mode="shift"
+            )
+            results["matrix_query_shifted"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in shifted_matrix_query:
+                handle.remove()
+            shifted_matrix_key = _slow_matrix_override(model, target="key", mode="shift")
+            results["matrix_key_shifted"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in shifted_matrix_key:
+                handle.remove()
+            mean_matrix_key = _slow_matrix_override(model, target="key", mode="time_mean")
+            results["matrix_key_time_mean"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in mean_matrix_key:
                 handle.remove()
     for segment in (512, 128, 32, 1):
         results[f"reset_{segment}"] = _evaluate(

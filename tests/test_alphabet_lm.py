@@ -39,6 +39,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_sidecar_from_trunk,
     _initialize_slow_cnn_pole_from_trunk,
     _initialize_slow_key_from_trunk,
+    _initialize_slow_matrix_from_trunk,
     _initialize_slow_query_from_trunk,
     _initialize_slow_value_from_trunk,
 )
@@ -1417,6 +1418,55 @@ def test_vector_checkpoint_trains_only_value_and_extra_synthesis(tmp_path: Path)
         slow.extra_synthesis.weight,
         torch.zeros_like(slow.extra_synthesis.weight),
     )
+
+
+def _matrix_slow_config() -> AlphabetLMConfig:
+    return replace(
+        _vector_slow_config(),
+        slow_cnn_pole_matrix_key_width=4,
+    )
+
+
+def test_matrix_slow_memory_preserves_vector_d4_and_is_causal() -> None:
+    torch.manual_seed(501)
+    vector = AlphabetLM(_vector_slow_config()).eval()
+    torch.manual_seed(501)
+    matrix = AlphabetLM(_matrix_slow_config()).eval()
+    matrix.load_state_dict(vector.state_dict(), strict=False)
+    slow = cast("SlowCausalCNNPoleMemory", matrix.slow_cnn_pole_memory)
+    assert slow.matrix_key is not None
+    assert slow.matrix_query is not None
+    assert slow.matrix_key.weight.square().sum() > 0
+    torch.testing.assert_close(
+        slow.matrix_query.weight,
+        torch.zeros_like(slow.matrix_query.weight),
+    )
+    tokens = torch.randint(64, (1, 16))
+    changed = tokens.clone()
+    changed[:, 8:] = torch.randint(64, changed[:, 8:].shape)
+    with torch.no_grad():
+        expected = vector(tokens)
+        actual = matrix(tokens)
+        changed_logits = matrix(changed)
+    torch.testing.assert_close(actual, expected, atol=2e-6, rtol=2e-6)
+    torch.testing.assert_close(changed_logits[:, :8], actual[:, :8], atol=2e-6, rtol=0.0)
+
+
+def test_matrix_checkpoint_trains_only_extra_query_and_key_axes(tmp_path: Path) -> None:
+    torch.manual_seed(501)
+    vector = AlphabetLM(_vector_slow_config())
+    checkpoint = tmp_path / "vector.pt"
+    torch.save({"model": vector.state_dict()}, checkpoint)
+    matrix = AlphabetLM(_matrix_slow_config())
+    contract = _initialize_slow_matrix_from_trunk(matrix, checkpoint)
+    assert contract["enabled"] is True
+    trainable = [name for name, parameter in matrix.named_parameters() if parameter.requires_grad]
+    assert set(trainable) == {
+        "slow_cnn_pole_memory.matrix_key_norm.weight",
+        "slow_cnn_pole_memory.matrix_key.weight",
+        "slow_cnn_pole_memory.matrix_query_norm.weight",
+        "slow_cnn_pole_memory.matrix_query.weight",
+    }
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:
