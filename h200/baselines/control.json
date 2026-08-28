@@ -1,0 +1,9 @@
+{
+  "schema": "lnet.remote_run_control.v1",
+  "campaign_id": "h200-imagenet1k-matched-baselines-300ep-v1",
+  "target_commit": "8b63306328204b977cc4edd34f972ae2adafc966",
+  "generation": 1,
+  "action": "run",
+  "updated_at": "2026-08-28T15:37:12+09:00",
+  "reason": "arm owner control for all future ImageNet-1K baseline launches"
+}
