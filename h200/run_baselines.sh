@@ -306,7 +306,9 @@ fi
 
 # UniConvNet-A is the only native-extension lane. Build from a disposable MIT
 # source copy so the pinned official checkout remains clean and verifiable.
-if [[ -d "${SOURCE_ROOT}/uniconvnet/ops_dcnv3" ]]; then
+if [[ "${H200_BASELINE_BACKLOG_ONLY:-0}" == "1" ]]; then
+echo "H200_BASELINE_UNICONV_DISABLED=not_requested_by_backlog"
+elif [[ -d "${SOURCE_ROOT}/uniconvnet/ops_dcnv3" ]]; then
 UNICONV_COMMIT="$(
   "${ENV_ROOT}/bin/python" - "${SOURCE_MANIFEST}" <<'PY'
 import json, sys
