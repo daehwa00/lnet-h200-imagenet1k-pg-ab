@@ -1,0 +1,105 @@
+{
+  "schema": "lnet.kau.alphabet_lm.slow_cnn_pole_1m.v1",
+  "campaign_id": "kau-alphabet-lm-cnn6-slow-p128-1m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-cnn6-slow-p128-1m-v1",
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "alphabet-cnn6-slow-p128-recurrent": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "cnn_pole_memory": true,
+        "cnn_pole_interval": 2,
+        "cnn_pole_modes": 128,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_use_recurrence": false,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_maximum_half_life": 256.0
+      },
+      "alphabet-cnn6-slow-p128-no-recurrence": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "cnn_pole_memory": true,
+        "cnn_pole_interval": 2,
+        "cnn_pole_modes": 128,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_use_recurrence": false,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_use_recurrence": false,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_maximum_half_life": 256.0
+      }
+    }
+  },
+  "trunk": {
+    "checkpoint": "/home/daehwa/alphabet-lm-4090-cnn-pole-runs/ebcba2aa1aceca5c/no-recurrence/checkpoint.pt",
+    "checkpoint_sha256": "bff5f0c357d7655ef8059445722158ef584de38d3cf95aa2c7deaf6e4891e9a2",
+    "validation_loss": 5.853573210331142,
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/5b681f6f34a8e460"
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 1000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet-cnn6-slow-p128-recurrent",
+      "alphabet-cnn6-slow-p128-no-recurrence"
+    ]
+  },
+  "parameter_counts": {
+    "alphabet-cnn6-slow-p128-recurrent": 396036,
+    "alphabet-cnn6-slow-p128-no-recurrence": 396036
+  },
+  "total_parameter_counts": {
+    "alphabet-cnn6-slow-p128-recurrent": 40396554,
+    "alphabet-cnn6-slow-p128-no-recurrence": 40396554
+  },
+  "diagnostics": {
+    "validation_sequence_limit": 512,
+    "context_segments": [2048, 512, 128, 32, 1],
+    "all_memory_zero": true,
+    "slow_memory_zero": true,
+    "beta_statistics": true,
+    "fast_path": "frozen CNN no-recurrence sidecar after every two local blocks",
+    "slow_evidence": "block-8 learned causal CNN sampled every 16 tokens",
+    "slow_memory": "one delayed P128 bank injected into blocks 9-12"
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-CNN6-SlowP128-1M-S501-v1"
+  }
+}

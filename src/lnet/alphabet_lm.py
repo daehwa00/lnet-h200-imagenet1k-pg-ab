@@ -82,6 +82,16 @@ class AlphabetLMConfig:
     cnn_pole_use_recurrence: bool = True
     cnn_pole_minimum_half_life: float = 8.0
     cnn_pole_maximum_half_life: float = 4_096.0
+    slow_cnn_pole_memory: bool = False
+    slow_cnn_pole_stride: int = 16
+    slow_cnn_pole_modes: int = 128
+    slow_cnn_pole_evidence_width: int = 512
+    slow_cnn_pole_kernel_size: int = 4
+    slow_cnn_pole_upper_blocks: int = 4
+    slow_cnn_pole_beta_initial: float = 0.01
+    slow_cnn_pole_use_recurrence: bool = True
+    slow_cnn_pole_minimum_half_life: float = 1.0
+    slow_cnn_pole_maximum_half_life: float = 256.0
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -121,6 +131,11 @@ class AlphabetLMConfig:
             self.cnn_pole_modes,
             self.cnn_pole_evidence_width,
             self.cnn_pole_kernel_size,
+            self.slow_cnn_pole_stride,
+            self.slow_cnn_pole_modes,
+            self.slow_cnn_pole_evidence_width,
+            self.slow_cnn_pole_kernel_size,
+            self.slow_cnn_pole_upper_blocks,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -156,6 +171,7 @@ class AlphabetLMConfig:
         self._validate_chunk_memory()
         self._validate_semantic_edge_memory()
         self._validate_cnn_pole_memory()
+        self._validate_slow_cnn_pole_memory()
         if self.write_map == "dynamic_low_rank" and (
             self.reader_type != "dense_k3"
             or self.memory_layout != "flat"
@@ -203,6 +219,21 @@ class AlphabetLMConfig:
             or self.cnn_pole_minimum_half_life >= self.cnn_pole_maximum_half_life
         ):
             raise ValueError("invalid CNN pole memory configuration")
+
+    def _validate_slow_cnn_pole_memory(self) -> None:
+        if not self.slow_cnn_pole_memory:
+            return
+        if (
+            self.chunk_memory
+            or self.semantic_edge_memory
+            or self.memory_layout != "local_only"
+            or self.reader_type != "dense_k3"
+            or self.slow_cnn_pole_upper_blocks > self.layers
+            or not 0.0 < self.slow_cnn_pole_beta_initial < 1.0
+            or self.slow_cnn_pole_minimum_half_life
+            >= self.slow_cnn_pole_maximum_half_life
+        ):
+            raise ValueError("invalid slow CNN pole memory configuration")
 
     def _validate_memory_layout(self) -> None:
         if self.memory_layout == "tensor_product" and (
@@ -813,24 +844,35 @@ class CausalCNNPoleMemory(nn.Module):
         self.analysis.weight.requires_grad = False
         nn.init.xavier_uniform_(self.synthesis.weight)
 
-    def raw_memory(self, real: Tensor, imag: Tensor) -> ComplexField:
+    def pole_drive(self, real: Tensor, imag: Tensor) -> ComplexField:
         if real.shape != imag.shape or real.ndim != 3 or real.shape[-1] != self.modes:
             raise ValueError("CNN pole memory expects matching B,T,K coordinates")
         packed = self.norm(torch.cat((real, imag), dim=-1))
         evidence = self.pointwise(packed)
         evidence = functional.pad(evidence.transpose(1, 2), (self.kernel_size - 1, 0))
         evidence = functional.silu(self.temporal(evidence).transpose(1, 2))
-        drive_real, drive_imag = self.analysis(evidence).chunk(2, dim=-1)
+        return self.analysis(evidence).chunk(2, dim=-1)
+
+    def synthesize(self, state: ComplexField) -> ComplexField:
+        return self.synthesis(torch.cat(state, dim=-1)).chunk(2, dim=-1)
+
+    def raw_memory(self, real: Tensor, imag: Tensor) -> ComplexField:
+        drive_real, drive_imag = self.pole_drive(real, imag)
         state = (
             self.memory(drive_real, drive_imag)
             if self.use_recurrence
             else (drive_real, drive_imag)
         )
-        memory_real, memory_imag = self.synthesis(torch.cat(state, dim=-1)).chunk(2, dim=-1)
-        return memory_real, memory_imag
+        return self.synthesize(state)
 
-    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
-        memory_real, memory_imag = self.raw_memory(real, imag)
+    def inject_memory(
+        self,
+        real: Tensor,
+        imag: Tensor,
+        memory_real: Tensor,
+        memory_imag: Tensor,
+        beta: Tensor,
+    ) -> ComplexField:
         trunk_rms = torch.sqrt(
             real.float().square().add(imag.float().square()).mean(dim=-1, keepdim=True)
         )
@@ -841,10 +883,90 @@ class CausalCNNPoleMemory(nn.Module):
             .mean(dim=-1, keepdim=True)
         )
         scale = (trunk_rms / (memory_rms + self.epsilon)).detach().to(real.dtype)
-        beta = self.beta.to(real.dtype)
+        active_beta = beta.to(real.dtype)
         return (
-            real + beta * memory_real * scale,
-            imag + beta * memory_imag * scale,
+            real + active_beta * memory_real * scale,
+            imag + active_beta * memory_imag * scale,
+        )
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        memory_real, memory_imag = self.raw_memory(real, imag)
+        return self.inject_memory(real, imag, memory_real, memory_imag, self.beta)
+
+
+class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
+    """Persist CNN evidence on a slower clock and inject it into upper blocks."""
+
+    def __init__(
+        self,
+        modes: int,
+        *,
+        stride: int,
+        upper_blocks: int,
+        evidence_width: int,
+        kernel_size: int,
+        pole_modes: int,
+        beta_initial: float,
+        use_recurrence: bool,
+        context_length: int,
+        scan_fp32: bool,
+        minimum_half_life: float,
+        maximum_half_life: float,
+        epsilon: float,
+    ) -> None:
+        super().__init__(
+            modes,
+            evidence_width=evidence_width,
+            kernel_size=kernel_size,
+            pole_modes=pole_modes,
+            beta_initial=beta_initial,
+            use_recurrence=use_recurrence,
+            context_length=context_length,
+            scan_fp32=scan_fp32,
+            minimum_half_life=minimum_half_life,
+            maximum_half_life=maximum_half_life,
+            epsilon=epsilon,
+        )
+        self.stride = int(stride)
+        initial_beta = float(self.beta.detach())
+        self.beta = nn.Parameter(torch.full((upper_blocks,), initial_beta))
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        steps = real.shape[1]
+        full_anchors = steps // self.stride
+        if full_anchors == 0:
+            return torch.zeros_like(real), torch.zeros_like(imag)
+        drive_real, drive_imag = self.pole_drive(real, imag)
+        anchors = (
+            drive_real[:, self.stride - 1 : full_anchors * self.stride : self.stride],
+            drive_imag[:, self.stride - 1 : full_anchors * self.stride : self.stride],
+        )
+        state = self.memory(*anchors) if self.use_recurrence else anchors
+        zero = torch.zeros_like(state[0][:, :1]), torch.zeros_like(state[1][:, :1])
+        delayed_state = (
+            torch.cat((zero[0], state[0]), dim=1),
+            torch.cat((zero[1], state[1]), dim=1),
+        )
+        memory_real, memory_imag = self.synthesize(delayed_state)
+        return (
+            memory_real.repeat_interleave(self.stride, dim=1)[:, :steps],
+            memory_imag.repeat_interleave(self.stride, dim=1)[:, :steps],
+        )
+
+    def inject(
+        self,
+        real: Tensor,
+        imag: Tensor,
+        memory_real: Tensor,
+        memory_imag: Tensor,
+        upper_index: int,
+    ) -> ComplexField:
+        return self.inject_memory(
+            real,
+            imag,
+            memory_real,
+            memory_imag,
+            self.beta[upper_index],
         )
 
 
@@ -1462,6 +1584,25 @@ class AlphabetLM(nn.Module):
                 )
         else:
             self.cnn_pole_memories = None
+        if config.slow_cnn_pole_memory:
+            with torch.random.fork_rng(devices=[]):
+                self.slow_cnn_pole_memory = SlowCausalCNNPoleMemory(
+                    config.modes,
+                    stride=config.slow_cnn_pole_stride,
+                    upper_blocks=config.slow_cnn_pole_upper_blocks,
+                    evidence_width=config.slow_cnn_pole_evidence_width,
+                    kernel_size=config.slow_cnn_pole_kernel_size,
+                    pole_modes=config.slow_cnn_pole_modes,
+                    beta_initial=config.slow_cnn_pole_beta_initial,
+                    use_recurrence=config.slow_cnn_pole_use_recurrence,
+                    context_length=config.context_length,
+                    scan_fp32=config.scan_fp32,
+                    minimum_half_life=config.slow_cnn_pole_minimum_half_life,
+                    maximum_half_life=config.slow_cnn_pole_maximum_half_life,
+                    epsilon=config.rms_epsilon,
+                )
+        else:
+            self.slow_cnn_pole_memory = None
         nn.init.normal_(self.embedding.weight, mean=0.0, std=0.02)
         nn.init.orthogonal_(self.analysis.weight)
 
@@ -1471,12 +1612,15 @@ class AlphabetLM(nn.Module):
         chunk_memory: ComplexField | None = None
         active_chunk_memory = self.chunk_memory
         active_edge_memory = self.semantic_edge_memory
+        active_slow_memory = self.slow_cnn_pole_memory
         upper_blocks = (
             self.config.chunk_upper_blocks
             if active_chunk_memory is not None
             else self.config.semantic_edge_upper_blocks
         )
         memory_start = self.config.layers - upper_blocks
+        slow_memory: ComplexField | None = None
+        slow_memory_start = self.config.layers - self.config.slow_cnn_pole_upper_blocks
         for index, block in enumerate(self.blocks):
             if active_chunk_memory is not None and index == memory_start:
                 chunk_memory = active_chunk_memory(real, imag)
@@ -1497,6 +1641,16 @@ class AlphabetLM(nn.Module):
                     chunk_memory[0],
                     chunk_memory[1],
                     index - memory_start,
+                )
+            if active_slow_memory is not None and index == slow_memory_start:
+                slow_memory = active_slow_memory(real, imag)
+            if active_slow_memory is not None and slow_memory is not None:
+                real, imag = active_slow_memory.inject(
+                    real,
+                    imag,
+                    slow_memory[0],
+                    slow_memory[1],
+                    index - slow_memory_start,
                 )
             real, imag = block(real, imag)
             if (
@@ -1529,5 +1683,6 @@ __all__ = [
     "LowRankPoleRouter",
     "QueryConditionedLowRankReadout",
     "SemanticEdgePoleMemory",
+    "SlowCausalCNNPoleMemory",
     "TensorProductPoleMemory1D",
 ]

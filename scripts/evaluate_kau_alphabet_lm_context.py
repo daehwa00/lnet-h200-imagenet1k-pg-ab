@@ -26,6 +26,7 @@ from lnet.alphabet_lm import (
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
     SemanticEdgePoleMemory,
+    SlowCausalCNNPoleMemory,
     TensorProductPoleMemory1D,
 )
 from lnet.alphabet_lm_data import TokenBlockDataset
@@ -134,6 +135,33 @@ def _build(kind: str) -> nn.Module:
             cnn_pole_minimum_half_life=8.0,
             cnn_pole_maximum_half_life=4_096.0,
         )
+    elif kind in {
+        "cnn_pole_p128_6bank_slow_p128",
+        "cnn_pole_p128_6bank_slow_p128_no_recurrence",
+    }:
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            cnn_pole_memory=True,
+            cnn_pole_interval=2,
+            cnn_pole_modes=128,
+            cnn_pole_evidence_width=512,
+            cnn_pole_kernel_size=4,
+            cnn_pole_beta_initial=0.01,
+            cnn_pole_use_recurrence=False,
+            cnn_pole_minimum_half_life=8.0,
+            cnn_pole_maximum_half_life=4_096.0,
+            slow_cnn_pole_memory=True,
+            slow_cnn_pole_stride=16,
+            slow_cnn_pole_modes=128,
+            slow_cnn_pole_evidence_width=512,
+            slow_cnn_pole_kernel_size=4,
+            slow_cnn_pole_upper_blocks=4,
+            slow_cnn_pole_beta_initial=0.01,
+            slow_cnn_pole_use_recurrence=kind == "cnn_pole_p128_6bank_slow_p128",
+            slow_cnn_pole_minimum_half_life=1.0,
+            slow_cnn_pole_maximum_half_life=256.0,
+        )
     return AlphabetLM(config)
 
 
@@ -177,6 +205,18 @@ def _zero_memory(model: nn.Module) -> list[torch.utils.hooks.RemovableHandle]:
             )
         ]
     return [writer.register_forward_hook(zero_output) for writer in writers]
+
+
+def _zero_slow_cnn_memory(model: nn.Module) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM) or not isinstance(
+        model.slow_cnn_pole_memory, SlowCausalCNNPoleMemory
+    ):
+        return []
+    return [
+        model.slow_cnn_pole_memory.synthesis.register_forward_hook(
+            lambda _module, _inputs, output: torch.zeros_like(cast("Tensor", output))
+        )
+    ]
 
 
 @torch.no_grad()
@@ -367,6 +407,70 @@ def _cnn_pole_metrics(
         "half_life_tokens_median": sum(float(value.median()) for value in half_lives)
         / len(half_lives),
         "half_life_tokens_max": max(float(value.max()) for value in half_lives),
+    }
+
+
+@torch.no_grad()
+def _slow_cnn_pole_metrics(
+    model: AlphabetLM,
+    dataset: TokenBlockDataset,
+    device: torch.device,
+) -> dict[str, object] | None:
+    slow = model.slow_cnn_pole_memory
+    if not isinstance(slow, SlowCausalCNNPoleMemory):
+        return None
+    sample = dataset[0][:-1].unsqueeze(0).to(device)
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        packed = model.analysis(model.embedding(sample))
+        real, imag = packed.split(model.config.modes, dim=-1)
+        memory_start = model.config.layers - model.config.slow_cnn_pole_upper_blocks
+        for index, block in enumerate(model.blocks[:memory_start]):
+            real, imag = block(real, imag)
+            if (
+                model.cnn_pole_memories is not None
+                and (index + 1) % model.config.cnn_pole_interval == 0
+            ):
+                bank_index = (index + 1) // model.config.cnn_pole_interval - 1
+                real, imag = model.cnn_pole_memories[bank_index](real, imag)
+        memory = slow(real, imag)
+        branch_ratios: list[float] = []
+        for upper_index, block in enumerate(model.blocks[memory_start:]):
+            injected_real, injected_imag = slow.inject(
+                real,
+                imag,
+                memory[0],
+                memory[1],
+                upper_index,
+            )
+            trunk_energy = real.float().square().add(imag.float().square()).mean()
+            branch_energy = (
+                (injected_real - real).float().square()
+                + (injected_imag - imag).float().square()
+            ).mean()
+            branch_ratios.append(float(torch.sqrt(branch_energy / trunk_energy.clamp_min(1e-12))))
+            real, imag = block(injected_real, injected_imag)
+            block_index = memory_start + upper_index
+            if (
+                model.cnn_pole_memories is not None
+                and (block_index + 1) % model.config.cnn_pole_interval == 0
+            ):
+                bank_index = (block_index + 1) // model.config.cnn_pole_interval - 1
+                real, imag = model.cnn_pole_memories[bank_index](real, imag)
+    weight = slow.analysis.weight.float()
+    identity = torch.eye(weight.shape[0], device=weight.device)
+    half_lives = math.log(2.0) / slow.memory.damping().float()
+    return {
+        "stride": slow.stride,
+        "pole_modes": slow.memory.modes,
+        "use_recurrence": slow.use_recurrence,
+        "beta_by_upper_block": slow.beta.float().detach().cpu().tolist(),
+        "beta_mean": float(slow.beta.float().mean()),
+        "branch_to_trunk_rms_by_upper_block": branch_ratios,
+        "branch_to_trunk_rms_mean": sum(branch_ratios) / len(branch_ratios),
+        "half_life_tokens_min": float(half_lives.min()) * slow.stride,
+        "half_life_tokens_median": float(half_lives.median()) * slow.stride,
+        "half_life_tokens_max": float(half_lives.max()) * slow.stride,
+        "analysis_row_gram_max_abs": float((weight @ weight.T - identity).abs().max()),
     }
 
 
@@ -730,6 +834,8 @@ def main() -> None:
             "semantic_edge_p128_no_recurrence",
             "cnn_pole_p128_6bank",
             "cnn_pole_p128_6bank_no_recurrence",
+            "cnn_pole_p128_6bank_slow_p128",
+            "cnn_pole_p128_6bank_slow_p128_no_recurrence",
             "mamba",
         ),
         required=True,
@@ -768,6 +874,18 @@ def main() -> None:
         )
         for handle in handles:
             handle.remove()
+        slow_handles = _zero_slow_cnn_memory(model)
+        if slow_handles:
+            results["slow_memory_zero"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in slow_handles:
+                handle.remove()
     for segment in (512, 128, 32, 1):
         results[f"reset_{segment}"] = _evaluate(
             model,
@@ -814,6 +932,9 @@ def main() -> None:
         cnn_pole_metrics = _cnn_pole_metrics(model, dataset, device)
         if cnn_pole_metrics is not None:
             payload["cnn_pole"] = cnn_pole_metrics
+        slow_cnn_pole_metrics = _slow_cnn_pole_metrics(model, dataset, device)
+        if slow_cnn_pole_metrics is not None:
+            payload["slow_cnn_pole"] = slow_cnn_pole_metrics
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print("KAU_LM_CONTEXT=" + json.dumps(payload, sort_keys=True), flush=True)

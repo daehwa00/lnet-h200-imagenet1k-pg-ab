@@ -24,6 +24,7 @@ from lnet.alphabet_lm import (
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
     SemanticEdgePoleMemory,
+    SlowCausalCNNPoleMemory,
     TensorProductPoleMemory1D,
 )
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
@@ -36,6 +37,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_cnn_pole_from_trunk,
     _initialize_semantic_edge_from_trunk,
     _initialize_sidecar_from_trunk,
+    _initialize_slow_cnn_pole_from_trunk,
 )
 
 
@@ -1195,6 +1197,65 @@ def test_cnn_pole_checkpoint_freezes_the_complete_local_trunk(tmp_path: Path) ->
     for name, value in model.state_dict().items():
         if not name.startswith("cnn_pole_memories."):
             torch.testing.assert_close(value, local.state_dict()[name], atol=0.0, rtol=0.0)
+
+
+def _slow_cnn_pole_config(*, use_recurrence: bool = True) -> AlphabetLMConfig:
+    return replace(
+        _cnn_pole_config(use_recurrence=False),
+        slow_cnn_pole_memory=True,
+        slow_cnn_pole_stride=4,
+        slow_cnn_pole_modes=8,
+        slow_cnn_pole_evidence_width=16,
+        slow_cnn_pole_kernel_size=4,
+        slow_cnn_pole_upper_blocks=2,
+        slow_cnn_pole_beta_initial=0.01,
+        slow_cnn_pole_use_recurrence=use_recurrence,
+        slow_cnn_pole_minimum_half_life=1.0,
+        slow_cnn_pole_maximum_half_life=8.0,
+    )
+
+
+def test_slow_cnn_pole_is_delayed_causal_and_paired() -> None:
+    torch.manual_seed(501)
+    recurrent = AlphabetLM(_slow_cnn_pole_config(use_recurrence=True)).eval()
+    torch.manual_seed(501)
+    control = AlphabetLM(_slow_cnn_pole_config(use_recurrence=False)).eval()
+    for name, value in recurrent.state_dict().items():
+        torch.testing.assert_close(value, control.state_dict()[name], atol=0.0, rtol=0.0)
+
+    baseline = AlphabetLM(
+        replace(_slow_cnn_pole_config(), slow_cnn_pole_memory=False)
+    ).eval()
+    recurrent.load_state_dict(baseline.state_dict(), strict=False)
+    tokens = torch.randint(64, (1, 16))
+    changed = tokens.clone()
+    changed[:, 8:] = torch.randint(64, changed[:, 8:].shape)
+    with torch.no_grad():
+        expected = recurrent(tokens)
+        actual = recurrent(changed)
+        baseline_logits = baseline(tokens)
+    torch.testing.assert_close(actual[:, :8], expected[:, :8], atol=2.0e-6, rtol=0.0)
+    torch.testing.assert_close(expected[:, :4], baseline_logits[:, :4], atol=0.0, rtol=0.0)
+
+
+def test_slow_cnn_pole_checkpoint_freezes_fast_sidecars_and_trunk(tmp_path: Path) -> None:
+    config = _slow_cnn_pole_config()
+    torch.manual_seed(501)
+    fast_model = AlphabetLM(replace(config, slow_cnn_pole_memory=False))
+    checkpoint = tmp_path / "fast.pt"
+    torch.save({"model": fast_model.state_dict()}, checkpoint)
+    torch.manual_seed(9)
+    model = AlphabetLM(config)
+    contract = _initialize_slow_cnn_pole_from_trunk(model, checkpoint)
+    assert contract["enabled"] is True
+    slow = cast("SlowCausalCNNPoleMemory", model.slow_cnn_pole_memory)
+    trainable = [name for name, parameter in model.named_parameters() if parameter.requires_grad]
+    assert trainable
+    assert all(name.startswith("slow_cnn_pole_memory.") for name in trainable)
+    assert not slow.analysis.weight.requires_grad
+    for name, value in model.state_dict().items():
+        if not name.startswith("slow_cnn_pole_memory."):
+            torch.testing.assert_close(value, fast_model.state_dict()[name], atol=0.0, rtol=0.0)
 
 
 def test_h200_mamba_runtime_dependency_contract_is_frozen() -> None:
