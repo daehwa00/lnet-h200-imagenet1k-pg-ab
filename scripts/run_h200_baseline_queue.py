@@ -230,7 +230,7 @@ def load_campaign(path: Path) -> Campaign:
         raise ValueError("full training must run for exactly 100 epochs")
     if (
         result.batch_size != 256
-        or result.dataloader_workers != 2
+        or result.dataloader_workers != 8
         or result.prefetch_factor != 1
         or result.gpu_memory_fraction != 0.22
     ):

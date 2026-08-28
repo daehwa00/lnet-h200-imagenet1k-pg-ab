@@ -37,7 +37,7 @@
   },
   "worker": {
     "batch_size": 256,
-    "dataloader_workers": 2,
+    "dataloader_workers": 8,
     "prefetch_factor": 1,
     "gpu_memory_fraction": 0.22
   },

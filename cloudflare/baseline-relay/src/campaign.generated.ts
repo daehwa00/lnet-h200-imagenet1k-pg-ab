@@ -51,7 +51,7 @@ export const CAMPAIGN = {
     "Viewer": "e5782f8ad76269e0104b45e78e82bc03efcc6783ec68299ac082de12c5475a33"
   },
   "group": "h200-imagenet1k-moga-emo-100ep-s501-v1",
-  "manifestSha256": "efa8dd5e91ef4c6107fc0004b3bd892bb4d295a1d10c72c060784a49e489b711",
+  "manifestSha256": "5c2c873130a4a009a6ae65c46a431e71bcdc3bbfea31ed4341e167d649fffe36",
   "maxFileStreamBodyBytes": 8388608,
   "maxGraphqlBodyBytes": 1048576,
   "noVariableOperations": [

@@ -64,7 +64,7 @@ def test_manifest_has_exact_models_recipe_and_seed_major_full_order(tmp_path: Pa
     assert campaign.calibration_epochs == 3
     assert campaign.full_epochs == 100
     assert campaign.batch_size == 256
-    assert campaign.dataloader_workers == 2
+    assert campaign.dataloader_workers == 8
     assert campaign.prefetch_factor == 1
     assert campaign.gpu_memory_fraction == 0.22
     assert campaign.preflight_trials == 3
@@ -114,7 +114,7 @@ def test_worker_command_and_environment_enforce_resource_contract(
     assert command[:3] == ["/python", "-u", "/worker.py"]
     assert command[command.index("--source-root") + 1] == "/source"
     assert command[command.index("--batch-size") + 1] == "256"
-    assert command[command.index("--workers") + 1] == "2"
+    assert command[command.index("--workers") + 1] == "8"
     assert command[-1] == "--resume"
     assert command[command.index("--wandb-mode") + 1] == "disabled"
 
