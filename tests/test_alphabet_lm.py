@@ -1771,6 +1771,19 @@ def test_write_scheduler_is_identity_initialized_pole_wise_and_live() -> None:
     assert slow.write_scheduler.weight.grad.abs().sum() > 0
 
 
+def test_write_scheduler_does_not_perturb_matching_seeded_initialization() -> None:
+    torch.manual_seed(501)
+    baseline = AlphabetLM(
+        replace(_scheduled_pole_reader_config(), slow_cnn_pole_write_scheduler=False)
+    )
+    torch.manual_seed(501)
+    scheduled = AlphabetLM(_scheduled_pole_reader_config())
+    baseline_state = baseline.state_dict()
+    for name, value in scheduled.state_dict().items():
+        if "write_scheduler" not in name:
+            torch.testing.assert_close(value, baseline_state[name], atol=0.0, rtol=0.0)
+
+
 def test_write_scheduler_checkpoint_freezes_dense_k3_and_trains_only_gate(
     tmp_path: Path,
 ) -> None:

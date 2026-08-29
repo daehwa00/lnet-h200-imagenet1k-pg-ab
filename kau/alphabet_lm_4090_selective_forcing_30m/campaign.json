@@ -1,7 +1,7 @@
 {
   "schema": "lnet.kau.alphabet_lm.alphabet2_selective_forcing_30m.v1",
-  "campaign_id": "kau-alphabet-lm-selective-forcing-r16-30m-s501-v1",
-  "output_namespace": "alphabet-lm-4090-selective-forcing-r16-30m-v1",
+  "campaign_id": "kau-alphabet-lm-selective-forcing-r16-30m-s501-v2",
+  "output_namespace": "alphabet-lm-4090-selective-forcing-r16-30m-v2",
   "architecture": {
     "K": 256,
     "layers": 12,
@@ -82,6 +82,6 @@
   "wandb": {
     "entity": "daehwa",
     "project": "alphabet-lm-viability",
-    "group": "ALPHABET-LM-RTX4090-SelectiveForcingR16-30M-S501-v1"
+    "group": "ALPHABET-LM-RTX4090-SelectiveForcingR16-30M-S501-v2"
   }
 }

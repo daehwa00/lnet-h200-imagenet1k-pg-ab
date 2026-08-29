@@ -36,8 +36,8 @@
       }
     }
   },
-  "campaign_id": "kau-alphabet-lm-selective-forcing-r16-30m-s501-v1",
-  "campaign_manifest_sha256": "d50718260213cbbf9ed41efaa435c8762325ee054fdec90bb1452d43a7b1cf74",
+  "campaign_id": "kau-alphabet-lm-selective-forcing-r16-30m-s501-v2",
+  "campaign_manifest_sha256": "33358ea0fbf1c009748784df75d4f0ecdcb635b3a5e5da3e3ebd677c3512776a",
   "diagnostics": {
     "effective_write_rate": true,
     "excitation_autocorrelation_lags": [
@@ -52,8 +52,8 @@
     "write_scheduler_shuffle": true
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-SelectiveForcingR16-30M-S501-v1",
-  "output_namespace": "alphabet-lm-4090-selective-forcing-r16-30m-v1",
+  "group": "ALPHABET-LM-RTX4090-SelectiveForcingR16-30M-S501-v2",
+  "output_namespace": "alphabet-lm-4090-selective-forcing-r16-30m-v2",
   "parameter_counts": {
     "selective-forcing-r16-e2e-30m": 46491274
   },
@@ -70,7 +70,7 @@
   "runs": {
     "selective-forcing-r16-e2e-30m": {
       "display_name": "RTX4090-S501-ALPHABET2-SelectiveForcingR16-E2E-30M",
-      "id": "50c352a98ca9accb",
+      "id": "3a04bf3812568742",
       "tags": [
         "RTX4090",
         "ALPHABET2",

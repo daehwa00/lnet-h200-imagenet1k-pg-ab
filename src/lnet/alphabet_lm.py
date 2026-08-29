@@ -1291,7 +1291,8 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         self.write_scheduler = None
         if write_scheduler:
             self.write_scheduler_norm = nn.RMSNorm(2 * modes, eps=epsilon)
-            self.write_scheduler = nn.Linear(2 * modes, pole_modes, bias=True)
+            with torch.random.fork_rng(devices=[]):
+                self.write_scheduler = nn.Linear(2 * modes, pole_modes, bias=True)
             nn.init.zeros_(self.write_scheduler.weight)
             nn.init.zeros_(self.write_scheduler.bias)
         self.innovation_filter = (
