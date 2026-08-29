@@ -110,6 +110,8 @@ class AlphabetLMConfig:
     slow_cnn_pole_specific_reader: bool = False
     slow_cnn_pole_reader_kernel: int = 3
     slow_cnn_pole_write_scheduler: bool = False
+    slow_cnn_pole_innovation: bool = False
+    slow_cnn_pole_innovation_kernel: int = 3
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -159,6 +161,7 @@ class AlphabetLMConfig:
             self.slow_cnn_pole_vector_width,
             self.slow_cnn_pole_transport_rank,
             self.slow_cnn_pole_reader_kernel,
+            self.slow_cnn_pole_innovation_kernel,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -258,6 +261,7 @@ class AlphabetLMConfig:
                 or self.slow_cnn_pole_dynamic_transport
                 or self.slow_cnn_pole_specific_reader
                 or self.slow_cnn_pole_write_scheduler
+                or self.slow_cnn_pole_innovation
             ):
                 raise ValueError("slow pole addressing requires a slow memory bank")
             return
@@ -312,6 +316,10 @@ class AlphabetLMConfig:
     def _validate_slow_pole_reader(self) -> None:
         if self.slow_cnn_pole_write_scheduler and not self.slow_cnn_pole_specific_reader:
             raise ValueError("write scheduler requires a pole-specific reader")
+        if self.slow_cnn_pole_innovation and not self.slow_cnn_pole_specific_reader:
+            raise ValueError("innovation filter requires a pole-specific reader")
+        if self.slow_cnn_pole_innovation and self.slow_cnn_pole_write_scheduler:
+            raise ValueError("innovation and write scheduler controls must be isolated")
         if not self.slow_cnn_pole_specific_reader:
             return
         if (
@@ -931,6 +939,81 @@ class PoleSpecificCausalVectorReader(nn.Module):
         return output_real.reshape(shape), output_imag.reshape(shape)
 
 
+class ComplexDepthwiseCausalPredictor(nn.Module):
+    """Predict each pole coordinate from only its own recent complex history."""
+
+    def __init__(self, pole_modes: int, vector_width: int, *, kernel_size: int) -> None:
+        super().__init__()
+        if min(pole_modes, vector_width, kernel_size) <= 0:
+            raise ValueError("invalid complex predictor dimensions")
+        self.pole_modes = int(pole_modes)
+        self.vector_width = int(vector_width)
+        self.kernel_size = int(kernel_size)
+        shape = (pole_modes, vector_width, kernel_size)
+        self.weight_real = nn.Parameter(torch.zeros(shape))
+        self.weight_imag = nn.Parameter(torch.zeros(shape))
+        with torch.no_grad():
+            self.weight_real[..., 0] = 1.0
+
+    def normalized_weights(self) -> ComplexField:
+        norm = (
+            self.weight_real.float()
+            .square()
+            .add(self.weight_imag.float().square())
+            .sum(dim=-1, keepdim=True)
+            .sqrt()
+            .clamp_min(1.0e-12)
+        )
+        return self.weight_real / norm, self.weight_imag / norm
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        expected = (self.pole_modes, self.vector_width)
+        if real.shape != imag.shape or real.ndim != 4 or real.shape[-2:] != expected:
+            raise ValueError("complex predictor expects matching B,T,P,R coordinates")
+        batch, steps = real.shape[:2]
+        channels = self.pole_modes * self.vector_width
+        active_real = functional.pad(
+            real.flatten(2).transpose(1, 2), (self.kernel_size, 0)
+        )
+        active_imag = functional.pad(
+            imag.flatten(2).transpose(1, 2), (self.kernel_size, 0)
+        )
+        weight_real, weight_imag = self.normalized_weights()
+        weight_real = weight_real.flip(-1).reshape(channels, 1, self.kernel_size)
+        weight_imag = weight_imag.flip(-1).reshape(channels, 1, self.kernel_size)
+        predicted_real = functional.conv1d(
+            active_real, weight_real, groups=channels
+        ) - functional.conv1d(active_imag, weight_imag, groups=channels)
+        predicted_imag = functional.conv1d(
+            active_real, weight_imag, groups=channels
+        ) + functional.conv1d(active_imag, weight_real, groups=channels)
+        shape = (batch, steps, self.pole_modes, self.vector_width)
+        return (
+            predicted_real[:, :, :steps].transpose(1, 2).reshape(shape),
+            predicted_imag[:, :, :steps].transpose(1, 2).reshape(shape),
+        )
+
+
+class PoleInnovationFilter(nn.Module):
+    """Remove a learned fraction of predictable excitation before transport."""
+
+    def __init__(self, pole_modes: int, vector_width: int, *, kernel_size: int) -> None:
+        super().__init__()
+        self.pole_modes = int(pole_modes)
+        self.predictor = ComplexDepthwiseCausalPredictor(
+            pole_modes, vector_width, kernel_size=kernel_size
+        )
+        self.raw_strength = nn.Parameter(torch.zeros(pole_modes))
+
+    def strength(self) -> Tensor:
+        return self.raw_strength.clamp(0.0, 1.0)
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        predicted_real, predicted_imag = self.predictor(real, imag)
+        strength = self.strength().to(real.dtype).view(1, 1, self.pole_modes, 1)
+        return real - strength * predicted_real, imag - strength * predicted_imag
+
+
 class CausalCNNPoleMemory(nn.Module):
     """Build local evidence with a causal CNN and persist it in a pole sidecar."""
 
@@ -1075,6 +1158,8 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         pole_specific_reader: bool = False,
         reader_kernel: int = 16,
         write_scheduler: bool = False,
+        innovation: bool = False,
+        innovation_kernel: int = 3,
     ) -> None:
         super().__init__(
             modes,
@@ -1110,11 +1195,14 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             if pole_specific_reader
             else None
         )
-        self._configure_write_scheduler(
+        self._configure_forcing_controls(
             modes=modes,
             pole_modes=pole_modes,
+            vector_width=vector_width,
             epsilon=epsilon,
-            enabled=write_scheduler,
+            write_scheduler=write_scheduler,
+            innovation=innovation,
+            innovation_kernel=innovation_kernel,
         )
         initial_beta = float(self.beta.detach())
         self.beta = nn.Parameter(torch.full((upper_blocks,), initial_beta))
@@ -1188,22 +1276,33 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
                 if module is not None:
                     module.requires_grad_(requires_grad=False)
 
-    def _configure_write_scheduler(
+    def _configure_forcing_controls(
         self,
         *,
         modes: int,
         pole_modes: int,
+        vector_width: int,
         epsilon: float,
-        enabled: bool,
+        write_scheduler: bool,
+        innovation: bool,
+        innovation_kernel: int,
     ) -> None:
         self.write_scheduler_norm = None
         self.write_scheduler = None
-        if not enabled:
-            return
-        self.write_scheduler_norm = nn.RMSNorm(2 * modes, eps=epsilon)
-        self.write_scheduler = nn.Linear(2 * modes, pole_modes, bias=True)
-        nn.init.zeros_(self.write_scheduler.weight)
-        nn.init.zeros_(self.write_scheduler.bias)
+        if write_scheduler:
+            self.write_scheduler_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+            self.write_scheduler = nn.Linear(2 * modes, pole_modes, bias=True)
+            nn.init.zeros_(self.write_scheduler.weight)
+            nn.init.zeros_(self.write_scheduler.bias)
+        self.innovation_filter = (
+            PoleInnovationFilter(
+                pole_modes,
+                vector_width,
+                kernel_size=innovation_kernel,
+            )
+            if innovation
+            else None
+        )
 
     def _configure_matrix_axes(
         self,
@@ -1489,6 +1588,8 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         transported_drive = self.build_transport_drive(
             real, imag, anchor_features, full_anchors
         )
+        if self.innovation_filter is not None:
+            transported_drive = self.innovation_filter(*transported_drive)
         if self.write_scheduler is not None:
             write_gate = self.write_gate(anchor_features)
             for _ in range(transported_drive[0].ndim - write_gate.ndim):
@@ -2261,6 +2362,8 @@ class AlphabetLM(nn.Module):
                     pole_specific_reader=config.slow_cnn_pole_specific_reader,
                     reader_kernel=config.slow_cnn_pole_reader_kernel,
                     write_scheduler=config.slow_cnn_pole_write_scheduler,
+                    innovation=config.slow_cnn_pole_innovation,
+                    innovation_kernel=config.slow_cnn_pole_innovation_kernel,
                 )
         else:
             self.slow_cnn_pole_memory = None

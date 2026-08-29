@@ -199,6 +199,7 @@ def _build(kind: str) -> nn.Module:
     elif kind in {
         "alphabet2_pole_reader_r16",
         "alphabet2_pole_reader_write_scheduler_r16",
+        "alphabet2_pole_reader_innovation_r16",
     }:
         config = AlphabetLMConfig(
             reader_type="dense_k3",
@@ -232,6 +233,10 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_write_scheduler=(
                 kind == "alphabet2_pole_reader_write_scheduler_r16"
             ),
+            slow_cnn_pole_innovation=(
+                kind == "alphabet2_pole_reader_innovation_r16"
+            ),
+            slow_cnn_pole_innovation_kernel=3,
         )
     elif kind in {"alphabet2_anchor_q", "alphabet2_token_q"}:
         config = AlphabetLMConfig(
@@ -772,6 +777,59 @@ def _slow_write_scheduler_override(
     return [slow.write_scheduler.register_forward_hook(override)]
 
 
+def _slow_innovation_override(
+    model: nn.Module,
+    *,
+    mode: Literal["neutral", "shuffle"],
+) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM):
+        return []
+    slow = model.slow_cnn_pole_memory
+    if not isinstance(slow, SlowCausalCNNPoleMemory) or slow.innovation_filter is None:
+        return []
+    if mode == "neutral":
+        def restore_drive(
+            _module: nn.Module,
+            inputs: tuple[object, ...],
+            _output: object,
+        ) -> object:
+            return cast("tuple[Tensor, Tensor]", inputs)
+
+        return [slow.innovation_filter.register_forward_hook(restore_drive)]
+
+    def shuffle_prediction(
+        _module: nn.Module,
+        _inputs: tuple[object, ...],
+        output: object,
+    ) -> object:
+        real, imag = cast("tuple[Tensor, Tensor]", output)
+        shift = max(1, real.shape[1] // 2)
+        return torch.roll(real, shifts=shift, dims=1), torch.roll(
+            imag, shifts=shift, dims=1
+        )
+
+    return [slow.innovation_filter.predictor.register_forward_hook(shuffle_prediction)]
+
+
+def _complex_autocorrelation(
+    real: Tensor,
+    imag: Tensor,
+    lag: int,
+) -> float:
+    left_real = real[:, :-lag].float()
+    left_imag = imag[:, :-lag].float()
+    right_real = real[:, lag:].float()
+    right_imag = imag[:, lag:].float()
+    correlation_real = (left_real * right_real + left_imag * right_imag).mean()
+    correlation_imag = (left_real * right_imag - left_imag * right_real).mean()
+    left_energy = left_real.square().add(left_imag.square()).mean()
+    right_energy = right_real.square().add(right_imag.square()).mean()
+    return float(
+        correlation_real.square().add(correlation_imag.square()).sqrt()
+        / (left_energy * right_energy).sqrt().clamp_min(1.0e-12)
+    )
+
+
 @torch.no_grad()
 def _sidecar_metrics(
     model: AlphabetLM,
@@ -1012,6 +1070,7 @@ def _slow_cnn_pole_metrics(
             :, slow.stride - 1 : full_anchors * slow.stride : slow.stride
         ]
         write_metrics: dict[str, object] | None = None
+        innovation_metrics: dict[str, object] | None = None
         write_gate: Tensor | None = None
         if slow.write_scheduler is not None:
             write_gate = slow.write_gate(anchor_source)
@@ -1082,43 +1141,72 @@ def _slow_cnn_pole_metrics(
                 if write_gate is not None and write_metrics is not None:
                     gated_real = transported_real * write_gate.unsqueeze(-1)
                     gated_imag = transported_imag * write_gate.unsqueeze(-1)
-
-                    def autocorrelation(
-                        active_real: Tensor,
-                        active_imag: Tensor,
-                        lag: int,
-                    ) -> float:
-                        left_real = active_real[:, :-lag].float()
-                        left_imag = active_imag[:, :-lag].float()
-                        right_real = active_real[:, lag:].float()
-                        right_imag = active_imag[:, lag:].float()
-                        correlation_real = (
-                            left_real * right_real + left_imag * right_imag
-                        ).mean()
-                        correlation_imag = (
-                            left_real * right_imag - left_imag * right_real
-                        ).mean()
-                        left_energy = left_real.square().add(left_imag.square()).mean()
-                        right_energy = right_real.square().add(right_imag.square()).mean()
-                        return float(
-                            correlation_real.square()
-                            .add(correlation_imag.square())
-                            .sqrt()
-                            / (left_energy * right_energy).sqrt().clamp_min(1.0e-12)
-                        )
-
                     lags = (1, 2, 4, 8, 16)
                     write_metrics["excitation_autocorrelation"] = {
-                        str(lag): autocorrelation(
+                        str(lag): _complex_autocorrelation(
                             transported_real, transported_imag, lag
                         )
                         for lag in lags
                     }
                     write_metrics["gated_excitation_autocorrelation"] = {
-                        str(lag): autocorrelation(gated_real, gated_imag, lag)
+                        str(lag): _complex_autocorrelation(
+                            gated_real, gated_imag, lag
+                        )
                         for lag in lags
                     }
                     transported_real, transported_imag = gated_real, gated_imag
+                if slow.innovation_filter is not None:
+                    innovation = slow.innovation_filter
+                    predicted_real, predicted_imag = innovation.predictor(
+                        transported_real, transported_imag
+                    )
+                    innovation_real, innovation_imag = innovation(
+                        transported_real, transported_imag
+                    )
+                    strength = innovation.strength().float()
+                    weight_real, weight_imag = innovation.predictor.normalized_weights()
+                    lag_magnitude = weight_real.float().square().add(
+                        weight_imag.float().square()
+                    ).mean(dim=(0, 1)).sqrt()
+                    excitation_rms = transported_real.float().square().add(
+                        transported_imag.float().square()
+                    ).mean().sqrt()
+                    prediction_rms = predicted_real.float().square().add(
+                        predicted_imag.float().square()
+                    ).mean().sqrt()
+                    innovation_rms = innovation_real.float().square().add(
+                        innovation_imag.float().square()
+                    ).mean().sqrt()
+                    lags = (1, 2, 4, 8, 16)
+                    innovation_metrics = {
+                        "strength_mean": float(strength.mean()),
+                        "strength_min": float(strength.min()),
+                        "strength_max": float(strength.max()),
+                        "active_pole_fraction": float((strength > 0.0).float().mean()),
+                        "prediction_to_excitation_rms": float(
+                            prediction_rms / excitation_rms.clamp_min(1.0e-12)
+                        ),
+                        "innovation_to_excitation_rms": float(
+                            innovation_rms / excitation_rms.clamp_min(1.0e-12)
+                        ),
+                        "predictor_lag_magnitude": lag_magnitude.detach().cpu().tolist(),
+                        "excitation_autocorrelation": {
+                            str(lag): _complex_autocorrelation(
+                                transported_real, transported_imag, lag
+                            )
+                            for lag in lags
+                        },
+                        "innovation_autocorrelation": {
+                            str(lag): _complex_autocorrelation(
+                                innovation_real, innovation_imag, lag
+                            )
+                            for lag in lags
+                        },
+                    }
+                    transported_real, transported_imag = (
+                        innovation_real,
+                        innovation_imag,
+                    )
             else:
                 reader_metrics = None
                 drive_real, drive_imag = slow.pole_drive(real, imag)
@@ -1331,6 +1419,8 @@ def _slow_cnn_pole_metrics(
         payload["dynamic_transport"] = transport_metrics
     if write_metrics is not None:
         payload["write_scheduler"] = write_metrics
+    if innovation_metrics is not None:
+        payload["innovation"] = innovation_metrics
     return payload
 
 
@@ -1711,6 +1801,7 @@ def main() -> None:
             "alphabet2_dynamic_transport_r16",
             "alphabet2_pole_reader_r16",
             "alphabet2_pole_reader_write_scheduler_r16",
+            "alphabet2_pole_reader_innovation_r16",
             "mamba",
         ),
         required=True,
@@ -2100,6 +2191,32 @@ def main() -> None:
                 device=device,
             )
             for handle in scheduler_shuffled:
+                handle.remove()
+        innovation_neutral = _slow_innovation_override(model, mode="neutral")
+        if innovation_neutral:
+            results["innovation_neutral"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in innovation_neutral:
+                handle.remove()
+            innovation_shuffled = _slow_innovation_override(
+                model,
+                mode="shuffle",
+            )
+            results["innovation_shuffled"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in innovation_shuffled:
                 handle.remove()
     for segment in (512, 128, 32, 1):
         results[f"reset_{segment}"] = _evaluate(

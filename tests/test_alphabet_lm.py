@@ -18,6 +18,7 @@ from lnet.alphabet_lm import (
     AlphabetLMConfig,
     CausalCNNPoleMemory,
     ChunkedSemanticPoleMemory,
+    ComplexDepthwiseCausalPredictor,
     DynamicLowRankWrite,
     FixedComplexPoleMemory1D,
     FixedPoleResidualSidecar,
@@ -44,6 +45,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_slow_dynamic_transport_from_trunk,
     _initialize_slow_full_complex_vector_from_trunk,
     _initialize_slow_independent_value_from_trunk,
+    _initialize_slow_innovation_from_trunk,
     _initialize_slow_key_from_trunk,
     _initialize_slow_matrix_from_trunk,
     _initialize_slow_query_from_trunk,
@@ -53,6 +55,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _validate_slow_complex_vector_source,
     _validate_slow_dynamic_transport_source,
     _validate_slow_full_complex_vector_source,
+    _validate_slow_innovation_source,
     _validate_slow_vector_pole_source,
     _validate_slow_write_scheduler_source,
     _validate_vector_initialization_selection,
@@ -1813,6 +1816,106 @@ def test_write_scheduler_requires_pole_specific_reader() -> None:
         replace(
             _complex_query_r16_config(coordinate_read=True),
             slow_cnn_pole_write_scheduler=True,
+        )
+
+
+def _innovation_pole_reader_config() -> AlphabetLMConfig:
+    return replace(
+        _scheduled_pole_reader_config(),
+        slow_cnn_pole_write_scheduler=False,
+        slow_cnn_pole_innovation=True,
+        slow_cnn_pole_innovation_kernel=3,
+    )
+
+
+def test_complex_depthwise_predictor_is_strictly_causal_lag_one_identity() -> None:
+    predictor = ComplexDepthwiseCausalPredictor(4, 3, kernel_size=3)
+    real = torch.randn(2, 9, 4, 3)
+    imag = torch.randn_like(real)
+    predicted_real, predicted_imag = predictor(real, imag)
+    torch.testing.assert_close(predicted_real[:, :1], torch.zeros_like(real[:, :1]))
+    torch.testing.assert_close(predicted_imag[:, :1], torch.zeros_like(imag[:, :1]))
+    torch.testing.assert_close(predicted_real[:, 1:], real[:, :-1])
+    torch.testing.assert_close(predicted_imag[:, 1:], imag[:, :-1])
+    changed_real = real.clone()
+    changed_imag = imag.clone()
+    changed_real[:, 5:] = torch.randn_like(changed_real[:, 5:])
+    changed_imag[:, 5:] = torch.randn_like(changed_imag[:, 5:])
+    changed = predictor(changed_real, changed_imag)
+    torch.testing.assert_close(changed[0][:, :6], predicted_real[:, :6])
+    torch.testing.assert_close(changed[1][:, :6], predicted_imag[:, :6])
+
+
+def test_innovation_filter_is_exact_baseline_at_zero_strength_and_live() -> None:
+    torch.manual_seed(501)
+    baseline = AlphabetLM(
+        replace(_innovation_pole_reader_config(), slow_cnn_pole_innovation=False)
+    ).eval()
+    torch.manual_seed(501)
+    innovation = AlphabetLM(_innovation_pole_reader_config()).eval()
+    innovation.load_state_dict(baseline.state_dict(), strict=False)
+    slow = cast("SlowCausalCNNPoleMemory", innovation.slow_cnn_pole_memory)
+    assert slow.innovation_filter is not None
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        expected = baseline(tokens)
+        actual = innovation(tokens)
+    torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+    innovation(tokens).square().mean().backward()
+    assert slow.innovation_filter.raw_strength.grad is not None
+    assert slow.innovation_filter.raw_strength.grad.abs().sum() > 0
+
+
+def test_innovation_checkpoint_freezes_dense_k3_and_trains_only_filter(
+    tmp_path: Path,
+) -> None:
+    torch.manual_seed(501)
+    baseline = AlphabetLM(
+        replace(_innovation_pole_reader_config(), slow_cnn_pole_innovation=False)
+    ).eval()
+    checkpoint = tmp_path / "dense-k3.pt"
+    torch.save({"model": baseline.state_dict()}, checkpoint)
+    torch.manual_seed(501)
+    innovation = AlphabetLM(_innovation_pole_reader_config()).eval()
+    contract = _initialize_slow_innovation_from_trunk(innovation, checkpoint)
+    assert contract["enabled"] is True
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        torch.testing.assert_close(
+            innovation(tokens), baseline(tokens), atol=0.0, rtol=0.0
+        )
+    trainable = [
+        name for name, parameter in innovation.named_parameters() if parameter.requires_grad
+    ]
+    assert set(trainable) == {
+        "slow_cnn_pole_memory.innovation_filter.raw_strength",
+        "slow_cnn_pole_memory.innovation_filter.predictor.weight_real",
+        "slow_cnn_pole_memory.innovation_filter.predictor.weight_imag",
+    }
+
+
+def test_innovation_source_digest_is_enforced() -> None:
+    initialization: dict[str, object] = {"checkpoint_sha256": "expected"}
+    runtime = {"source": {"pole_reader_30m_sha256": "expected"}}
+    _validate_slow_innovation_source(initialization, runtime, enabled=True)
+    with pytest.raises(RuntimeError, match="innovation source checkpoint"):
+        _validate_slow_innovation_source(
+            initialization,
+            {"source": {"pole_reader_30m_sha256": "different"}},
+            enabled=True,
+        )
+
+
+def test_innovation_requires_pole_specific_reader_and_excludes_scheduler() -> None:
+    with pytest.raises(ValueError, match="innovation filter requires"):
+        replace(
+            _complex_query_r16_config(coordinate_read=True),
+            slow_cnn_pole_innovation=True,
+        )
+    with pytest.raises(ValueError, match="must be isolated"):
+        replace(
+            _scheduled_pole_reader_config(),
+            slow_cnn_pole_innovation=True,
         )
 
 

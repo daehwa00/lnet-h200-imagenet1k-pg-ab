@@ -785,6 +785,58 @@ def _validate_slow_write_scheduler_source(
         raise RuntimeError("write-scheduler source checkpoint digest changed")
 
 
+def _initialize_slow_innovation_from_trunk(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.slow_cnn_pole_memory is None:
+        raise RuntimeError("innovation initialization requires slow memory")
+    innovation = model.slow_cnn_pole_memory.innovation_filter
+    if innovation is None:
+        raise RuntimeError("innovation initialization requires an innovation filter")
+    checkpoint_bytes = checkpoint_path.read_bytes()
+    checkpoint_sha = hashlib.sha256(checkpoint_bytes).hexdigest()
+    payload = cast(
+        "dict[str, Any]",
+        torch.load(io.BytesIO(checkpoint_bytes), map_location="cpu", weights_only=True),
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    prefix = "slow_cnn_pole_memory.innovation_filter."
+    expected_missing = {name for name in model.state_dict() if name.startswith(prefix)}
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("Dense-K3 checkpoint does not match innovation filter")
+    with torch.no_grad():
+        innovation.predictor.weight_real.zero_()
+        innovation.predictor.weight_real[..., 0] = 1.0
+        innovation.predictor.weight_imag.zero_()
+        innovation.raw_strength.zero_()
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(name.startswith(prefix))
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": checkpoint_sha,
+        "missing_innovation_tensors": len(expected_missing),
+        "dense_k3_30m_frozen": True,
+    }
+
+
+def _validate_slow_innovation_source(
+    initialization: dict[str, object],
+    runtime: dict[str, Any],
+    *,
+    enabled: bool,
+) -> None:
+    if not enabled:
+        return
+    expected = runtime.get("source", {}).get("pole_reader_30m_sha256")
+    if not isinstance(expected, str) or initialization.get("checkpoint_sha256") != expected:
+        raise RuntimeError("innovation source checkpoint digest changed")
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -874,6 +926,8 @@ def _build(
     slow_cnn_pole_specific_reader: bool = False,
     slow_cnn_pole_reader_kernel: int = 3,
     slow_cnn_pole_write_scheduler: bool = False,
+    slow_cnn_pole_innovation: bool = False,
+    slow_cnn_pole_innovation_kernel: int = 3,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -962,6 +1016,8 @@ def _build(
         slow_cnn_pole_specific_reader=slow_cnn_pole_specific_reader,
         slow_cnn_pole_reader_kernel=slow_cnn_pole_reader_kernel,
         slow_cnn_pole_write_scheduler=slow_cnn_pole_write_scheduler,
+        slow_cnn_pole_innovation=slow_cnn_pole_innovation,
+        slow_cnn_pole_innovation_kernel=slow_cnn_pole_innovation_kernel,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -1231,6 +1287,8 @@ def main() -> None:
     parser.add_argument("--slow-cnn-pole-specific-reader", action="store_true")
     parser.add_argument("--slow-cnn-pole-reader-kernel", type=int, default=3)
     parser.add_argument("--slow-cnn-pole-write-scheduler", action="store_true")
+    parser.add_argument("--slow-cnn-pole-innovation", action="store_true")
+    parser.add_argument("--slow-cnn-pole-innovation-kernel", type=int, default=3)
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-query-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-key-trunk-checkpoint", type=Path)
@@ -1242,6 +1300,7 @@ def main() -> None:
     parser.add_argument("--initialize-slow-full-complex-vector-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-dynamic-transport-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-write-scheduler-checkpoint", type=Path)
+    parser.add_argument("--initialize-slow-innovation-checkpoint", type=Path)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -1389,6 +1448,8 @@ def main() -> None:
         slow_cnn_pole_specific_reader=args.slow_cnn_pole_specific_reader,
         slow_cnn_pole_reader_kernel=args.slow_cnn_pole_reader_kernel,
         slow_cnn_pole_write_scheduler=args.slow_cnn_pole_write_scheduler,
+        slow_cnn_pole_innovation=args.slow_cnn_pole_innovation,
+        slow_cnn_pole_innovation_kernel=args.slow_cnn_pole_innovation_kernel,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -1413,6 +1474,7 @@ def main() -> None:
             or args.initialize_slow_full_complex_vector_checkpoint is not None
             or args.initialize_slow_dynamic_transport_checkpoint is not None
             or args.initialize_slow_write_scheduler_checkpoint is not None
+            or args.initialize_slow_innovation_checkpoint is not None
         ):
             raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
@@ -1533,6 +1595,15 @@ def main() -> None:
         runtime,
         enabled=args.initialize_slow_write_scheduler_checkpoint is not None,
     )
+    slow_innovation_initialization = _initialize_slow_innovation_from_trunk(
+        model,
+        args.initialize_slow_innovation_checkpoint,
+    )
+    _validate_slow_innovation_source(
+        slow_innovation_initialization,
+        runtime,
+        enabled=args.initialize_slow_innovation_checkpoint is not None,
+    )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
         active_arguments = {
@@ -1613,6 +1684,10 @@ def main() -> None:
             "slow_cnn_pole_specific_reader": args.slow_cnn_pole_specific_reader,
             "slow_cnn_pole_reader_kernel": args.slow_cnn_pole_reader_kernel,
             "slow_cnn_pole_write_scheduler": args.slow_cnn_pole_write_scheduler,
+            "slow_cnn_pole_innovation": args.slow_cnn_pole_innovation,
+            "slow_cnn_pole_innovation_kernel": (
+                args.slow_cnn_pole_innovation_kernel
+            ),
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -1810,6 +1885,9 @@ def main() -> None:
         "slow_write_scheduler_initialization": (
             slow_write_scheduler_initialization
         ),
+        "slow_cnn_pole_innovation": args.slow_cnn_pole_innovation,
+        "slow_cnn_pole_innovation_kernel": args.slow_cnn_pole_innovation_kernel,
+        "slow_innovation_initialization": slow_innovation_initialization,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
@@ -2021,6 +2099,25 @@ def main() -> None:
                     row["slow_write_scheduler_bias_mean"] = float(
                         cast("Tensor", scheduler_head.bias).detach().float().mean()
                     )
+                if model.slow_cnn_pole_memory.innovation_filter is not None:
+                    innovation = model.slow_cnn_pole_memory.innovation_filter
+                    strength = innovation.strength().detach().float()
+                    row["slow_innovation_strength_mean"] = float(strength.mean())
+                    row["slow_innovation_strength_max"] = float(strength.max())
+                    row["slow_innovation_predictor_tail_rms"] = float(
+                        innovation.predictor.weight_real[..., 1:]
+                        .detach()
+                        .float()
+                        .square()
+                        .add(
+                            innovation.predictor.weight_imag[..., 1:]
+                            .detach()
+                            .float()
+                            .square()
+                        )
+                        .mean()
+                        .sqrt()
+                    )
         if update == 1:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
@@ -2109,6 +2206,13 @@ def main() -> None:
             wandb_metrics["model/slow_write_scheduler_bias_mean"] = row[
                 "slow_write_scheduler_bias_mean"
             ]
+        if "slow_innovation_strength_mean" in row:
+            for metric in (
+                "slow_innovation_strength_mean",
+                "slow_innovation_strength_max",
+                "slow_innovation_predictor_tail_rms",
+            ):
+                wandb_metrics[f"model/{metric}"] = row[metric]
         wandb_run.log(wandb_metrics, step=update)
         print("ALPHABET_LM_PROGRESS=" + json.dumps(row, sort_keys=True), flush=True)
         if _STOP_EVENT.is_set():
