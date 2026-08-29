@@ -1,0 +1,198 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "alphabet2-complex-vector-r16-1m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_complex_vector_excitation": true,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_vector_width": 16
+      },
+      "alphabet2-complex-vector-r16-2m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_complex_vector_excitation": true,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_vector_width": 16
+      },
+      "alphabet2-complex-vector-r16-4m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_complex_vector_excitation": true,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_vector_width": 16
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-complex-vector-r16-s501-v1",
+  "campaign_manifest_sha256": "e7d949f0c0f4c3da8b97c9a6a606ea274a98b87703af4be05a78f330c7c49bd7",
+  "comparison": {
+    "complex_states_per_pole": 16,
+    "primary": "state-capacity-matched upper bound against Matrix-K4V4",
+    "projection_parameter_confound": "R16 has 2161152 more total parameters than Matrix-K4V4",
+    "secondary": "validation gain relative to Token-Q source",
+    "single_seed": true
+  },
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      512,
+      128,
+      32,
+      1
+    ],
+    "coordinate_energy": true,
+    "effective_rank": true,
+    "memory_zero": true,
+    "milestones": [
+      1000000,
+      2000000,
+      4000000
+    ],
+    "validation_sequence_limit": 512,
+    "vector_excitation_shift": true,
+    "vector_excitation_time_mean": true,
+    "vector_pole_extra_off": true,
+    "vector_query_shift": true
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-ComplexVectorR16-S501-v1",
+  "output_namespace": "alphabet-lm-4090-complex-vector-r16-v1",
+  "parameter_counts": {
+    "alphabet2-complex-vector-r16-1m": 2950656,
+    "alphabet2-complex-vector-r16-2m": 2950656,
+    "alphabet2-complex-vector-r16-4m": 2950656
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet2-complex-vector-r16-1m": {
+      "display_name": "RTX4090-S501-ALPHABET2-ComplexVectorR16-1M",
+      "id": "73521989672575f2",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "ComplexVectorR16",
+        "1M",
+        "seed501"
+      ]
+    },
+    "alphabet2-complex-vector-r16-2m": {
+      "display_name": "RTX4090-S501-ALPHABET2-ComplexVectorR16-2M",
+      "id": "9581df64fb0af5e1",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "ComplexVectorR16",
+        "2M",
+        "seed501"
+      ]
+    },
+    "alphabet2-complex-vector-r16-4m": {
+      "display_name": "RTX4090-S501-ALPHABET2-ComplexVectorR16-4M",
+      "id": "be2944864b8b5901",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "ComplexVectorR16",
+        "4M",
+        "seed501"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "complex_vector_r4_validation_loss": 5.835364334470701,
+    "matrix_k4v4_validation_loss": 5.833341242959004,
+    "token_q_10m": "/home/daehwa/alphabet-lm-4090-token-q-10m-runs/a773e8654408214e/token-q-10m/checkpoint.pt",
+    "token_q_10m_sha256": "6d076decd0ce47e008e4622e19a186dba07533fc89aece4d41966724b9c249ed",
+    "token_q_validation_loss": 5.839671757069991,
+    "vector_pole_r4_validation_loss": 5.836044664997839
+  },
+  "total_parameter_counts": {
+    "alphabet2-complex-vector-r16-1m": 43413258,
+    "alphabet2-complex-vector-r16-2m": 43413258,
+    "alphabet2-complex-vector-r16-4m": 43413258
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet2-complex-vector-r16-1m",
+      "alphabet2-complex-vector-r16-2m",
+      "alphabet2-complex-vector-r16-4m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 4000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

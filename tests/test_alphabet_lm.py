@@ -40,6 +40,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_sidecar_from_trunk,
     _initialize_slow_cnn_pole_from_trunk,
     _initialize_slow_complex_vector_from_trunk,
+    _initialize_slow_full_complex_vector_from_trunk,
     _initialize_slow_independent_value_from_trunk,
     _initialize_slow_key_from_trunk,
     _initialize_slow_matrix_from_trunk,
@@ -47,6 +48,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_slow_value_from_trunk,
     _initialize_slow_vector_pole_from_trunk,
     _validate_slow_complex_vector_source,
+    _validate_slow_full_complex_vector_source,
     _validate_slow_vector_pole_source,
 )
 
@@ -1519,6 +1521,64 @@ def test_complex_vector_provenance_does_not_require_token_q_again() -> None:
         runtime,
         enabled=True,
     )
+
+
+def test_full_complex_r16_preserves_token_q_with_live_query_gradient(
+    tmp_path: Path,
+) -> None:
+    torch.manual_seed(501)
+    token_q = AlphabetLM(_addressed_slow_config(mode="token")).eval()
+    checkpoint = tmp_path / "token-q.pt"
+    torch.save({"model": token_q.state_dict()}, checkpoint)
+    config = replace(
+        _addressed_slow_config(mode="token"),
+        slow_cnn_pole_vector_width=16,
+        slow_cnn_pole_complex_vector_excitation=True,
+    )
+    torch.manual_seed(501)
+    candidate = AlphabetLM(config).eval()
+    contract = _initialize_slow_full_complex_vector_from_trunk(candidate, checkpoint)
+    assert contract["enabled"] is True
+    slow = cast("SlowCausalCNNPoleMemory", candidate.slow_cnn_pole_memory)
+    assert slow.vector_excitation is not None
+    assert slow.vector_excitation_imag is not None
+    assert slow.vector_query is not None
+    assert slow.vector_excitation.weight.square().sum() > 0
+    assert slow.vector_excitation_imag.weight.square().sum() > 0
+    torch.testing.assert_close(slow.vector_query.weight, torch.zeros_like(slow.vector_query.weight))
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        expected = token_q(tokens)
+        actual = candidate(tokens)
+    torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+    candidate(tokens).square().mean().backward()
+    assert slow.vector_query.weight.grad is not None
+    assert slow.vector_query.weight.grad.abs().sum() > 0
+    trainable = [
+        name for name, parameter in candidate.named_parameters() if parameter.requires_grad
+    ]
+    assert set(trainable) == {
+        "slow_cnn_pole_memory.vector_excitation_norm.weight",
+        "slow_cnn_pole_memory.vector_excitation.weight",
+        "slow_cnn_pole_memory.vector_query_norm.weight",
+        "slow_cnn_pole_memory.vector_query.weight",
+        "slow_cnn_pole_memory.vector_excitation_imag_norm.weight",
+        "slow_cnn_pole_memory.vector_excitation_imag.weight",
+    }
+
+
+def test_full_complex_r16_source_digest_is_enforced() -> None:
+    initialization: dict[str, object] = {"checkpoint_sha256": "expected"}
+    runtime = {"source": {"token_q_10m_sha256": "expected"}}
+    _validate_slow_full_complex_vector_source(
+        initialization, runtime, enabled=True
+    )
+    with pytest.raises(RuntimeError, match="full complex vector source checkpoint"):
+        _validate_slow_full_complex_vector_source(
+            initialization,
+            {"source": {"token_q_10m_sha256": "different"}},
+            enabled=True,
+        )
 
 
 def _vector_slow_config() -> AlphabetLMConfig:

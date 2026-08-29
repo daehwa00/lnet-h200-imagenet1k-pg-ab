@@ -355,6 +355,34 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_vector_width=4,
             slow_cnn_pole_complex_vector_excitation=True,
         )
+    elif kind == "alphabet2_complex_vector_r16":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            cnn_pole_memory=True,
+            cnn_pole_interval=2,
+            cnn_pole_modes=128,
+            cnn_pole_evidence_width=512,
+            cnn_pole_kernel_size=4,
+            cnn_pole_beta_initial=0.01,
+            cnn_pole_use_recurrence=False,
+            cnn_pole_minimum_half_life=8.0,
+            cnn_pole_maximum_half_life=4_096.0,
+            slow_cnn_pole_memory=True,
+            slow_cnn_pole_stride=16,
+            slow_cnn_pole_modes=128,
+            slow_cnn_pole_evidence_width=512,
+            slow_cnn_pole_kernel_size=4,
+            slow_cnn_pole_upper_blocks=4,
+            slow_cnn_pole_beta_initial=0.01,
+            slow_cnn_pole_use_recurrence=True,
+            slow_cnn_pole_minimum_half_life=1.0,
+            slow_cnn_pole_maximum_half_life=256.0,
+            slow_cnn_pole_query="token",
+            slow_cnn_pole_query_rho=0.5,
+            slow_cnn_pole_vector_width=16,
+            slow_cnn_pole_complex_vector_excitation=True,
+        )
     return AlphabetLM(config)
 
 
@@ -1359,6 +1387,7 @@ def main() -> None:
             "alphabet2_nonseparable_k4v4",
             "alphabet2_vector_pole_r4",
             "alphabet2_complex_vector_r4",
+            "alphabet2_complex_vector_r16",
             "mamba",
         ),
         required=True,

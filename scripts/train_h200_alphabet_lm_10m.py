@@ -615,6 +615,70 @@ def _validate_slow_complex_vector_source(
         raise RuntimeError("complex vector source checkpoint digest changed")
 
 
+def _initialize_slow_full_complex_vector_from_trunk(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.slow_cnn_pole_memory is None:
+        raise RuntimeError("full complex initialization requires a slow memory bank")
+    slow = model.slow_cnn_pole_memory
+    modules = (
+        slow.vector_excitation,
+        slow.vector_query,
+        slow.vector_excitation_imag,
+    )
+    if any(module is None for module in modules):
+        raise RuntimeError("full complex initialization requires complex vector memory")
+    checkpoint_bytes = checkpoint_path.read_bytes()
+    checkpoint_sha = hashlib.sha256(checkpoint_bytes).hexdigest()
+    payload = cast(
+        "dict[str, Any]",
+        torch.load(io.BytesIO(checkpoint_bytes), map_location="cpu", weights_only=True),
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    prefixes = (
+        "slow_cnn_pole_memory.vector_excitation_norm.",
+        "slow_cnn_pole_memory.vector_excitation.",
+        "slow_cnn_pole_memory.vector_query_norm.",
+        "slow_cnn_pole_memory.vector_query.",
+        "slow_cnn_pole_memory.vector_excitation_imag_norm.",
+        "slow_cnn_pole_memory.vector_excitation_imag.",
+    )
+    expected_missing = {name for name in model.state_dict() if name.startswith(prefixes)}
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("Token-Q checkpoint does not match full complex vector memory")
+    imaginary_excitation = cast("nn.Linear", slow.vector_excitation_imag)
+    nn.init.xavier_uniform_(imaginary_excitation.weight)
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(name.startswith(prefixes))
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": checkpoint_sha,
+        "missing_full_complex_tensors": len(expected_missing),
+        "token_q_frozen": True,
+    }
+
+
+def _validate_slow_full_complex_vector_source(
+    initialization: dict[str, object],
+    runtime: dict[str, Any],
+    *,
+    enabled: bool,
+) -> None:
+    if not enabled:
+        return
+    expected_source_sha = runtime.get("source", {}).get("token_q_10m_sha256")
+    if (
+        not isinstance(expected_source_sha, str)
+        or initialization.get("checkpoint_sha256") != expected_source_sha
+    ):
+        raise RuntimeError("full complex vector source checkpoint digest changed")
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -1042,6 +1106,7 @@ def main() -> None:
     parser.add_argument("--initialize-slow-independent-value-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-vector-pole-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-complex-vector-checkpoint", type=Path)
+    parser.add_argument("--initialize-slow-full-complex-vector-checkpoint", type=Path)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -1201,6 +1266,7 @@ def main() -> None:
             or args.initialize_slow_independent_value_checkpoint is not None
             or args.initialize_slow_vector_pole_checkpoint is not None
             or args.initialize_slow_complex_vector_checkpoint is not None
+            or args.initialize_slow_full_complex_vector_checkpoint is not None
         ):
             raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
@@ -1281,7 +1347,18 @@ def main() -> None:
     _validate_slow_complex_vector_source(
         slow_complex_vector_initialization,
         runtime,
-        enabled=args.slow_cnn_pole_complex_vector_excitation,
+        enabled=args.initialize_slow_complex_vector_checkpoint is not None,
+    )
+    slow_full_complex_vector_initialization = (
+        _initialize_slow_full_complex_vector_from_trunk(
+            model,
+            args.initialize_slow_full_complex_vector_checkpoint,
+        )
+    )
+    _validate_slow_full_complex_vector_source(
+        slow_full_complex_vector_initialization,
+        runtime,
+        enabled=args.initialize_slow_full_complex_vector_checkpoint is not None,
     )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
@@ -1533,6 +1610,9 @@ def main() -> None:
             args.slow_cnn_pole_complex_vector_excitation
         ),
         "slow_complex_vector_initialization": slow_complex_vector_initialization,
+        "slow_full_complex_vector_initialization": (
+            slow_full_complex_vector_initialization
+        ),
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
