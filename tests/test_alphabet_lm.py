@@ -9,6 +9,7 @@ from typing import Literal, cast
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 import torch
 
 from lnet.alphabet_lm import (
@@ -1385,10 +1386,14 @@ def test_vector_pole_r4_preserves_token_q_and_has_live_query_gradient() -> None:
         torch.zeros_like(slow.vector_query.weight),
     )
     tokens = torch.randint(64, (1, 16))
+    changed = tokens.clone()
+    changed[:, 8:] = torch.randint(64, changed[:, 8:].shape)
     with torch.no_grad():
         expected = token_q(tokens)
         actual = vector_pole(tokens)
-    torch.testing.assert_close(actual, expected, atol=2e-6, rtol=2e-6)
+        changed_logits = vector_pole(changed)
+    torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+    torch.testing.assert_close(changed_logits[:, :8], actual[:, :8], atol=2e-6, rtol=0.0)
     vector_pole(tokens).square().mean().backward()
     assert slow.vector_query.weight.grad is not None
     assert slow.vector_query.weight.grad.abs().sum() > 0
@@ -1411,6 +1416,17 @@ def test_vector_pole_checkpoint_trains_only_extra_coordinates(tmp_path: Path) ->
         "slow_cnn_pole_memory.vector_query_norm.weight",
         "slow_cnn_pole_memory.vector_query.weight",
     }
+
+
+def test_vector_pole_configuration_requires_an_active_recurrent_slow_bank() -> None:
+    with pytest.raises(ValueError, match="slow pole addressing requires"):
+        replace(_small(), slow_cnn_pole_vector_width=4)
+    with pytest.raises(ValueError, match="vector pole memory requires"):
+        replace(
+            _addressed_slow_config(mode="token"),
+            slow_cnn_pole_vector_width=4,
+            slow_cnn_pole_use_recurrence=False,
+        )
 
 
 def _vector_slow_config() -> AlphabetLMConfig:

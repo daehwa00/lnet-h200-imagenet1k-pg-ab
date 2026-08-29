@@ -815,6 +815,10 @@ def _slow_cnn_pole_metrics(
                 "query_extra_rms": float(
                     vector_query[..., 1:].float().square().mean().sqrt()
                 ),
+                "query_base_energy_fraction": float(
+                    vector_query[..., 0].float().square().sum()
+                    / vector_query.float().square().sum().clamp_min(1e-12)
+                ),
                 "state_effective_rank": float(effective_rank),
                 "state_eigenvalues": eigenvalues.detach().cpu().tolist(),
                 "state_coordinate_rms": coordinate_energy.sqrt().detach().cpu().tolist(),

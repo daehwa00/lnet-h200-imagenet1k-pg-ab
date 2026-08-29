@@ -20,6 +20,10 @@ readonly VALIDATION_MANIFEST="${DATA_ROOT}/tokens/validation.manifest.json"
 readonly TOKEN_Q_10M="/home/daehwa/alphabet-lm-4090-token-q-10m-runs/a773e8654408214e/token-q-10m/checkpoint.pt"
 [[ -f "${TRAIN_MANIFEST}" && -f "${VALIDATION_MANIFEST}" && -f "${TOKEN_Q_10M}" ]] \
   || { echo "ERROR: vector-pole inputs are missing" >&2; exit 2; }
+readonly EXPECTED_TOKEN_Q_SHA="$(${PYTHON} -c 'import json,sys; print(json.load(open(sys.argv[1]))["source"]["token_q_10m_sha256"])' "${RUNTIME}")"
+readonly ACTUAL_TOKEN_Q_SHA="$(sha256sum "${TOKEN_Q_10M}" | cut -d' ' -f1)"
+[[ "${ACTUAL_TOKEN_Q_SHA}" == "${EXPECTED_TOKEN_Q_SHA}" ]] \
+  || { echo "ERROR: Token-Q source checkpoint digest changed" >&2; exit 2; }
 mkdir -p "${OUTPUT_ROOT}"
 exec 9>"${OUTPUT_ROOT}/queue.lock"
 flock -n 9 || { echo "ERROR: vector-pole queue is already running" >&2; exit 2; }

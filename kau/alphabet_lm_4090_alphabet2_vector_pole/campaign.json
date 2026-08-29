@@ -65,6 +65,13 @@
       "alphabet2-vector-pole-r4-4m"
     ]
   },
+  "comparison": {
+    "primary": "validation gain relative to each architecture's own source checkpoint",
+    "secondary": "absolute validation loss against Matrix-K4V4",
+    "single_seed": true,
+    "vector_pole_total_parameters": 40856842,
+    "matrix_k4v4_total_parameters": 41252106
+  },
   "parameter_counts": {
     "alphabet2-vector-pole-r4-1m": 394240,
     "alphabet2-vector-pole-r4-2m": 394240,

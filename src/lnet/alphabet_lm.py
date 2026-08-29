@@ -233,7 +233,14 @@ class AlphabetLMConfig:
 
     def _validate_slow_cnn_pole_memory(self) -> None:
         if not self.slow_cnn_pole_memory:
-            if self.slow_cnn_pole_query != "none" or self.slow_cnn_pole_key:
+            if (
+                self.slow_cnn_pole_query != "none"
+                or self.slow_cnn_pole_key
+                or self.slow_cnn_pole_value_width != 1
+                or self.slow_cnn_pole_matrix_key_width != 1
+                or self.slow_cnn_pole_independent_matrix_value
+                or self.slow_cnn_pole_vector_width != 1
+            ):
                 raise ValueError("slow pole addressing requires a slow memory bank")
             return
         if (
@@ -261,6 +268,8 @@ class AlphabetLMConfig:
             raise ValueError("independent matrix value requires matrix memory")
         if self.slow_cnn_pole_vector_width > 1 and (
             self.slow_cnn_pole_query != "token"
+            or self.slow_cnn_pole_key
+            or not self.slow_cnn_pole_use_recurrence
             or self.slow_cnn_pole_value_width != 1
             or self.slow_cnn_pole_matrix_key_width != 1
         ):

@@ -34,6 +34,9 @@ def _render() -> str:
         or execution != expected
         or manifest["diagnostics"]["milestones"] != [1_000_000, 2_000_000, 4_000_000]
         or any(variant["slow_cnn_pole_vector_width"] != 4 for variant in variants.values())
+        or any(variant["slow_cnn_pole_query"] != "token" for variant in variants.values())
+        or any(not variant["slow_cnn_pole_use_recurrence"] for variant in variants.values())
+        or any(variant.get("slow_cnn_pole_key", False) for variant in variants.values())
         or any("slow_cnn_pole_value_width" in variant for variant in variants.values())
         or any("slow_cnn_pole_matrix_key_width" in variant for variant in variants.values())
     ):
@@ -59,6 +62,7 @@ def _render() -> str:
         },
         "source": manifest["source"],
         "training": manifest["training"],
+        "comparison": manifest["comparison"],
         "parameter_counts": manifest["parameter_counts"],
         "total_parameter_counts": manifest["total_parameter_counts"],
         "diagnostics": manifest["diagnostics"],

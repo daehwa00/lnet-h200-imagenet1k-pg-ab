@@ -84,7 +84,14 @@
     }
   },
   "campaign_id": "kau-alphabet-lm-vector-pole-r4-s501-v1",
-  "campaign_manifest_sha256": "8b36d40c8e4eee0e9ebd054e453af838e0e6ad96c1e4ba5e24decc12e7bd5872",
+  "campaign_manifest_sha256": "b577172dde5163a1baf470ce7e043a231e4e622e1346fcccbcf5bda5ce9ef7dd",
+  "comparison": {
+    "matrix_k4v4_total_parameters": 41252106,
+    "primary": "validation gain relative to each architecture's own source checkpoint",
+    "secondary": "absolute validation loss against Matrix-K4V4",
+    "single_seed": true,
+    "vector_pole_total_parameters": 40856842
+  },
   "diagnostics": {
     "context_segments": [
       2048,
