@@ -34,7 +34,7 @@
     }
   },
   "campaign_id": "kau-alphabet-lm-r16-vs-mamba-4m-s501-v1",
-  "campaign_manifest_sha256": "cbdc715dbbd5d873c9b2728b2faef0eee5bde88db844cee73c102beb2d29ddba",
+  "campaign_manifest_sha256": "1cc2a681be30bcdf6557d4cfd69ffcaf6f05d2cacfa856050e2be5d3e8be1657",
   "comparison": {
     "mamba_total_parameters": 35425280,
     "parameter_counts_differ": true,
@@ -50,7 +50,7 @@
   "group": "ALPHABET-LM-RTX4090-R16-vs-Mamba-4M-S501-v1",
   "output_namespace": "alphabet-lm-4090-r16-vs-mamba-4m-v1",
   "parameter_counts": {
-    "alphabet2-complex-vector-r16-e2e-4m": 43413258,
+    "alphabet2-complex-vector-r16-e2e-4m": 42495754,
     "mamba-standard-e2e-4m": 35425280
   },
   "project": "alphabet-lm-viability",
