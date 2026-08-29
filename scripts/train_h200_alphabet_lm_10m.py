@@ -1257,11 +1257,12 @@ def main() -> None:
         model,
         args.initialize_slow_vector_pole_checkpoint,
     )
-    _validate_slow_vector_pole_source(
-        slow_vector_pole_initialization,
-        runtime,
-        args.slow_cnn_pole_vector_width,
-    )
+    if not args.slow_cnn_pole_vector_contrast_read:
+        _validate_slow_vector_pole_source(
+            slow_vector_pole_initialization,
+            runtime,
+            args.slow_cnn_pole_vector_width,
+        )
     slow_vector_contrast_initialization = _initialize_slow_vector_contrast_from_trunk(
         model,
         args.initialize_slow_vector_contrast_checkpoint,
