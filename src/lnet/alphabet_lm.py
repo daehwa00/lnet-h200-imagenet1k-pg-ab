@@ -393,6 +393,13 @@ class AlphabetLMConfig:
             or (
                 self.repeated_vector_pole_factorized
                 and (
+                    self.repeated_vector_pole_write_rank < min(
+                        4, self.repeated_vector_pole_width
+                    )
+                    or self.repeated_vector_pole_query_rank < min(
+                        4, self.repeated_vector_pole_width
+                    )
+                    or
                     self.repeated_vector_pole_write_rank
                     > self.repeated_vector_pole_width
                     or self.repeated_vector_pole_query_rank
@@ -2515,13 +2522,24 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         self.write_rank = int(write_rank)
         self.query_rank = int(query_rank)
         self.synthesis_rank = int(synthesis_rank)
+        self.baseline_width = min(4, vector_width)
         self.query_rho = float(query_rho)
         self.epsilon = float(epsilon)
         self.reader = PoleSpecificCausalVectorReader(
             modes,
             pole_modes,
-            write_rank,
+            self.baseline_width,
             kernel_size=reader_kernel,
+        )
+        self.extra_reader = (
+            PoleSpecificCausalVectorReader(
+                modes,
+                pole_modes,
+                write_rank - self.baseline_width,
+                kernel_size=reader_kernel,
+            )
+            if write_rank > self.baseline_width
+            else None
         )
         self.pole_memory = FixedComplexPoleMemory1D(
             pole_modes,
@@ -2534,13 +2552,26 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         self.query_norm = nn.RMSNorm(2 * modes, eps=epsilon)
         self.query = nn.Linear(2 * modes, pole_modes, bias=False)
         self.vector_query_real = nn.Linear(
-            2 * modes, pole_modes * (query_rank - 1), bias=False
+            2 * modes, pole_modes * (self.baseline_width - 1), bias=False
         )
         self.vector_query_imag = nn.Linear(
-            2 * modes, pole_modes * query_rank, bias=False
+            2 * modes, pole_modes * self.baseline_width, bias=False
         )
+        extra_query_width = query_rank - self.baseline_width
+        if extra_query_width > 0:
+            self.extra_query_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+            self.extra_query_real = nn.Linear(
+                2 * modes, pole_modes * extra_query_width, bias=False
+            )
+            self.extra_query_imag = nn.Linear(
+                2 * modes, pole_modes * extra_query_width, bias=False
+            )
+        else:
+            self.extra_query_norm = None
+            self.extra_query_real = None
+            self.extra_query_imag = None
         self.synthesis = nn.Linear(
-            2 * pole_modes * min(write_rank, query_rank),
+            2 * pole_modes * self.baseline_width,
             2 * modes,
             bias=False,
         )
@@ -2566,7 +2597,7 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         self._initialize_factorized_expansion()
 
     def _initialize_factorized_expansion(self) -> None:
-        baseline_width = min(self.write_rank, self.query_rank, self.vector_width)
+        baseline_width = self.baseline_width
         with torch.no_grad():
             identity = torch.eye(baseline_width)
             self.content_basis_real[:baseline_width, :baseline_width].copy_(identity)
@@ -2578,6 +2609,9 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         nn.init.zeros_(self.query.weight)
         nn.init.zeros_(self.vector_query_real.weight)
         nn.init.xavier_uniform_(self.vector_query_imag.weight)
+        if self.extra_query_real is not None and self.extra_query_imag is not None:
+            nn.init.xavier_uniform_(self.extra_query_real.weight)
+            nn.init.xavier_uniform_(self.extra_query_imag.weight)
         nn.init.xavier_uniform_(self.synthesis.weight)
         nn.init.xavier_uniform_(self.content_delta.weight)
         nn.init.xavier_uniform_(self.query_basis_delta.weight)
@@ -2622,18 +2656,49 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         normalized = self.query_norm(packed)
         scalar = 1.0 + self.query_rho * torch.tanh(self.query(normalized))
         scalar = scalar / scalar.mean(dim=-1, keepdim=True)
-        extra_real = torch.tanh(self.vector_query_real(normalized)).reshape(
-            *packed.shape[:-1], self.pole_modes, self.query_rank - 1
+        baseline_extra_real = torch.tanh(self.vector_query_real(normalized)).reshape(
+            *packed.shape[:-1], self.pole_modes, self.baseline_width - 1
         )
-        factor_real = torch.cat((scalar.unsqueeze(-1), extra_real), dim=-1)
-        factor_imag = torch.tanh(self.vector_query_imag(normalized)).reshape(
-            *packed.shape[:-1], self.pole_modes, self.query_rank
+        baseline_real = torch.cat((scalar.unsqueeze(-1), baseline_extra_real), dim=-1)
+        baseline_imag = torch.tanh(self.vector_query_imag(normalized)).reshape(
+            *packed.shape[:-1], self.pole_modes, self.baseline_width
         )
-        norm = factor_real.float().square().add(factor_imag.float().square()).sum(
-            dim=-1, keepdim=True
-        ).sqrt().clamp_min(self.epsilon)
-        scale = (scalar.abs().float().unsqueeze(-1) / norm).to(factor_real.dtype)
-        return factor_real * scale, factor_imag * scale
+        baseline_norm = baseline_real.float().square().add(
+            baseline_imag.float().square()
+        ).sum(dim=-1, keepdim=True).sqrt().clamp_min(self.epsilon)
+        baseline_scale = (
+            scalar.abs().float().unsqueeze(-1) / baseline_norm
+        ).to(baseline_real.dtype)
+        baseline_real = baseline_real * baseline_scale
+        baseline_imag = baseline_imag * baseline_scale
+        if (
+            self.extra_query_norm is not None
+            and self.extra_query_real is not None
+            and self.extra_query_imag is not None
+        ):
+            extra_normalized = self.extra_query_norm(packed)
+            extra_shape = (
+                *packed.shape[:-1],
+                self.pole_modes,
+                self.query_rank - self.baseline_width,
+            )
+            extra_real = torch.tanh(self.extra_query_real(extra_normalized)).reshape(
+                extra_shape
+            )
+            extra_imag = torch.tanh(self.extra_query_imag(extra_normalized)).reshape(
+                extra_shape
+            )
+            extra_norm = extra_real.float().square().add(extra_imag.float().square()).sum(
+                dim=-1, keepdim=True
+            ).sqrt().clamp_min(self.epsilon)
+            extra_scale = (
+                scalar.abs().float().unsqueeze(-1) / extra_norm
+            ).to(extra_real.dtype)
+            factor_real = torch.cat((baseline_real, extra_real * extra_scale), dim=-1)
+            factor_imag = torch.cat((baseline_imag, extra_imag * extra_scale), dim=-1)
+        else:
+            factor_real, factor_imag = baseline_real, baseline_imag
+        return factor_real, factor_imag
 
     def query_basis(self, packed: Tensor) -> ComplexField:
         delta_real, delta_imag = self.query_basis_delta(
@@ -2675,6 +2740,10 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         packed = torch.cat((real, imag), dim=-1)
         coefficient_real, coefficient_imag = self.reader(real, imag)
+        if self.extra_reader is not None:
+            extra_real, extra_imag = self.extra_reader(real, imag)
+            coefficient_real = torch.cat((coefficient_real, extra_real), dim=-1)
+            coefficient_imag = torch.cat((coefficient_imag, extra_imag), dim=-1)
         excitation = self.complex_factor_product(
             coefficient_real,
             coefficient_imag,

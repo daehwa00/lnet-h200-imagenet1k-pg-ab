@@ -2121,25 +2121,37 @@ def test_repeated_vector_poles_exclude_single_bank_and_invalid_schedules() -> No
         replace(config, repeated_vector_pole_width=1)
 
 
-def _factorized_repeated_vector_pole_config() -> AlphabetLMConfig:
+def _factorized_repeated_vector_pole_config(
+    *, write_rank: int = 4, query_rank: int = 4
+) -> AlphabetLMConfig:
     return replace(
         _repeated_vector_pole_config(),
-        repeated_vector_pole_width=8,
+        repeated_vector_pole_width=16,
         repeated_vector_pole_factorized=True,
-        repeated_vector_pole_write_rank=2,
-        repeated_vector_pole_query_rank=2,
+        repeated_vector_pole_write_rank=write_rank,
+        repeated_vector_pole_query_rank=query_rank,
         repeated_vector_pole_synthesis_rank=4,
     )
 
 
-def test_factorized_expansion_preserves_p32r4_function_exactly(tmp_path: Path) -> None:
-    dense_config = _repeated_vector_pole_config()
+@pytest.mark.parametrize(("write_rank", "query_rank"), [(4, 4), (8, 4), (4, 8), (8, 8)])
+def test_factorized_expansion_preserves_p32r4_function_exactly(
+    tmp_path: Path,
+    write_rank: int,
+    query_rank: int,
+) -> None:
+    dense_config = replace(_repeated_vector_pole_config(), repeated_vector_pole_width=4)
     torch.manual_seed(501)
     dense = AlphabetLM(dense_config).eval()
     checkpoint = tmp_path / "dense-repeated.pt"
     torch.save({"model": dense.state_dict()}, checkpoint)
     torch.manual_seed(501)
-    factorized = AlphabetLM(_factorized_repeated_vector_pole_config()).eval()
+    factorized = AlphabetLM(
+        _factorized_repeated_vector_pole_config(
+            write_rank=write_rank,
+            query_rank=query_rank,
+        )
+    ).eval()
     contract = _initialize_repeated_factorized_expansion(factorized, checkpoint)
     assert contract["enabled"] is True
     tokens = torch.randint(64, (1, 16))
@@ -2150,7 +2162,9 @@ def test_factorized_expansion_preserves_p32r4_function_exactly(tmp_path: Path) -
 
 
 def test_factorized_expansion_trains_only_new_state_interface(tmp_path: Path) -> None:
-    dense = AlphabetLM(_repeated_vector_pole_config())
+    dense = AlphabetLM(
+        replace(_repeated_vector_pole_config(), repeated_vector_pole_width=4)
+    )
     checkpoint = tmp_path / "dense-repeated.pt"
     torch.save({"model": dense.state_dict()}, checkpoint)
     factorized = AlphabetLM(_factorized_repeated_vector_pole_config())
@@ -2196,7 +2210,7 @@ def test_factorized_write_is_instantaneously_low_rank_with_wide_state() -> None:
     )
     singular = torch.linalg.svdvals(torch.complex(excitation[0], excitation[1]))
     assert int((singular > 1.0e-4).sum(dim=-1).max()) <= bank.write_rank
-    assert excitation[0].shape[-1] == 8
+    assert excitation[0].shape[-1] == 16
 
 
 def test_factorized_expansion_source_digest_is_enforced() -> None:

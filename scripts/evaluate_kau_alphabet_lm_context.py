@@ -177,7 +177,14 @@ def _build(kind: str) -> nn.Module:
             repeated_vector_pole_minimum_half_life=16.0,
             repeated_vector_pole_maximum_half_life=4_096.0,
         )
-    elif kind == "alphabet2_factorized_vector_pole_p32r32":
+    elif kind in {
+        "alphabet2_factorized_vector_pole_p32r32",
+        "alphabet2_factorized_vector_pole_p32r32_j8q4",
+        "alphabet2_factorized_vector_pole_p32r32_j4q8",
+        "alphabet2_factorized_vector_pole_p32r32_j8q8",
+    }:
+        write_rank = 8 if kind.endswith(("j8q4", "j8q8")) else 4
+        query_rank = 8 if kind.endswith(("j4q8", "j8q8")) else 4
         config = AlphabetLMConfig(
             reader_type="dense_k3",
             memory_layout="local_only",
@@ -190,8 +197,8 @@ def _build(kind: str) -> nn.Module:
             repeated_vector_pole_minimum_half_life=16.0,
             repeated_vector_pole_maximum_half_life=4_096.0,
             repeated_vector_pole_factorized=True,
-            repeated_vector_pole_write_rank=4,
-            repeated_vector_pole_query_rank=4,
+            repeated_vector_pole_write_rank=write_rank,
+            repeated_vector_pole_query_rank=query_rank,
             repeated_vector_pole_synthesis_rank=16,
         )
     elif kind == "alphabet2_dynamic_transport_r16":
@@ -2072,6 +2079,9 @@ def main() -> None:
             "alphabet2_pole_reader_semantic_clock_r16",
             "alphabet2_repeated_vector_pole_p32r4",
             "alphabet2_factorized_vector_pole_p32r32",
+            "alphabet2_factorized_vector_pole_p32r32_j8q4",
+            "alphabet2_factorized_vector_pole_p32r32_j4q8",
+            "alphabet2_factorized_vector_pole_p32r32_j8q8",
             "mamba",
         ),
         required=True,

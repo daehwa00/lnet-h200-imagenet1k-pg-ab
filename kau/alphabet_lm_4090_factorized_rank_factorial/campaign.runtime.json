@@ -1,0 +1,144 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "factorized-p32r32-je4-jq8-4m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_activation_checkpoint": true,
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_factorized": true,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_query_rank": 8,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_synthesis_rank": 16,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_write_rank": 4
+      },
+      "factorized-p32r32-je8-jq4-4m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_activation_checkpoint": true,
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_factorized": true,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_query_rank": 4,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_synthesis_rank": 16,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_write_rank": 8
+      },
+      "factorized-p32r32-je8-jq8-4m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_activation_checkpoint": true,
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_factorized": true,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_query_rank": 8,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_synthesis_rank": 16,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_write_rank": 8
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-factorized-p32r32-rank-factorial-s501-v1",
+  "campaign_manifest_sha256": "ca4fe894be638342e3ceec2353ca8bb65ee0f9da4a202e02c055881a945ac4a4",
+  "diagnostics": {
+    "instantaneous_write_rank": true,
+    "new_coordinate_rms": true,
+    "per_bank_ablation": true,
+    "state_effective_rank": true,
+    "synthesis_rank_fixed": 16
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-FactorizedRankFactorial-S501-v1",
+  "output_namespace": "alphabet-lm-4090-factorized-p32r32-rank-factorial-v1",
+  "parameter_counts": {
+    "factorized-p32r32-je4-jq8-4m": 12797952,
+    "factorized-p32r32-je8-jq4-4m": 13581312,
+    "factorized-p32r32-je8-jq8-4m": 16733184
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "factorized-p32r32-je4-jq8-4m": {
+      "display_name": "RTX4090-S501-ALPHABET2-factorized-p32r32-je4-jq8-4m",
+      "id": "a7a9a842032f9336",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "FactorizedVectorPole",
+        "RankFactorial"
+      ]
+    },
+    "factorized-p32r32-je8-jq4-4m": {
+      "display_name": "RTX4090-S501-ALPHABET2-factorized-p32r32-je8-jq4-4m",
+      "id": "c1fc6c824f2c7f89",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "FactorizedVectorPole",
+        "RankFactorial"
+      ]
+    },
+    "factorized-p32r32-je8-jq8-4m": {
+      "display_name": "RTX4090-S501-ALPHABET2-factorized-p32r32-je8-jq8-4m",
+      "id": "61b63dc8a2cbd906",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "FactorizedVectorPole",
+        "RankFactorial"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "factorized_j4q4_state_rank_range": [
+      2.1299142837524414,
+      3.2769947052001953
+    ],
+    "factorized_j4q4_validation_loss": 5.2335753285052435,
+    "repeated_p32r4_30m_checkpoint": "/home/daehwa/alphabet-lm-4090-repeated-vector-pole-30m-runs/29d0c393a1f22e2e/repeated-vector-pole-30m/checkpoint.pt",
+    "repeated_p32r4_30m_sha256": "b0802a7e3036ad49c036d35b4aab79771e28fd3624381457d44096f982b8ea6e"
+  },
+  "total_parameter_counts": {
+    "factorized-p32r32-je4-jq8-4m": 55029004,
+    "factorized-p32r32-je8-jq4-4m": 55812364,
+    "factorized-p32r32-je8-jq8-4m": 58967308
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "factorized-p32r32-je8-jq4-4m",
+      "factorized-p32r32-je4-jq8-4m",
+      "factorized-p32r32-je8-jq8-4m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 4000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

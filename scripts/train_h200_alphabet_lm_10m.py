@@ -908,6 +908,10 @@ def _initialize_repeated_factorized_expansion(
     )
     source = cast("dict[str, Tensor]", payload["model"])
     expansion_parts = (
+        ".extra_reader.",
+        ".extra_query_norm.",
+        ".extra_query_real.",
+        ".extra_query_imag.",
         ".content_basis_real",
         ".content_basis_imag",
         ".content_delta_norm.",
@@ -920,6 +924,10 @@ def _initialize_repeated_factorized_expansion(
         ".extra_synthesis.",
     )
     trainable_parts = (
+        ".extra_reader.",
+        ".extra_query_norm.",
+        ".extra_query_real.",
+        ".extra_query_imag.",
         ".content_delta_norm.",
         ".content_delta.",
         ".query_basis_delta_norm.",
