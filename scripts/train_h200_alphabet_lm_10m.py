@@ -27,6 +27,7 @@ from lnet.alphabet_lm import (
     AlphabetLMConfig,
     CausalCNNPoleMemory,
     DynamicLowRankWrite,
+    FactorizedTokenRateVectorPoleBlock,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
     SlowCausalCNNPoleMemory,
@@ -887,6 +888,75 @@ def _validate_slow_semantic_clock_source(
         raise RuntimeError("semantic-clock source checkpoint digest changed")
 
 
+def _initialize_repeated_factorized_expansion(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.repeated_vector_pole_memories is None:
+        raise RuntimeError("factorized expansion requires repeated VectorPole memory")
+    modules = list(model.repeated_vector_pole_memories)
+    if not all(isinstance(bank, FactorizedTokenRateVectorPoleBlock) for bank in modules):
+        raise RuntimeError("factorized expansion requires factorized banks")
+    banks = [cast("FactorizedTokenRateVectorPoleBlock", bank) for bank in modules]
+    checkpoint_bytes = checkpoint_path.read_bytes()
+    checkpoint_sha = hashlib.sha256(checkpoint_bytes).hexdigest()
+    payload = cast(
+        "dict[str, Any]",
+        torch.load(io.BytesIO(checkpoint_bytes), map_location="cpu", weights_only=True),
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    expansion_parts = (
+        ".content_basis_real",
+        ".content_basis_imag",
+        ".content_delta_norm.",
+        ".content_delta.",
+        ".query_basis_real",
+        ".query_basis_imag",
+        ".query_basis_delta_norm.",
+        ".query_basis_delta.",
+        ".extra_projection_basis",
+        ".extra_synthesis.",
+    )
+    expected_missing = {
+        name
+        for name in model.state_dict()
+        if name.startswith("repeated_vector_pole_memories.")
+        and any(part in name for part in expansion_parts)
+    }
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("P32R4 checkpoint does not match factorized P32R32 expansion")
+    for bank in banks:
+        nn.init.zeros_(bank.extra_synthesis.weight)
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(
+            name.startswith("repeated_vector_pole_memories.")
+            and any(part in name for part in expansion_parts)
+        )
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": checkpoint_sha,
+        "missing_expansion_tensors": len(expected_missing),
+        "p32r4_30m_frozen": True,
+    }
+
+
+def _validate_repeated_factorized_source(
+    initialization: dict[str, object],
+    runtime: dict[str, Any],
+    *,
+    enabled: bool,
+) -> None:
+    if not enabled:
+        return
+    expected = runtime.get("source", {}).get("repeated_p32r4_30m_sha256")
+    if not isinstance(expected, str) or initialization.get("checkpoint_sha256") != expected:
+        raise RuntimeError("factorized expansion source checkpoint digest changed")
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -987,6 +1057,10 @@ def _build(
     repeated_vector_pole_beta_initial: float = 0.01,
     repeated_vector_pole_minimum_half_life: float = 16.0,
     repeated_vector_pole_maximum_half_life: float = 4_096.0,
+    repeated_vector_pole_factorized: bool = False,
+    repeated_vector_pole_write_rank: int = 4,
+    repeated_vector_pole_query_rank: int = 4,
+    repeated_vector_pole_synthesis_rank: int = 16,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -1090,6 +1164,10 @@ def _build(
         repeated_vector_pole_maximum_half_life=(
             repeated_vector_pole_maximum_half_life
         ),
+        repeated_vector_pole_factorized=repeated_vector_pole_factorized,
+        repeated_vector_pole_write_rank=repeated_vector_pole_write_rank,
+        repeated_vector_pole_query_rank=repeated_vector_pole_query_rank,
+        repeated_vector_pole_synthesis_rank=repeated_vector_pole_synthesis_rank,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -1374,6 +1452,10 @@ def main() -> None:
     parser.add_argument(
         "--repeated-vector-pole-maximum-half-life", type=float, default=4_096.0
     )
+    parser.add_argument("--repeated-vector-pole-factorized", action="store_true")
+    parser.add_argument("--repeated-vector-pole-write-rank", type=int, default=4)
+    parser.add_argument("--repeated-vector-pole-query-rank", type=int, default=4)
+    parser.add_argument("--repeated-vector-pole-synthesis-rank", type=int, default=16)
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-query-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-key-trunk-checkpoint", type=Path)
@@ -1387,6 +1469,7 @@ def main() -> None:
     parser.add_argument("--initialize-slow-write-scheduler-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-innovation-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-semantic-clock-checkpoint", type=Path)
+    parser.add_argument("--initialize-repeated-factorized-checkpoint", type=Path)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -1549,6 +1632,12 @@ def main() -> None:
         repeated_vector_pole_maximum_half_life=(
             args.repeated_vector_pole_maximum_half_life
         ),
+        repeated_vector_pole_factorized=args.repeated_vector_pole_factorized,
+        repeated_vector_pole_write_rank=args.repeated_vector_pole_write_rank,
+        repeated_vector_pole_query_rank=args.repeated_vector_pole_query_rank,
+        repeated_vector_pole_synthesis_rank=(
+            args.repeated_vector_pole_synthesis_rank
+        ),
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -1575,6 +1664,7 @@ def main() -> None:
             or args.initialize_slow_write_scheduler_checkpoint is not None
             or args.initialize_slow_innovation_checkpoint is not None
             or args.initialize_slow_semantic_clock_checkpoint is not None
+            or args.initialize_repeated_factorized_checkpoint is not None
         ):
             raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
@@ -1715,6 +1805,15 @@ def main() -> None:
         runtime,
         enabled=args.initialize_slow_semantic_clock_checkpoint is not None,
     )
+    repeated_factorized_initialization = _initialize_repeated_factorized_expansion(
+        model,
+        args.initialize_repeated_factorized_checkpoint,
+    )
+    _validate_repeated_factorized_source(
+        repeated_factorized_initialization,
+        runtime,
+        enabled=args.initialize_repeated_factorized_checkpoint is not None,
+    )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
         active_arguments = {
@@ -1815,6 +1914,18 @@ def main() -> None:
             ),
             "repeated_vector_pole_maximum_half_life": (
                 args.repeated_vector_pole_maximum_half_life
+            ),
+            "repeated_vector_pole_factorized": (
+                args.repeated_vector_pole_factorized
+            ),
+            "repeated_vector_pole_write_rank": (
+                args.repeated_vector_pole_write_rank
+            ),
+            "repeated_vector_pole_query_rank": (
+                args.repeated_vector_pole_query_rank
+            ),
+            "repeated_vector_pole_synthesis_rank": (
+                args.repeated_vector_pole_synthesis_rank
             ),
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
@@ -2034,6 +2145,13 @@ def main() -> None:
         "repeated_vector_pole_maximum_half_life": (
             args.repeated_vector_pole_maximum_half_life
         ),
+        "repeated_vector_pole_factorized": args.repeated_vector_pole_factorized,
+        "repeated_vector_pole_write_rank": args.repeated_vector_pole_write_rank,
+        "repeated_vector_pole_query_rank": args.repeated_vector_pole_query_rank,
+        "repeated_vector_pole_synthesis_rank": (
+            args.repeated_vector_pole_synthesis_rank
+        ),
+        "repeated_factorized_initialization": repeated_factorized_initialization,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,

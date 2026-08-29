@@ -20,6 +20,7 @@ from lnet.alphabet_lm import (
     CausalCNNPoleMemory,
     ChunkedSemanticPoleMemory,
     DynamicLowRankWrite,
+    FactorizedTokenRateVectorPoleBlock,
     FixedComplexPoleMemory1D,
     FixedPoleResidualSidecar,
     GroupedPackedComplexLinear,
@@ -175,6 +176,23 @@ def _build(kind: str) -> nn.Module:
             repeated_vector_pole_beta_initial=0.01,
             repeated_vector_pole_minimum_half_life=16.0,
             repeated_vector_pole_maximum_half_life=4_096.0,
+        )
+    elif kind == "alphabet2_factorized_vector_pole_p32r32":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            repeated_vector_pole_memory=True,
+            repeated_vector_pole_interval=1,
+            repeated_vector_pole_modes=32,
+            repeated_vector_pole_width=32,
+            repeated_vector_pole_reader_kernel=3,
+            repeated_vector_pole_beta_initial=0.01,
+            repeated_vector_pole_minimum_half_life=16.0,
+            repeated_vector_pole_maximum_half_life=4_096.0,
+            repeated_vector_pole_factorized=True,
+            repeated_vector_pole_write_rank=4,
+            repeated_vector_pole_query_rank=4,
+            repeated_vector_pole_synthesis_rank=16,
         )
     elif kind == "alphabet2_dynamic_transport_r16":
         config = AlphabetLMConfig(
@@ -1551,6 +1569,8 @@ def _repeated_vector_pole_metrics(
     reader_temporal_delta: list[float] = []
     query_extra_rms: list[float] = []
     half_life_medians: list[float] = []
+    instantaneous_write_ranks: list[float] = []
+    new_coordinate_rms: list[float] = []
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         packed = model.analysis(model.embedding(sample))
         real, imag = packed.split(model.config.modes, dim=-1)
@@ -1559,11 +1579,63 @@ def _repeated_vector_pole_metrics(
             real, imag = block(real, imag)
             if (index + 1) % model.config.repeated_vector_pole_interval:
                 continue
-            bank = cast("TokenRateVectorPoleBlock", banks[bank_index])
-            excitation_real, excitation_imag = bank.reader(real, imag)
-            state_real, state_imag = bank.pole_memory(excitation_real, excitation_imag)
-            query_real, query_imag = bank.query_components(
-                torch.cat((real, imag), dim=-1)
+            bank = banks[bank_index]
+            typed_bank = cast(
+                "TokenRateVectorPoleBlock | FactorizedTokenRateVectorPoleBlock",
+                bank,
+            )
+            packed_source = torch.cat((real, imag), dim=-1)
+            if isinstance(bank, FactorizedTokenRateVectorPoleBlock):
+                coefficient = bank.reader(real, imag)
+                content_basis = bank.content_basis(packed_source)
+                excitation_real, excitation_imag = bank.complex_factor_product(
+                    coefficient[0],
+                    coefficient[1],
+                    content_basis[0],
+                    content_basis[1],
+                )
+                query_factors = bank.query_factors(packed_source)
+                query_basis = bank.query_basis(packed_source)
+                query_real, query_imag = bank.complex_factor_product(
+                    query_factors[0],
+                    query_factors[1],
+                    query_basis[0],
+                    query_basis[1],
+                )
+                singular = torch.linalg.svdvals(
+                    torch.complex(
+                        excitation_real[0, :32].float(),
+                        excitation_imag[0, :32].float(),
+                    )
+                )
+                instantaneous_write_ranks.append(
+                    float(
+                        (
+                            singular.sum(dim=-1).square()
+                            / singular.square().sum(dim=-1).clamp_min(1.0e-12)
+                        ).mean()
+                    )
+                )
+                new_coordinate_rms.append(
+                    float(
+                        excitation_real[..., bank.write_rank :]
+                        .float()
+                        .square()
+                        .add(
+                            excitation_imag[..., bank.write_rank :]
+                            .float()
+                            .square()
+                        )
+                        .mean()
+                        .sqrt()
+                    )
+                )
+            else:
+                dense_bank = cast("TokenRateVectorPoleBlock", bank)
+                excitation_real, excitation_imag = dense_bank.reader(real, imag)
+                query_real, query_imag = dense_bank.query_components(packed_source)
+            state_real, state_imag = typed_bank.pole_memory(
+                excitation_real, excitation_imag
             )
             rows = torch.complex(state_real.float(), state_imag.float()).flatten(0, 2)
             gram = rows.mH @ rows / max(1, rows.shape[0])
@@ -1590,9 +1662,9 @@ def _repeated_vector_pole_metrics(
                     .sqrt()
                 )
             )
-            half_lives = math.log(2.0) / bank.pole_memory.damping().float()
+            half_lives = math.log(2.0) / typed_bank.pole_memory.damping().float()
             half_life_medians.append(float(half_lives.median()))
-            output_real, output_imag = bank(real, imag)
+            output_real, output_imag = typed_bank(real, imag)
             trunk_energy = real.float().square().add(imag.float().square()).mean()
             branch_energy = (output_real - real).float().square().add(
                 (output_imag - imag).float().square()
@@ -1600,7 +1672,7 @@ def _repeated_vector_pole_metrics(
             branch_ratios.append(
                 float(torch.sqrt(branch_energy / trunk_energy.clamp_min(1.0e-12)))
             )
-            beta.append(float(bank.beta))
+            beta.append(float(typed_bank.beta))
             real, imag = output_real, output_imag
             bank_index += 1
     return {
@@ -1614,6 +1686,8 @@ def _repeated_vector_pole_metrics(
         "reader_temporal_delta_by_bank": reader_temporal_delta,
         "query_extra_rms_by_bank": query_extra_rms,
         "half_life_median_by_bank": half_life_medians,
+        "instantaneous_write_effective_rank_by_bank": instantaneous_write_ranks,
+        "new_coordinate_rms_by_bank": new_coordinate_rms,
     }
 
 
@@ -1997,6 +2071,7 @@ def main() -> None:
             "alphabet2_pole_reader_innovation_r16",
             "alphabet2_pole_reader_semantic_clock_r16",
             "alphabet2_repeated_vector_pole_p32r4",
+            "alphabet2_factorized_vector_pole_p32r32",
             "mamba",
         ),
         required=True,

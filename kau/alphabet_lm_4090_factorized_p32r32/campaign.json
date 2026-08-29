@@ -1,0 +1,70 @@
+{
+  "schema": "lnet.kau.alphabet_lm.factorized_p32r32_capacity.v1",
+  "campaign_id": "kau-alphabet-lm-factorized-p32r32-j4-4m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-factorized-p32r32-j4-4m-v1",
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "common": {
+      "reader_type": "dense_k3",
+      "memory_layout": "local_only",
+      "repeated_vector_pole_memory": true,
+      "repeated_vector_pole_interval": 1,
+      "repeated_vector_pole_modes": 32,
+      "repeated_vector_pole_width": 32,
+      "repeated_vector_pole_reader_kernel": 3,
+      "repeated_vector_pole_beta_initial": 0.01,
+      "repeated_vector_pole_minimum_half_life": 16.0,
+      "repeated_vector_pole_maximum_half_life": 4096.0,
+      "repeated_vector_pole_factorized": true,
+      "repeated_vector_pole_write_rank": 4,
+      "repeated_vector_pole_query_rank": 4,
+      "repeated_vector_pole_synthesis_rank": 16
+    },
+    "variants": {
+      "factorized-p32r32-j4-frozen-4m": {}
+    }
+  },
+  "source": {
+    "repeated_p32r4_30m_checkpoint": "/home/daehwa/alphabet-lm-4090-repeated-vector-pole-30m-runs/29d0c393a1f22e2e/repeated-vector-pole-30m/checkpoint.pt",
+    "repeated_p32r4_30m_sha256": "b0802a7e3036ad49c036d35b4aab79771e28fd3624381457d44096f982b8ea6e",
+    "repeated_p32r4_30m_validation_loss": 5.275131382000801,
+    "dense_k3_30m_validation_loss": 5.2721833219281375,
+    "stride16_30m_validation_loss": 5.209424313665039,
+    "mamba_30m_validation_loss": 4.985551627853659
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 4000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": ["factorized-p32r32-j4-frozen-4m"]
+  },
+  "parameter_counts": {
+    "factorized-p32r32-j4-frozen-4m": 9652224
+  },
+  "total_parameter_counts": {
+    "factorized-p32r32-j4-frozen-4m": 51874060
+  },
+  "diagnostics": {
+    "baseline_function_exact": true,
+    "instantaneous_write_rank": true,
+    "state_effective_rank": true,
+    "new_coordinate_rms": true,
+    "per_bank_ablation": true
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-FactorizedP32R32J4-4M-S501-v1"
+  }
+}

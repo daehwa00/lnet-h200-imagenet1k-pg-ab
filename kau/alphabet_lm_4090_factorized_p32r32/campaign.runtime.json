@@ -1,0 +1,83 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "factorized-p32r32-j4-frozen-4m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_factorized": true,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_query_rank": 4,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_synthesis_rank": 16,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_write_rank": 4
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-factorized-p32r32-j4-4m-s501-v1",
+  "campaign_manifest_sha256": "6bb10b2f3f2d1c2fcd4bba9f6f4ef987c8d73519173274591f56b4ba11b50806",
+  "diagnostics": {
+    "baseline_function_exact": true,
+    "instantaneous_write_rank": true,
+    "new_coordinate_rms": true,
+    "per_bank_ablation": true,
+    "state_effective_rank": true
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-FactorizedP32R32J4-4M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-factorized-p32r32-j4-4m-v1",
+  "parameter_counts": {
+    "factorized-p32r32-j4-frozen-4m": 9652224
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "factorized-p32r32-j4-frozen-4m": {
+      "display_name": "RTX4090-S501-ALPHABET2-FactorizedP32R32J4-Frozen-4M",
+      "id": "152cc0b981a2f6f2",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "FactorizedVectorPole",
+        "P32R32",
+        "FrozenExpansion"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "dense_k3_30m_validation_loss": 5.2721833219281375,
+    "mamba_30m_validation_loss": 4.985551627853659,
+    "repeated_p32r4_30m_checkpoint": "/home/daehwa/alphabet-lm-4090-repeated-vector-pole-30m-runs/29d0c393a1f22e2e/repeated-vector-pole-30m/checkpoint.pt",
+    "repeated_p32r4_30m_sha256": "b0802a7e3036ad49c036d35b4aab79771e28fd3624381457d44096f982b8ea6e",
+    "repeated_p32r4_30m_validation_loss": 5.275131382000801,
+    "stride16_30m_validation_loss": 5.209424313665039
+  },
+  "total_parameter_counts": {
+    "factorized-p32r32-j4-frozen-4m": 51874060
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "factorized-p32r32-j4-frozen-4m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 4000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

@@ -20,6 +20,7 @@ from lnet.alphabet_lm import (
     ChunkedSemanticPoleMemory,
     ComplexDepthwiseCausalPredictor,
     DynamicLowRankWrite,
+    FactorizedTokenRateVectorPoleBlock,
     FixedComplexPoleMemory1D,
     FixedPoleResidualSidecar,
     IdentityComplexMemory1D,
@@ -39,6 +40,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _copy_matching_legacy_initialization,
     _initialize_chunk_memory_from_trunk,
     _initialize_cnn_pole_from_trunk,
+    _initialize_repeated_factorized_expansion,
     _initialize_semantic_edge_from_trunk,
     _initialize_sidecar_from_trunk,
     _initialize_slow_cnn_pole_from_trunk,
@@ -54,6 +56,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_slow_value_from_trunk,
     _initialize_slow_vector_pole_from_trunk,
     _initialize_slow_write_scheduler_from_trunk,
+    _validate_repeated_factorized_source,
     _validate_slow_complex_vector_source,
     _validate_slow_dynamic_transport_source,
     _validate_slow_full_complex_vector_source,
@@ -2116,6 +2119,96 @@ def test_repeated_vector_poles_exclude_single_bank_and_invalid_schedules() -> No
         replace(config, repeated_vector_pole_interval=3)
     with pytest.raises(ValueError, match="invalid repeated"):
         replace(config, repeated_vector_pole_width=1)
+
+
+def _factorized_repeated_vector_pole_config() -> AlphabetLMConfig:
+    return replace(
+        _repeated_vector_pole_config(),
+        repeated_vector_pole_width=8,
+        repeated_vector_pole_factorized=True,
+        repeated_vector_pole_write_rank=2,
+        repeated_vector_pole_query_rank=2,
+        repeated_vector_pole_synthesis_rank=4,
+    )
+
+
+def test_factorized_expansion_preserves_p32r4_function_exactly(tmp_path: Path) -> None:
+    dense_config = _repeated_vector_pole_config()
+    torch.manual_seed(501)
+    dense = AlphabetLM(dense_config).eval()
+    checkpoint = tmp_path / "dense-repeated.pt"
+    torch.save({"model": dense.state_dict()}, checkpoint)
+    torch.manual_seed(501)
+    factorized = AlphabetLM(_factorized_repeated_vector_pole_config()).eval()
+    contract = _initialize_repeated_factorized_expansion(factorized, checkpoint)
+    assert contract["enabled"] is True
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        expected = dense(tokens)
+        actual = factorized(tokens)
+    torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+
+def test_factorized_expansion_trains_only_new_state_interface(tmp_path: Path) -> None:
+    dense = AlphabetLM(_repeated_vector_pole_config())
+    checkpoint = tmp_path / "dense-repeated.pt"
+    torch.save({"model": dense.state_dict()}, checkpoint)
+    factorized = AlphabetLM(_factorized_repeated_vector_pole_config())
+    _initialize_repeated_factorized_expansion(factorized, checkpoint)
+    trainable = [
+        name for name, parameter in factorized.named_parameters() if parameter.requires_grad
+    ]
+    assert trainable
+    assert all(
+        name.startswith("repeated_vector_pole_memories.")
+        and any(
+            part in name
+            for part in (
+                "content_basis",
+                "content_delta",
+                "query_basis",
+                "extra_projection_basis",
+                "extra_synthesis",
+            )
+        )
+        for name in trainable
+    )
+    factorized(torch.randint(64, (1, 16))).square().mean().backward()
+    banks = factorized.repeated_vector_pole_memories
+    assert banks is not None
+    bank = cast("FactorizedTokenRateVectorPoleBlock", banks[0])
+    assert bank.extra_synthesis.weight.grad is not None
+    assert bank.extra_synthesis.weight.grad.abs().sum() > 0
+
+
+def test_factorized_write_is_instantaneously_low_rank_with_wide_state() -> None:
+    model = AlphabetLM(_factorized_repeated_vector_pole_config()).eval()
+    banks = model.repeated_vector_pole_memories
+    assert banks is not None
+    bank = cast("FactorizedTokenRateVectorPoleBlock", banks[0])
+    real = torch.randn(1, 9, 8)
+    imag = torch.randn_like(real)
+    packed = torch.cat((real, imag), dim=-1)
+    coefficient = bank.reader(real, imag)
+    basis = bank.content_basis(packed)
+    excitation = bank.complex_factor_product(
+        coefficient[0], coefficient[1], basis[0], basis[1]
+    )
+    singular = torch.linalg.svdvals(torch.complex(excitation[0], excitation[1]))
+    assert int((singular > 1.0e-4).sum(dim=-1).max()) <= bank.write_rank
+    assert excitation[0].shape[-1] == 8
+
+
+def test_factorized_expansion_source_digest_is_enforced() -> None:
+    initialization: dict[str, object] = {"checkpoint_sha256": "expected"}
+    runtime = {"source": {"repeated_p32r4_30m_sha256": "expected"}}
+    _validate_repeated_factorized_source(initialization, runtime, enabled=True)
+    with pytest.raises(RuntimeError, match="factorized expansion source checkpoint"):
+        _validate_repeated_factorized_source(
+            initialization,
+            {"source": {"repeated_p32r4_30m_sha256": "different"}},
+            enabled=True,
+        )
 
 
 def _vector_slow_config() -> AlphabetLMConfig:
