@@ -549,9 +549,10 @@ def _initialize_slow_vector_pole_from_trunk(
 def _validate_slow_vector_pole_source(
     initialization: dict[str, object],
     runtime: dict[str, Any],
-    vector_width: int,
+    *,
+    enabled: bool,
 ) -> None:
-    if vector_width <= 1:
+    if not enabled:
         return
     expected_source_sha = runtime.get("source", {}).get("token_q_10m_sha256")
     if (
@@ -1268,7 +1269,10 @@ def main() -> None:
     _validate_slow_vector_pole_source(
         slow_vector_pole_initialization,
         runtime,
-        args.slow_cnn_pole_vector_width,
+        enabled=(
+            args.slow_cnn_pole_vector_width > 1
+            and not args.slow_cnn_pole_complex_vector_excitation
+        ),
     )
     slow_complex_vector_initialization = _initialize_slow_complex_vector_from_trunk(
         model,

@@ -1440,12 +1440,12 @@ def test_vector_pole_configuration_requires_an_active_recurrent_slow_bank() -> N
 def test_vector_pole_source_digest_is_enforced_inside_the_trainer() -> None:
     initialization: dict[str, object] = {"checkpoint_sha256": "expected"}
     runtime = {"source": {"token_q_10m_sha256": "expected"}}
-    _validate_slow_vector_pole_source(initialization, runtime, 4)
+    _validate_slow_vector_pole_source(initialization, runtime, enabled=True)
     with pytest.raises(RuntimeError, match="source checkpoint digest changed"):
         _validate_slow_vector_pole_source(
             initialization,
             {"source": {"token_q_10m_sha256": "different"}},
-            4,
+            enabled=True,
         )
 
 
@@ -1503,6 +1503,22 @@ def test_complex_vector_source_digest_is_enforced() -> None:
             {"source": {"vector_pole_r4_4m_sha256": "different"}},
             enabled=True,
         )
+
+
+def test_complex_vector_provenance_does_not_require_token_q_again() -> None:
+    disabled_token_q: dict[str, object] = {"enabled": False}
+    complex_initialization: dict[str, object] = {"checkpoint_sha256": "shared-phase"}
+    runtime = {"source": {"vector_pole_r4_4m_sha256": "shared-phase"}}
+    _validate_slow_vector_pole_source(
+        disabled_token_q,
+        runtime,
+        enabled=False,
+    )
+    _validate_slow_complex_vector_source(
+        complex_initialization,
+        runtime,
+        enabled=True,
+    )
 
 
 def _vector_slow_config() -> AlphabetLMConfig:
