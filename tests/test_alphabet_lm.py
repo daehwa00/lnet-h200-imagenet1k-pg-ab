@@ -1589,6 +1589,57 @@ def test_vector_initialization_source_must_be_unambiguous(tmp_path: Path) -> Non
         _validate_vector_initialization_selection(checkpoint, checkpoint, None)
 
 
+def _complex_query_r16_config(*, coordinate_read: bool = False) -> AlphabetLMConfig:
+    return replace(
+        _addressed_slow_config(mode="token"),
+        slow_cnn_pole_vector_width=16,
+        slow_cnn_pole_complex_vector_excitation=True,
+        slow_cnn_pole_complex_vector_query=True,
+        slow_cnn_pole_coordinate_read=coordinate_read,
+    )
+
+
+def test_complex_query_zero_imag_preserves_real_query_and_remains_causal() -> None:
+    torch.manual_seed(501)
+    real_query = AlphabetLM(
+        replace(
+            _addressed_slow_config(mode="token"),
+            slow_cnn_pole_vector_width=16,
+            slow_cnn_pole_complex_vector_excitation=True,
+        )
+    ).eval()
+    torch.manual_seed(501)
+    complex_query = AlphabetLM(_complex_query_r16_config()).eval()
+    complex_query.load_state_dict(real_query.state_dict(), strict=False)
+    slow = cast("SlowCausalCNNPoleMemory", complex_query.slow_cnn_pole_memory)
+    assert slow.vector_query_imag is not None
+    torch.nn.init.zeros_(slow.vector_query_imag.weight)
+    tokens = torch.randint(64, (1, 16))
+    changed = tokens.clone()
+    changed[:, 8:] = torch.randint(64, changed[:, 8:].shape)
+    with torch.no_grad():
+        expected = real_query(tokens)
+        actual = complex_query(tokens)
+    torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+    torch.nn.init.normal_(slow.vector_query_imag.weight, std=0.02)
+    with torch.no_grad():
+        active = complex_query(tokens)
+        changed_logits = complex_query(changed)
+    torch.testing.assert_close(changed_logits[:, :8], active[:, :8], atol=2e-6, rtol=0.0)
+
+
+def test_coordinate_read_returns_model_width_and_requires_complex_query() -> None:
+    model = AlphabetLM(_complex_query_r16_config(coordinate_read=True))
+    tokens = torch.randint(64, (1, 16))
+    assert model(tokens).shape == (1, 16, 64)
+    with pytest.raises(ValueError, match="coordinate read requires complex vector query"):
+        replace(
+            _addressed_slow_config(mode="token"),
+            slow_cnn_pole_vector_width=16,
+            slow_cnn_pole_coordinate_read=True,
+        )
+
+
 def _vector_slow_config() -> AlphabetLMConfig:
     return replace(
         _addressed_slow_config(mode="token"),

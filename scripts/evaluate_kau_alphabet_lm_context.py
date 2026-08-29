@@ -383,6 +383,43 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_vector_width=16,
             slow_cnn_pole_complex_vector_excitation=True,
         )
+    elif kind in {
+        "alphabet2_complex_query_r16",
+        "alphabet2_token_rate_r16",
+        "alphabet2_coordinate_read_r16",
+    }:
+        token_rate = kind == "alphabet2_token_rate_r16"
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            cnn_pole_memory=True,
+            cnn_pole_interval=2,
+            cnn_pole_modes=128,
+            cnn_pole_evidence_width=512,
+            cnn_pole_kernel_size=4,
+            cnn_pole_beta_initial=0.01,
+            cnn_pole_use_recurrence=False,
+            cnn_pole_minimum_half_life=8.0,
+            cnn_pole_maximum_half_life=4_096.0,
+            slow_cnn_pole_memory=True,
+            slow_cnn_pole_stride=1 if token_rate else 16,
+            slow_cnn_pole_modes=128,
+            slow_cnn_pole_evidence_width=512,
+            slow_cnn_pole_kernel_size=4,
+            slow_cnn_pole_upper_blocks=4,
+            slow_cnn_pole_beta_initial=0.01,
+            slow_cnn_pole_use_recurrence=True,
+            slow_cnn_pole_minimum_half_life=16.0 if token_rate else 1.0,
+            slow_cnn_pole_maximum_half_life=4_096.0 if token_rate else 256.0,
+            slow_cnn_pole_query="token",
+            slow_cnn_pole_query_rho=0.5,
+            slow_cnn_pole_vector_width=16,
+            slow_cnn_pole_complex_vector_excitation=True,
+            slow_cnn_pole_complex_vector_query=True,
+            slow_cnn_pole_coordinate_read=(
+                kind == "alphabet2_coordinate_read_r16"
+            ),
+        )
     return AlphabetLM(config)
 
 
@@ -566,7 +603,7 @@ def _slow_independent_value_override(
 def _slow_vector_pole_override(
     model: nn.Module,
     *,
-    target: Literal["excitation", "excitation_imag", "query"],
+    target: Literal["excitation", "excitation_imag", "query", "query_imag"],
     mode: Literal["off", "shift", "time_mean"],
 ) -> list[torch.utils.hooks.RemovableHandle]:
     if not isinstance(model, AlphabetLM):
@@ -578,6 +615,8 @@ def _slow_vector_pole_override(
         module = slow.vector_excitation
     elif target == "excitation_imag":
         module = slow.vector_excitation_imag
+    elif target == "query_imag":
+        module = slow.vector_query_imag
     else:
         module = slow.vector_query
     if module is None:
@@ -876,7 +915,9 @@ def _slow_cnn_pole_metrics(
                 dim=(0, 1, 2)
             )
             scalar_query = slow.query_gate(packed_source)
-            vector_query = slow.vector_query_axes(packed_source, scalar_query)
+            query_real, query_imag = slow.vector_query_components(
+                packed_source, scalar_query
+            )
             vector_metrics = {
                 "vector_width": slow.vector_width,
                 "excitation_extra_rms": float(
@@ -891,11 +932,28 @@ def _slow_cnn_pole_metrics(
                     excitation_imag[..., 1:].float().square().mean().sqrt()
                 ),
                 "query_extra_rms": float(
-                    vector_query[..., 1:].float().square().mean().sqrt()
+                    query_real[..., 1:]
+                    .float()
+                    .square()
+                    .add(query_imag[..., 1:].float().square())
+                    .mean()
+                    .sqrt()
+                ),
+                "query_imag_rms": float(
+                    query_imag.float().square().mean().sqrt()
                 ),
                 "query_base_energy_fraction": float(
-                    vector_query[..., 0].float().square().sum()
-                    / vector_query.float().square().sum().clamp_min(1e-12)
+                    query_real[..., 0]
+                    .float()
+                    .square()
+                    .add(query_imag[..., 0].float().square())
+                    .sum()
+                    / query_real
+                    .float()
+                    .square()
+                    .add(query_imag.float().square())
+                    .sum()
+                    .clamp_min(1e-12)
                 ),
                 "state_effective_rank": float(effective_rank),
                 "state_eigenvalues": eigenvalues.detach().cpu().tolist(),
@@ -1388,6 +1446,9 @@ def main() -> None:
             "alphabet2_vector_pole_r4",
             "alphabet2_complex_vector_r4",
             "alphabet2_complex_vector_r16",
+            "alphabet2_complex_query_r16",
+            "alphabet2_token_rate_r16",
+            "alphabet2_coordinate_read_r16",
             "mamba",
         ),
         required=True,
@@ -1639,6 +1700,34 @@ def main() -> None:
                         mode=mode,
                     )
                     results[f"vector_{target}_{mode}"] = _evaluate(
+                        model,
+                        dataset,
+                        segment=2_048,
+                        token_limit=args.token_limit,
+                        sequence_limit=args.sequence_limit,
+                        device=device,
+                    )
+                    for handle in handles:
+                        handle.remove()
+            complex_query_off = _slow_vector_pole_override(
+                model, target="query_imag", mode="off"
+            )
+            if complex_query_off:
+                results["complex_query_off"] = _evaluate(
+                    model,
+                    dataset,
+                    segment=2_048,
+                    token_limit=args.token_limit,
+                    sequence_limit=args.sequence_limit,
+                    device=device,
+                )
+                for handle in complex_query_off:
+                    handle.remove()
+                for mode in ("shift", "time_mean"):
+                    handles = _slow_vector_pole_override(
+                        model, target="query_imag", mode=mode
+                    )
+                    results[f"complex_query_{mode}"] = _evaluate(
                         model,
                         dataset,
                         segment=2_048,

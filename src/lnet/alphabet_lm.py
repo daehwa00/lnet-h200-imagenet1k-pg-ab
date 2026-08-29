@@ -101,6 +101,8 @@ class AlphabetLMConfig:
     slow_cnn_pole_independent_matrix_value: bool = False
     slow_cnn_pole_vector_width: int = 1
     slow_cnn_pole_complex_vector_excitation: bool = False
+    slow_cnn_pole_complex_vector_query: bool = False
+    slow_cnn_pole_coordinate_read: bool = False
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -242,6 +244,8 @@ class AlphabetLMConfig:
                 or self.slow_cnn_pole_independent_matrix_value
                 or self.slow_cnn_pole_vector_width != 1
                 or self.slow_cnn_pole_complex_vector_excitation
+                or self.slow_cnn_pole_complex_vector_query
+                or self.slow_cnn_pole_coordinate_read
             ):
                 raise ValueError("slow pole addressing requires a slow memory bank")
             return
@@ -280,6 +284,16 @@ class AlphabetLMConfig:
             self.slow_cnn_pole_vector_width <= 1
         ):
             raise ValueError("complex vector excitation requires vector pole memory")
+        if self.slow_cnn_pole_complex_vector_query and (
+            self.slow_cnn_pole_vector_width <= 1
+            or self.slow_cnn_pole_query != "token"
+        ):
+            raise ValueError("complex vector query requires token-addressed vector memory")
+        if self.slow_cnn_pole_coordinate_read and not (
+            self.slow_cnn_pole_complex_vector_query
+            and self.slow_cnn_pole_vector_width > 1
+        ):
+            raise ValueError("coordinate read requires complex vector query")
 
     def _validate_memory_layout(self) -> None:
         if self.memory_layout == "tensor_product" and (
@@ -968,6 +982,8 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         independent_matrix_value: bool = False,
         vector_width: int = 1,
         complex_vector_excitation: bool = False,
+        complex_vector_query: bool = False,
+        coordinate_read: bool = False,
     ) -> None:
         super().__init__(
             modes,
@@ -991,6 +1007,8 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         self.independent_matrix_value = bool(independent_matrix_value)
         self.vector_width = int(vector_width)
         self.complex_vector_excitation = bool(complex_vector_excitation)
+        self.complex_vector_query = bool(complex_vector_query)
+        self.coordinate_read = bool(coordinate_read)
         initial_beta = float(self.beta.detach())
         self.beta = nn.Parameter(torch.full((upper_blocks,), initial_beta))
         if query_mode == "none":
@@ -1035,6 +1053,8 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             vector_width=vector_width,
             epsilon=epsilon,
             complex_excitation=complex_vector_excitation,
+            complex_query=complex_vector_query,
+            coordinate_read=coordinate_read,
         )
 
     def _configure_matrix_axes(
@@ -1075,6 +1095,8 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         vector_width: int,
         epsilon: float,
         complex_excitation: bool,
+        complex_query: bool,
+        coordinate_read: bool,
     ) -> None:
         self.vector_excitation_norm = None
         self.vector_excitation = None
@@ -1082,6 +1104,9 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         self.vector_query = None
         self.vector_excitation_imag_norm = None
         self.vector_excitation_imag = None
+        self.vector_query_imag_norm = None
+        self.vector_query_imag = None
+        self.coordinate_synthesis = None
         if vector_width <= 1:
             return
         extra_coordinates = pole_modes * (vector_width - 1)
@@ -1097,6 +1122,18 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
                 2 * modes, extra_coordinates, bias=False
             )
             nn.init.xavier_uniform_(self.vector_excitation_imag.weight)
+        if complex_query:
+            self.vector_query_imag_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+            self.vector_query_imag = nn.Linear(
+                2 * modes, pole_modes * vector_width, bias=False
+            )
+            nn.init.xavier_uniform_(self.vector_query_imag.weight)
+        if coordinate_read:
+            self.synthesis.weight.requires_grad = False
+            self.coordinate_synthesis = nn.Linear(
+                2 * pole_modes * vector_width, 2 * modes, bias=False
+            )
+            nn.init.xavier_uniform_(self.coordinate_synthesis.weight)
 
     def query_gate(self, packed: Tensor) -> Tensor:
         if self.query_norm is None or self.query is None:
@@ -1175,6 +1212,34 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         raw = torch.cat((base, extra), dim=-1)
         norm = raw.float().square().sum(dim=-1, keepdim=True).sqrt().clamp_min(self.epsilon)
         return raw * (base.abs().float() / norm).to(raw.dtype)
+
+    def vector_query_components(
+        self, packed: Tensor, scalar_query: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        if self.vector_query_imag_norm is None or self.vector_query_imag is None:
+            real = self.vector_query_axes(packed, scalar_query)
+            return real, torch.zeros_like(real)
+        base = scalar_query.unsqueeze(-1)
+        if self.vector_query_norm is None or self.vector_query is None:
+            raise RuntimeError("complex vector query is missing its real coordinates")
+        extra_real = torch.tanh(self.vector_query(self.vector_query_norm(packed)))
+        extra_real = extra_real.reshape(
+            *packed.shape[:-1], self.memory.modes, self.vector_width - 1
+        )
+        raw_real = torch.cat((base, extra_real), dim=-1)
+        raw_imag = torch.tanh(
+            self.vector_query_imag(self.vector_query_imag_norm(packed))
+        ).reshape(*packed.shape[:-1], self.memory.modes, self.vector_width)
+        norm = (
+            raw_real.float()
+            .square()
+            .add(raw_imag.float().square())
+            .sum(dim=-1, keepdim=True)
+            .sqrt()
+            .clamp_min(self.epsilon)
+        )
+        scale = (base.abs().float() / norm).to(raw_real.dtype)
+        return raw_real * scale, raw_imag * scale
 
     def vector_excitation_imag_axes(self, packed: Tensor) -> Tensor:
         shape = (*packed.shape[:-1], self.memory.modes, 1)
@@ -1267,12 +1332,21 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             )
             token_gate = self.query_gate(torch.cat((real, imag), dim=-1))
             if self.vector_width > 1:
-                vector_query = self.vector_query_axes(
+                query_real, query_imag = self.vector_query_components(
                     torch.cat((real, imag), dim=-1), token_gate
                 )
+                gated_real = repeated_state[0] * query_real + repeated_state[1] * query_imag
+                gated_imag = repeated_state[1] * query_real - repeated_state[0] * query_imag
+                if self.coordinate_synthesis is not None:
+                    projected = self.coordinate_synthesis(
+                        torch.cat(
+                            (gated_real.flatten(-2), gated_imag.flatten(-2)), dim=-1
+                        )
+                    )
+                    return projected.chunk(2, dim=-1)
                 contracted_state = (
-                    (repeated_state[0] * vector_query).sum(dim=-1),
-                    (repeated_state[1] * vector_query).sum(dim=-1),
+                    gated_real.sum(dim=-1),
+                    gated_imag.sum(dim=-1),
                 )
                 return self.synthesize(contracted_state)
             if self.matrix_key_width > 1:
@@ -1975,6 +2049,8 @@ class AlphabetLM(nn.Module):
                     complex_vector_excitation=(
                         config.slow_cnn_pole_complex_vector_excitation
                     ),
+                    complex_vector_query=config.slow_cnn_pole_complex_vector_query,
+                    coordinate_read=config.slow_cnn_pole_coordinate_read,
                 )
         else:
             self.slow_cnn_pole_memory = None

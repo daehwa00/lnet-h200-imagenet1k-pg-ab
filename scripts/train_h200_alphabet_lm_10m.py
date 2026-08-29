@@ -765,6 +765,8 @@ def _build(
     slow_cnn_pole_independent_matrix_value: bool = False,
     slow_cnn_pole_vector_width: int = 1,
     slow_cnn_pole_complex_vector_excitation: bool = False,
+    slow_cnn_pole_complex_vector_query: bool = False,
+    slow_cnn_pole_coordinate_read: bool = False,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -844,6 +846,8 @@ def _build(
         slow_cnn_pole_complex_vector_excitation=(
             slow_cnn_pole_complex_vector_excitation
         ),
+        slow_cnn_pole_complex_vector_query=slow_cnn_pole_complex_vector_query,
+        slow_cnn_pole_coordinate_read=slow_cnn_pole_coordinate_read,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -1104,6 +1108,8 @@ def main() -> None:
     parser.add_argument("--slow-cnn-pole-independent-matrix-value", action="store_true")
     parser.add_argument("--slow-cnn-pole-vector-width", type=int, default=1)
     parser.add_argument("--slow-cnn-pole-complex-vector-excitation", action="store_true")
+    parser.add_argument("--slow-cnn-pole-complex-vector-query", action="store_true")
+    parser.add_argument("--slow-cnn-pole-coordinate-read", action="store_true")
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-query-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-key-trunk-checkpoint", type=Path)
@@ -1251,6 +1257,8 @@ def main() -> None:
         slow_cnn_pole_complex_vector_excitation=(
             args.slow_cnn_pole_complex_vector_excitation
         ),
+        slow_cnn_pole_complex_vector_query=args.slow_cnn_pole_complex_vector_query,
+        slow_cnn_pole_coordinate_read=args.slow_cnn_pole_coordinate_read,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -1440,6 +1448,10 @@ def main() -> None:
             "slow_cnn_pole_complex_vector_excitation": (
                 args.slow_cnn_pole_complex_vector_excitation
             ),
+            "slow_cnn_pole_complex_vector_query": (
+                args.slow_cnn_pole_complex_vector_query
+            ),
+            "slow_cnn_pole_coordinate_read": args.slow_cnn_pole_coordinate_read,
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -1620,6 +1632,8 @@ def main() -> None:
         "slow_cnn_pole_complex_vector_excitation": (
             args.slow_cnn_pole_complex_vector_excitation
         ),
+        "slow_cnn_pole_complex_vector_query": args.slow_cnn_pole_complex_vector_query,
+        "slow_cnn_pole_coordinate_read": args.slow_cnn_pole_coordinate_read,
         "slow_complex_vector_initialization": slow_complex_vector_initialization,
         "slow_full_complex_vector_initialization": (
             slow_full_complex_vector_initialization
@@ -1815,6 +1829,14 @@ def main() -> None:
                         .mean()
                         .sqrt()
                     )
+                if model.slow_cnn_pole_memory.vector_query_imag is not None:
+                    row["slow_vector_query_imag_weight_rms"] = float(
+                        model.slow_cnn_pole_memory.vector_query_imag.weight.detach()
+                        .float()
+                        .square()
+                        .mean()
+                        .sqrt()
+                    )
         if update == 1:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
@@ -1889,6 +1911,10 @@ def main() -> None:
         if "slow_vector_excitation_imag_weight_rms" in row:
             wandb_metrics["model/slow_vector_excitation_imag_weight_rms"] = row[
                 "slow_vector_excitation_imag_weight_rms"
+            ]
+        if "slow_vector_query_imag_weight_rms" in row:
+            wandb_metrics["model/slow_vector_query_imag_weight_rms"] = row[
+                "slow_vector_query_imag_weight_rms"
             ]
         wandb_run.log(wandb_metrics, step=update)
         print("ALPHABET_LM_PROGRESS=" + json.dumps(row, sort_keys=True), flush=True)

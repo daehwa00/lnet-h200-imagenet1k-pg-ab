@@ -1,0 +1,177 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "complexq-r16-e2e-4m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_complex_vector_excitation": true,
+        "slow_cnn_pole_complex_vector_query": true,
+        "slow_cnn_pole_coordinate_read": false,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_vector_width": 16
+      },
+      "coordinate-read-r16-e2e-4m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_complex_vector_excitation": true,
+        "slow_cnn_pole_complex_vector_query": true,
+        "slow_cnn_pole_coordinate_read": true,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_vector_width": 16
+      },
+      "token-rate-r16-e2e-4m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_complex_vector_excitation": true,
+        "slow_cnn_pole_complex_vector_query": true,
+        "slow_cnn_pole_coordinate_read": false,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 4096.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 16.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_stride": 1,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_vector_width": 16
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-vector-architecture-search-s501-v1",
+  "campaign_manifest_sha256": "5a7eb8f796d28a0e3a36770d857a750712ab4655482dea35e844be682b4ddd6a",
+  "diagnostics": {
+    "final_best_only": true,
+    "intermediate_evaluations": false,
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-VectorArchitectureSearch-S501-v1",
+  "output_namespace": "alphabet-lm-4090-vector-architecture-search-v1",
+  "parameter_counts": {
+    "complexq-r16-e2e-4m": 43544842,
+    "coordinate-read-r16-e2e-4m": 45510922,
+    "token-rate-r16-e2e-4m": 43544842
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "complexq-r16-e2e-4m": {
+      "display_name": "RTX4090-S501-complexq-r16-e2e-4m",
+      "id": "bdd88397a03a2d39",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "VectorSearch",
+        "4M",
+        "seed501"
+      ]
+    },
+    "coordinate-read-r16-e2e-4m": {
+      "display_name": "RTX4090-S501-coordinate-read-r16-e2e-4m",
+      "id": "8f56e93a01d82e12",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "VectorSearch",
+        "4M",
+        "seed501"
+      ]
+    },
+    "token-rate-r16-e2e-4m": {
+      "display_name": "RTX4090-S501-token-rate-r16-e2e-4m",
+      "id": "6aadb33a5d588fc9",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "VectorSearch",
+        "4M",
+        "seed501"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "initialization": "independent from-scratch seed501",
+    "reference_mamba_4m": 6.302452384889687,
+    "reference_real_query_r16_4m": 6.332096428520948
+  },
+  "total_parameter_counts": {
+    "complexq-r16-e2e-4m": 44462346,
+    "coordinate-read-r16-e2e-4m": 46559498,
+    "token-rate-r16-e2e-4m": 44462346
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "complexq-r16-e2e-4m",
+      "token-rate-r16-e2e-4m",
+      "coordinate-read-r16-e2e-4m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 4000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}
