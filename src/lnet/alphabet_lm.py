@@ -1176,29 +1176,30 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         ]
         key_gate = self.key_gate(anchor_features)
         anchors = anchors[0] * key_gate, anchors[1] * key_gate
-        value = self.anchor_value(anchor_features)
         if self.vector_width > 1:
             vector_excitation = self.vector_excitation_axes(anchor_features)
             transported_drive = (
                 anchors[0].unsqueeze(-1) * vector_excitation,
                 anchors[1].unsqueeze(-1) * vector_excitation,
             )
-        elif self.matrix_key_width > 1:
-            matrix_key = self.matrix_key_axes(anchor_features)
-            matrix_value = self.matrix_value_axes(anchor_features, value)
-            transported_drive = (
-                anchors[0].unsqueeze(-1).unsqueeze(-1)
-                * matrix_key.unsqueeze(-1)
-                * matrix_value.unsqueeze(-3),
-                anchors[1].unsqueeze(-1).unsqueeze(-1)
-                * matrix_key.unsqueeze(-1)
-                * matrix_value.unsqueeze(-3),
-            )
         else:
-            transported_drive = (
-                anchors[0].unsqueeze(-1) * value.unsqueeze(-2),
-                anchors[1].unsqueeze(-1) * value.unsqueeze(-2),
-            )
+            value = self.anchor_value(anchor_features)
+            if self.matrix_key_width > 1:
+                matrix_key = self.matrix_key_axes(anchor_features)
+                matrix_value = self.matrix_value_axes(anchor_features, value)
+                transported_drive = (
+                    anchors[0].unsqueeze(-1).unsqueeze(-1)
+                    * matrix_key.unsqueeze(-1)
+                    * matrix_value.unsqueeze(-3),
+                    anchors[1].unsqueeze(-1).unsqueeze(-1)
+                    * matrix_key.unsqueeze(-1)
+                    * matrix_value.unsqueeze(-3),
+                )
+            else:
+                transported_drive = (
+                    anchors[0].unsqueeze(-1) * value.unsqueeze(-2),
+                    anchors[1].unsqueeze(-1) * value.unsqueeze(-2),
+                )
         state = self.memory(*transported_drive) if self.use_recurrence else transported_drive
         zero = torch.zeros_like(state[0][:, :1]), torch.zeros_like(state[1][:, :1])
         delayed_state = (
