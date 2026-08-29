@@ -1,0 +1,93 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "pole-reader-k3-r16-e2e-30m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_complex_vector_query": true,
+        "slow_cnn_pole_coordinate_read": true,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 4096.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 16.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_reader_kernel": 3,
+        "slow_cnn_pole_specific_reader": true,
+        "slow_cnn_pole_stride": 1,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_vector_width": 16
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-pole-reader-k3-r16-30m-s501-v1",
+  "campaign_manifest_sha256": "293b571b7314aceef5123441d1e2384a08dbbfd3929608faf7ea0ad220e4b3f0",
+  "diagnostics": {
+    "final_context": true,
+    "intermediate_evaluations": false
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-PoleReaderK3R16-30M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-pole-reader-k3-r16-30m-v1",
+  "parameter_counts": {
+    "pole-reader-k3-r16-e2e-30m": 46425098
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "pole-reader-k3-r16-e2e-30m": {
+      "display_name": "RTX4090-S501-ALPHABET2-PoleReaderK3R16-E2E-30M",
+      "id": "ed9f7065668e0750",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "PoleReader",
+        "K3",
+        "30M"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "mamba_30m_validation_loss": 4.985551627853659,
+    "pole_reader_4m_checkpoint": "/home/daehwa/alphabet-lm-4090-pole-reader-runs/22123be3b6e90bd3/pole-reader-4m/checkpoint.pt",
+    "pole_reader_4m_sha256": "6af20486c94447f541650fe30f202ef2ec094c385377a7a0def185e4273ac443",
+    "pole_reader_4m_validation_loss": 6.330296587172284,
+    "stride16_30m_validation_loss": 5.209424313665039
+  },
+  "total_parameter_counts": {
+    "pole-reader-k3-r16-e2e-30m": 48721930
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "pole-reader-k3-r16-e2e-30m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 30000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}
