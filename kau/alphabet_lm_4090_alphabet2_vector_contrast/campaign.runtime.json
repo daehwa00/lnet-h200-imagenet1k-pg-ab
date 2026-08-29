@@ -1,0 +1,103 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "alphabet2-vector-contrast-r4-4m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_vector_contrast_read": true,
+        "slow_cnn_pole_vector_width": 4
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-vector-contrast-r4-s501-v1",
+  "campaign_manifest_sha256": "e3153c509debd231cfdeccf8aa70297524d71353a3c932bcb9b5b5e401fbc327",
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      512,
+      128,
+      32,
+      1
+    ],
+    "contrast_off": true,
+    "contrast_synthesis_rank": true,
+    "milestones": [
+      4000000
+    ],
+    "query_coordinate_permutation": true,
+    "query_shift": true,
+    "query_time_mean": true,
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-VectorContrastR4-S501-v1",
+  "output_namespace": "alphabet-lm-4090-vector-contrast-r4-v1",
+  "parameter_counts": {
+    "alphabet2-vector-contrast-r4-4m": 393216
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet2-vector-contrast-r4-4m": {
+      "display_name": "RTX4090-S501-ALPHABET2-VectorContrastR4-4M",
+      "id": "a929aee0b6f0f5a4",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "VectorContrastR4",
+        "4M",
+        "seed501"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_vector_contrast.runtime.v1",
+  "source": {
+    "validation_loss": 5.836044664997839,
+    "vector_pole_r4_4m": "/home/daehwa/alphabet-lm-4090-vector-pole-r4-runs/ed8c6da258ce9b41/vector-pole-4m/checkpoint.pt",
+    "vector_pole_r4_4m_sha256": "f34d05c8fb557c8bd831ff8c821c775e82188e72f7002da22d5cc3afda8782e2",
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/73569327f449d132"
+  },
+  "total_parameter_counts": {
+    "alphabet2-vector-contrast-r4-4m": 41250058
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet2-vector-contrast-r4-4m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 4000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

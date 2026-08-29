@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 import torch
 from torch import Tensor, nn
@@ -100,6 +100,7 @@ class AlphabetLMConfig:
     slow_cnn_pole_matrix_key_width: int = 1
     slow_cnn_pole_independent_matrix_value: bool = False
     slow_cnn_pole_vector_width: int = 1
+    slow_cnn_pole_vector_contrast_read: bool = False
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -274,6 +275,10 @@ class AlphabetLMConfig:
             or self.slow_cnn_pole_matrix_key_width != 1
         ):
             raise ValueError("vector pole memory requires token query without value axes")
+        if self.slow_cnn_pole_vector_contrast_read and (
+            self.slow_cnn_pole_vector_width <= 1 or self.slow_cnn_pole_query != "token"
+        ):
+            raise ValueError("vector contrast read requires token-query vector poles")
 
     def _validate_memory_layout(self) -> None:
         if self.memory_layout == "tensor_product" and (
@@ -961,6 +966,7 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         matrix_key_width: int = 1,
         independent_matrix_value: bool = False,
         vector_width: int = 1,
+        vector_contrast_read: bool = False,
     ) -> None:
         super().__init__(
             modes,
@@ -1026,6 +1032,7 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             pole_modes=pole_modes,
             vector_width=vector_width,
             epsilon=epsilon,
+            contrast_read=vector_contrast_read,
         )
 
     def _configure_matrix_axes(
@@ -1065,11 +1072,25 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         pole_modes: int,
         vector_width: int,
         epsilon: float,
+        contrast_read: bool,
     ) -> None:
         self.vector_excitation_norm = None
         self.vector_excitation = None
         self.vector_query_norm = None
         self.vector_query = None
+        self.vector_contrast_synthesis = None
+        contrast_basis = torch.zeros(vector_width, max(0, vector_width - 1))
+        if vector_width > 1:
+            for column in range(vector_width - 1):
+                count = column + 1
+                scale = math.sqrt(count * (count + 1))
+                contrast_basis[:count, column] = 1.0 / scale
+                contrast_basis[count, column] = -count / scale
+        self.register_buffer(
+            "vector_contrast_basis",
+            contrast_basis,
+            persistent=False,
+        )
         if vector_width <= 1:
             return
         extra_coordinates = pole_modes * (vector_width - 1)
@@ -1079,6 +1100,13 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         self.vector_query = nn.Linear(2 * modes, extra_coordinates, bias=False)
         nn.init.xavier_uniform_(self.vector_excitation.weight)
         nn.init.zeros_(self.vector_query.weight)
+        if contrast_read:
+            self.vector_contrast_synthesis = nn.Linear(
+                2 * pole_modes * (vector_width - 1),
+                2 * modes,
+                bias=False,
+            )
+            nn.init.zeros_(self.vector_contrast_synthesis.weight)
 
     def query_gate(self, packed: Tensor) -> Tensor:
         if self.query_norm is None or self.query is None:
@@ -1169,6 +1197,20 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         projected_real, projected_imag = projected.chunk(2, dim=-1)
         return base[0] + projected_real, base[1] + projected_imag
 
+    def synthesize_vector_contrast(self, gated_state: ComplexField) -> ComplexField:
+        state_real, state_imag = gated_state
+        base = self.synthesize((state_real.sum(dim=-1), state_imag.sum(dim=-1)))
+        if self.vector_contrast_synthesis is None:
+            return base
+        basis = cast("Tensor", self.vector_contrast_basis).to(dtype=state_real.dtype)
+        contrast_real = (state_real @ basis).flatten(-2)
+        contrast_imag = (state_imag @ basis).flatten(-2)
+        extra = self.vector_contrast_synthesis(
+            torch.cat((contrast_real, contrast_imag), dim=-1)
+        )
+        extra_real, extra_imag = extra.chunk(2, dim=-1)
+        return base[0] + extra_real, base[1] + extra_imag
+
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         steps = real.shape[1]
         full_anchors = steps // self.stride
@@ -1232,11 +1274,11 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
                 vector_query = self.vector_query_axes(
                     torch.cat((real, imag), dim=-1), token_gate
                 )
-                contracted_state = (
-                    (repeated_state[0] * vector_query).sum(dim=-1),
-                    (repeated_state[1] * vector_query).sum(dim=-1),
+                gated_state = (
+                    repeated_state[0] * vector_query,
+                    repeated_state[1] * vector_query,
                 )
-                return self.synthesize(contracted_state)
+                return self.synthesize_vector_contrast(gated_state)
             if self.matrix_key_width > 1:
                 matrix_query = self.matrix_query_axes(
                     torch.cat((real, imag), dim=-1), token_gate
@@ -1934,6 +1976,7 @@ class AlphabetLM(nn.Module):
                         config.slow_cnn_pole_independent_matrix_value
                     ),
                     vector_width=config.slow_cnn_pole_vector_width,
+                    vector_contrast_read=config.slow_cnn_pole_vector_contrast_read,
                 )
         else:
             self.slow_cnn_pole_memory = None

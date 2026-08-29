@@ -300,7 +300,7 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_matrix_key_width=4,
             slow_cnn_pole_independent_matrix_value=True,
         )
-    elif kind == "alphabet2_vector_pole_r4":
+    elif kind in {"alphabet2_vector_pole_r4", "alphabet2_vector_contrast_r4"}:
         config = AlphabetLMConfig(
             reader_type="dense_k3",
             memory_layout="local_only",
@@ -326,6 +326,9 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_query="token",
             slow_cnn_pole_query_rho=0.5,
             slow_cnn_pole_vector_width=4,
+            slow_cnn_pole_vector_contrast_read=(
+                kind == "alphabet2_vector_contrast_r4"
+            ),
         )
     return AlphabetLM(config)
 
@@ -511,7 +514,7 @@ def _slow_vector_pole_override(
     model: nn.Module,
     *,
     target: Literal["excitation", "query"],
-    mode: Literal["off", "shift", "time_mean"],
+    mode: Literal["off", "shift", "time_mean", "permute"],
 ) -> list[torch.utils.hooks.RemovableHandle]:
     if not isinstance(model, AlphabetLM):
         return []
@@ -528,6 +531,11 @@ def _slow_vector_pole_override(
             return torch.zeros_like(value)
         if mode == "shift":
             return torch.roll(value, shifts=1, dims=1)
+        if mode == "permute":
+            shaped = value.reshape(
+                *value.shape[:-1], slow.memory.modes, slow.vector_width - 1
+            )
+            return torch.roll(shaped, shifts=1, dims=-1).reshape_as(value)
         return value.mean(dim=1, keepdim=True).expand_as(value)
 
     return [module.register_forward_hook(override)]
@@ -826,6 +834,20 @@ def _slow_cnn_pole_metrics(
                     coordinate_energy.max() / coordinate_energy.sum().clamp_min(1e-12)
                 ),
             }
+            if slow.vector_contrast_synthesis is not None:
+                weight = slow.vector_contrast_synthesis.weight.float()
+                singular_values = torch.linalg.svdvals(weight)
+                energy = singular_values.square()
+                vector_metrics.update(
+                    {
+                        "contrast_synthesis_weight_rms": float(
+                            weight.square().mean().sqrt()
+                        ),
+                        "contrast_synthesis_effective_rank": float(
+                            energy.sum().square() / energy.square().sum().clamp_min(1e-12)
+                        ),
+                    }
+                )
         elif slow.value_width > 1:
             drive_real, drive_imag = slow.pole_drive(real, imag)
             anchors = (
@@ -1308,6 +1330,7 @@ def main() -> None:
             "alphabet2_matrix_k4v4",
             "alphabet2_nonseparable_k4v4",
             "alphabet2_vector_pole_r4",
+            "alphabet2_vector_contrast_r4",
             "mamba",
         ),
         required=True,
@@ -1568,6 +1591,45 @@ def main() -> None:
                     )
                     for handle in handles:
                         handle.remove()
+            permuted_query = _slow_vector_pole_override(
+                model,
+                target="query",
+                mode="permute",
+            )
+            results["vector_query_coordinate_permuted"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in permuted_query:
+                handle.remove()
+        if (
+            isinstance(model, AlphabetLM)
+            and model.slow_cnn_pole_memory is not None
+            and model.slow_cnn_pole_memory.vector_contrast_synthesis is not None
+        ):
+            contrast = model.slow_cnn_pole_memory.vector_contrast_synthesis
+
+            def zero_contrast(
+                _module: nn.Module,
+                _inputs: tuple[object, ...],
+                output: object,
+            ) -> Tensor:
+                return torch.zeros_like(cast("Tensor", output))
+
+            contrast_handle = contrast.register_forward_hook(zero_contrast)
+            results["vector_contrast_off"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            contrast_handle.remove()
     for segment in (512, 128, 32, 1):
         results[f"reset_{segment}"] = _evaluate(
             model,

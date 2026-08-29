@@ -79,6 +79,7 @@ def main() -> None:
             "alphabet2_matrix_k4v4",
             "alphabet2_nonseparable_k4v4",
             "alphabet2_vector_pole_r4",
+            "alphabet2_vector_contrast_r4",
         ),
         default="all",
     )
@@ -120,6 +121,7 @@ def main() -> None:
         "alphabet2_matrix_k4v4",
         "alphabet2_nonseparable_k4v4",
         "alphabet2_vector_pole_r4",
+        "alphabet2_vector_contrast_r4",
     }:
         alphabet_variants = ()
     for label, initialization in alphabet_variants:
@@ -539,7 +541,7 @@ def main() -> None:
         )
         full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")
         results[args.only] = _step(nonseparable, full_microbatch)
-    if args.only == "alphabet2_vector_pole_r4":
+    if args.only in {"alphabet2_vector_pole_r4", "alphabet2_vector_contrast_r4"}:
         torch.manual_seed(501)
         vector_pole = AlphabetLM(
             AlphabetLMConfig(
@@ -567,6 +569,9 @@ def main() -> None:
                 slow_cnn_pole_query="token",
                 slow_cnn_pole_query_rho=0.5,
                 slow_cnn_pole_vector_width=4,
+                slow_cnn_pole_vector_contrast_read=(
+                    args.only == "alphabet2_vector_contrast_r4"
+                ),
             )
         )
         full_microbatch = torch.randint(32_768, (8, 2_049), device="cuda")

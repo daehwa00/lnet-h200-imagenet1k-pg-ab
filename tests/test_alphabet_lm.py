@@ -44,7 +44,9 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_slow_matrix_from_trunk,
     _initialize_slow_query_from_trunk,
     _initialize_slow_value_from_trunk,
+    _initialize_slow_vector_contrast_from_trunk,
     _initialize_slow_vector_pole_from_trunk,
+    _validate_slow_vector_contrast_source,
     _validate_slow_vector_pole_source,
 )
 
@@ -1422,6 +1424,84 @@ def test_vector_pole_checkpoint_trains_only_extra_coordinates(tmp_path: Path) ->
         "slow_cnn_pole_memory.vector_query_norm.weight",
         "slow_cnn_pole_memory.vector_query.weight",
     }
+
+
+def _vector_contrast_slow_config() -> AlphabetLMConfig:
+    return replace(
+        _vector_pole_slow_config(),
+        slow_cnn_pole_vector_contrast_read=True,
+    )
+
+
+def test_vector_contrast_read_preserves_trained_r4_and_is_causal() -> None:
+    torch.manual_seed(501)
+    vector_pole = AlphabetLM(_vector_pole_slow_config()).eval()
+    slow_vector = cast("SlowCausalCNNPoleMemory", vector_pole.slow_cnn_pole_memory)
+    assert slow_vector.vector_query is not None
+    torch.nn.init.normal_(slow_vector.vector_query.weight, std=0.02)
+    torch.manual_seed(501)
+    contrast = AlphabetLM(_vector_contrast_slow_config()).eval()
+    contrast.load_state_dict(vector_pole.state_dict(), strict=False)
+    slow = cast("SlowCausalCNNPoleMemory", contrast.slow_cnn_pole_memory)
+    assert slow.vector_contrast_synthesis is not None
+    torch.testing.assert_close(
+        slow.vector_contrast_synthesis.weight,
+        torch.zeros_like(slow.vector_contrast_synthesis.weight),
+    )
+    basis = cast("torch.Tensor", slow.vector_contrast_basis)
+    torch.testing.assert_close(
+        basis.mT @ basis,
+        torch.eye(basis.shape[1]),
+        atol=1e-6,
+        rtol=0.0,
+    )
+    torch.testing.assert_close(
+        basis.sum(dim=0),
+        torch.zeros(basis.shape[1]),
+        atol=1e-6,
+        rtol=0.0,
+    )
+    tokens = torch.randint(64, (1, 16))
+    changed = tokens.clone()
+    changed[:, 8:] = torch.randint(64, changed[:, 8:].shape)
+    with torch.no_grad():
+        expected = vector_pole(tokens)
+        actual = contrast(tokens)
+    torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+    contrast(tokens).square().mean().backward()
+    assert slow.vector_contrast_synthesis.weight.grad is not None
+    assert slow.vector_contrast_synthesis.weight.grad.abs().sum() > 0
+    with torch.no_grad():
+        torch.nn.init.normal_(slow.vector_contrast_synthesis.weight, std=0.02)
+        active_logits = contrast(tokens)
+        changed_logits = contrast(changed)
+    torch.testing.assert_close(
+        changed_logits[:, :8], active_logits[:, :8], atol=2e-6, rtol=0.0
+    )
+
+
+def test_vector_contrast_checkpoint_trains_only_contrast_synthesis(
+    tmp_path: Path,
+) -> None:
+    torch.manual_seed(501)
+    vector_pole = AlphabetLM(_vector_pole_slow_config())
+    checkpoint = tmp_path / "vector-pole.pt"
+    torch.save({"model": vector_pole.state_dict()}, checkpoint)
+    contrast = AlphabetLM(_vector_contrast_slow_config())
+    contract = _initialize_slow_vector_contrast_from_trunk(contrast, checkpoint)
+    assert contract["enabled"] is True
+    trainable = [
+        name for name, parameter in contrast.named_parameters() if parameter.requires_grad
+    ]
+    assert trainable == ["slow_cnn_pole_memory.vector_contrast_synthesis.weight"]
+    runtime = {"source": {"vector_pole_r4_4m_sha256": contract["checkpoint_sha256"]}}
+    _validate_slow_vector_contrast_source(contract, runtime, contrast_read=True)
+    with pytest.raises(RuntimeError, match="source checkpoint digest changed"):
+        _validate_slow_vector_contrast_source(
+            contract,
+            {"source": {"vector_pole_r4_4m_sha256": "different"}},
+            contrast_read=True,
+        )
 
 
 def test_vector_pole_configuration_requires_an_active_recurrent_slow_bank() -> None:

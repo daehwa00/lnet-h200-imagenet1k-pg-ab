@@ -77,6 +77,9 @@ KAU_ALPHABET2_NONSEPARABLE_RUNTIME_SCHEMA = (
 KAU_ALPHABET2_VECTOR_POLE_RUNTIME_SCHEMA = (
     "lnet.kau.alphabet_lm.alphabet2_vector_pole.runtime.v1"
 )
+KAU_ALPHABET2_VECTOR_CONTRAST_RUNTIME_SCHEMA = (
+    "lnet.kau.alphabet_lm.alphabet2_vector_contrast.runtime.v1"
+)
 _STOP_EVENT = threading.Event()
 
 
@@ -558,6 +561,56 @@ def _validate_slow_vector_pole_source(
         raise RuntimeError("vector-pole source checkpoint digest changed")
 
 
+def _initialize_slow_vector_contrast_from_trunk(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.slow_cnn_pole_memory is None:
+        raise RuntimeError("vector contrast initialization requires a slow memory bank")
+    slow = model.slow_cnn_pole_memory
+    if slow.vector_contrast_synthesis is None:
+        raise RuntimeError("vector contrast initialization requires contrast read")
+    checkpoint_bytes = checkpoint_path.read_bytes()
+    checkpoint_sha = hashlib.sha256(checkpoint_bytes).hexdigest()
+    payload = cast(
+        "dict[str, Any]",
+        torch.load(io.BytesIO(checkpoint_bytes), map_location="cpu", weights_only=True),
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    prefix = "slow_cnn_pole_memory.vector_contrast_synthesis."
+    expected_missing = {name for name in model.state_dict() if name.startswith(prefix)}
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("VectorPole-R4 checkpoint does not match contrast read")
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(name.startswith(prefix))
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": checkpoint_sha,
+        "missing_contrast_tensors": len(expected_missing),
+        "vector_pole_r4_frozen": True,
+    }
+
+
+def _validate_slow_vector_contrast_source(
+    initialization: dict[str, object],
+    runtime: dict[str, Any],
+    *,
+    contrast_read: bool,
+) -> None:
+    if not contrast_read:
+        return
+    expected_source_sha = runtime.get("source", {}).get("vector_pole_r4_4m_sha256")
+    if (
+        not isinstance(expected_source_sha, str)
+        or initialization.get("checkpoint_sha256") != expected_source_sha
+    ):
+        raise RuntimeError("vector-contrast source checkpoint digest changed")
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -637,6 +690,7 @@ def _build(
     slow_cnn_pole_matrix_key_width: int = 1,
     slow_cnn_pole_independent_matrix_value: bool = False,
     slow_cnn_pole_vector_width: int = 1,
+    slow_cnn_pole_vector_contrast_read: bool = False,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -713,6 +767,7 @@ def _build(
             slow_cnn_pole_independent_matrix_value
         ),
         slow_cnn_pole_vector_width=slow_cnn_pole_vector_width,
+        slow_cnn_pole_vector_contrast_read=slow_cnn_pole_vector_contrast_read,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -972,6 +1027,7 @@ def main() -> None:
     parser.add_argument("--slow-cnn-pole-matrix-key-width", type=int, default=1)
     parser.add_argument("--slow-cnn-pole-independent-matrix-value", action="store_true")
     parser.add_argument("--slow-cnn-pole-vector-width", type=int, default=1)
+    parser.add_argument("--slow-cnn-pole-vector-contrast-read", action="store_true")
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-query-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-key-trunk-checkpoint", type=Path)
@@ -979,6 +1035,7 @@ def main() -> None:
     parser.add_argument("--initialize-slow-matrix-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-independent-value-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-vector-pole-checkpoint", type=Path)
+    parser.add_argument("--initialize-slow-vector-contrast-checkpoint", type=Path)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -1020,6 +1077,7 @@ def main() -> None:
         KAU_ALPHABET2_MATRIX_RUNTIME_SCHEMA,
         KAU_ALPHABET2_NONSEPARABLE_RUNTIME_SCHEMA,
         KAU_ALPHABET2_VECTOR_POLE_RUNTIME_SCHEMA,
+        KAU_ALPHABET2_VECTOR_CONTRAST_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -1113,6 +1171,9 @@ def main() -> None:
             args.slow_cnn_pole_independent_matrix_value
         ),
         slow_cnn_pole_vector_width=args.slow_cnn_pole_vector_width,
+        slow_cnn_pole_vector_contrast_read=(
+            args.slow_cnn_pole_vector_contrast_read
+        ),
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -1201,6 +1262,15 @@ def main() -> None:
         runtime,
         args.slow_cnn_pole_vector_width,
     )
+    slow_vector_contrast_initialization = _initialize_slow_vector_contrast_from_trunk(
+        model,
+        args.initialize_slow_vector_contrast_checkpoint,
+    )
+    _validate_slow_vector_contrast_source(
+        slow_vector_contrast_initialization,
+        runtime,
+        contrast_read=args.slow_cnn_pole_vector_contrast_read,
+    )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
         active_arguments = {
@@ -1267,6 +1337,9 @@ def main() -> None:
                 args.slow_cnn_pole_independent_matrix_value
             ),
             "slow_cnn_pole_vector_width": args.slow_cnn_pole_vector_width,
+            "slow_cnn_pole_vector_contrast_read": (
+                args.slow_cnn_pole_vector_contrast_read
+            ),
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -1444,6 +1517,10 @@ def main() -> None:
         ),
         "slow_cnn_pole_vector_width": args.slow_cnn_pole_vector_width,
         "slow_vector_pole_initialization": slow_vector_pole_initialization,
+        "slow_cnn_pole_vector_contrast_read": (
+            args.slow_cnn_pole_vector_contrast_read
+        ),
+        "slow_vector_contrast_initialization": slow_vector_contrast_initialization,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
