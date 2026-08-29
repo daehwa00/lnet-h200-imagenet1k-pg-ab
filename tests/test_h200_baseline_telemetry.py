@@ -29,6 +29,7 @@ def test_sidecar_replays_spool_with_strict_settings_and_marks_completion(
     stop = tmp_path / "stop.json"
     stop.write_text("{}")
     complete = tmp_path / "complete.json"
+    cursor = tmp_path / "cursor.json"
     captured: dict[str, Any] = {}
 
     class Run:
@@ -61,16 +62,13 @@ def test_sidecar_replays_spool_with_strict_settings_and_marks_completion(
             spool=spool,
             result=result,
             stop=stop,
+            cursor=cursor,
             complete_marker=complete,
             contract=contract,
             model_key="test_model",
             seed=501,
-            parent_pid=123,
-            poll_seconds=0.01,
         ),
     )
-    monkeypatch.setattr(telemetry, "_parent_alive", lambda _pid: True)
-    monkeypatch.setattr(telemetry, "_arm_parent_death_signal", lambda _pid: None)
     monkeypatch.setenv("H200_BASELINE_RUN_ID", "1" * 16)
     monkeypatch.setenv("H200_BASELINE_DISPLAY_NAME", "H200-BL-test-s501")
     monkeypatch.setenv("H200_BASELINE_TAGS_JSON", json.dumps(["ip-scoped-untrusted"]))
@@ -82,7 +80,35 @@ def test_sidecar_replays_spool_with_strict_settings_and_marks_completion(
     assert run.logged == [(1, {"epoch": 1.0})]
     assert run.finished is True
     assert complete.is_file()
+    assert json.loads(cursor.read_text())["synced_ids"] == ["epoch:1"]
     assert captured["init"]["anonymous"] == "never"
     assert captured["settings"]["console"] == "off"
     assert captured["settings"]["disable_job_creation"] is True
     assert captured["settings"]["x_disable_viewer"] is True
+
+
+def test_sidecar_cursor_prevents_duplicate_history(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spool = tmp_path / "telemetry.jsonl"
+    spool.write_text(
+        json.dumps({"id": "epoch:1", "step": 1, "metrics": {"epoch": 1.0}}) + "\n"
+    )
+    cursor = tmp_path / "cursor.json"
+    cursor.write_text(json.dumps({"synced_ids": ["epoch:1"]}))
+    monkeypatch.setattr(
+        telemetry,
+        "_arguments",
+        lambda: SimpleNamespace(
+            spool=spool,
+            result=tmp_path / "result.json",
+            stop=tmp_path / "stop.json",
+            cursor=cursor,
+            complete_marker=tmp_path / "complete.json",
+            contract=tmp_path / "contract.json",
+            model_key="test_model",
+            seed=501,
+        ),
+    )
+    assert telemetry.main() == 0

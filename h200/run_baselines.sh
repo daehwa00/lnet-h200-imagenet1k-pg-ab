@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("campaign_id")
-if value != "h200-imagenet1k-moga-emo-100ep-s501-v1":
+if value != "h200-imagenet1k-moga-emo-100ep-s501-v2":
     raise SystemExit("invalid ImageNet-1K baseline control campaign identity")
 print(value)
 PY
@@ -299,6 +299,13 @@ if major != 9 or "H200" not in name.upper():
     raise RuntimeError(f"expected NVIDIA H200, got {name} capability {major}.{minor}")
 print("H200_BASELINE_ENV=" + json.dumps({"packages": actual, "gpu": name}, sort_keys=True))
 PY
+
+timeout --signal=TERM --kill-after=30s 3m \
+  "${ENV_ROOT}/bin/python" cloudflare/baseline-relay/canary.py
+if [[ "${H200_BASELINE_WANDB_CANARY_ONLY:-0}" == "1" ]]; then
+  echo "H200_BASELINE_WANDB_CANARY_ONLY_COMPLETE=1"
+  exit 0
+fi
 
 "${ENV_ROOT}/bin/python" h200/validate_imagenet1k.py \
   --root "${DATA_ROOT}" \

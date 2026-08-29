@@ -359,7 +359,7 @@ def test_live_wandb_mirror_uses_campaign_identity_and_console_off(
     command = captured["command"]
     assert command[0] == worker.sys.executable
     assert "run_h200_baseline_telemetry.py" in command[2]
-    assert command[command.index("--parent-pid") + 1] == str(worker.os.getpid())
+    assert command[command.index("--cursor") + 1].endswith(".cursor.json")
     assert process.waited is True
     assert mirror.stop_path.is_file()
 

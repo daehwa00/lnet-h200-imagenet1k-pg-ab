@@ -6,11 +6,8 @@ from __future__ import annotations
 # pyright: reportAny=false, reportExplicitAny=false, reportMissingImports=false
 # ruff: noqa: BLE001, EM101, PLC0415, T201, TRY003, TRY301
 import argparse
-import ctypes
 import json
 import os
-import signal
-import time
 from pathlib import Path
 from typing import Any
 
@@ -45,42 +42,32 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--spool", type=Path, required=True)
     parser.add_argument("--result", type=Path, required=True)
     parser.add_argument("--stop", type=Path, required=True)
+    parser.add_argument("--cursor", type=Path, required=True)
     parser.add_argument("--complete-marker", type=Path, required=True)
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--model-key", required=True)
     parser.add_argument("--seed", type=int, required=True)
-    parser.add_argument("--parent-pid", type=int, required=True)
-    parser.add_argument("--poll-seconds", type=float, default=2.0)
     return parser.parse_args()
 
 
-def _parent_alive(parent_pid: int) -> bool:
-    if os.getppid() != parent_pid:
-        return False
-    try:
-        os.kill(parent_pid, 0)
-    except ProcessLookupError:
-        return False
-    return True
-
-
-def _arm_parent_death_signal(parent_pid: int) -> None:
-    if os.name != "posix":
-        return
-    libc = ctypes.CDLL(None, use_errno=True)
-    if libc.prctl(1, signal.SIGTERM) != 0:
-        error_number = ctypes.get_errno()
-        message = f"prctl(PR_SET_PDEATHSIG) failed with errno {error_number}"
-        raise OSError(error_number, message)
-    if os.getppid() != parent_pid:
-        raise SystemExit(0)
+def _synced_ids(path: Path) -> set[str]:
+    if not path.is_file():
+        return set()
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    values = payload.get("synced_ids") if isinstance(payload, dict) else None
+    if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+        raise TypeError("telemetry cursor is invalid")
+    return set(values)
 
 
 def main() -> int:
     args = _arguments()
-    _arm_parent_death_signal(args.parent_pid)
-    if args.poll_seconds <= 0:
-        raise ValueError("poll interval must be positive")
+    records = _records(args.spool)
+    synced = _synced_ids(args.cursor)
+    pending = [record for record in records if str(record["id"]) not in synced]
+    stopping = args.stop.is_file()
+    if not pending and not stopping:
+        return 0
     run_id = os.environ["H200_BASELINE_RUN_ID"]
     display_name = os.environ["H200_BASELINE_DISPLAY_NAME"]
     tags = json.loads(os.environ["H200_BASELINE_TAGS_JSON"])
@@ -120,30 +107,39 @@ def main() -> int:
     )
     if run is None:
         raise RuntimeError("wandb.init returned None")
-    synced: set[str] = set()
-    while _parent_alive(args.parent_pid):
-        for record in _records(args.spool):
-            record_id = str(record["id"])
-            if record_id in synced:
-                continue
-            run.log(record["metrics"], step=int(record["step"]))
-            synced.add(record_id)
-        if args.stop.is_file():
-            if args.result.is_file():
-                result = json.loads(args.result.read_text(encoding="utf-8"))
-                run.summary["final_validation_accuracy"] = result["final_validation"][
-                    "accuracy"
-                ]
-                run.summary["final_validation_top5_accuracy"] = result["final_validation"][
-                    "top5_accuracy"
-                ]
-            run.finish()
-            _atomic_json(
-                args.complete_marker,
-                {"run_id": run_id, "status": "completed", "time": time.time()},
-            )
-            return 0
-        time.sleep(args.poll_seconds)
+    for record in pending:
+        record_id = str(record["id"])
+        run.log(record["metrics"], step=int(record["step"]))
+        synced.add(record_id)
+    if stopping and args.result.is_file():
+        result = json.loads(args.result.read_text(encoding="utf-8"))
+        run.summary["final_validation_accuracy"] = result["final_validation"]["accuracy"]
+        run.summary["final_validation_top5_accuracy"] = result["final_validation"][
+            "top5_accuracy"
+        ]
+    run.finish()
+    _atomic_json(
+        args.cursor,
+        {"run_id": run_id, "synced_ids": sorted(synced), "synced_records": len(synced)},
+    )
+    if stopping:
+        _atomic_json(
+            args.complete_marker,
+            {"run_id": run_id, "status": "completed", "synced_records": len(synced)},
+        )
+    print(
+        "H200_BASELINE_WANDB_FLUSH_JSON="
+        + json.dumps(
+            {
+                "pending_records": len(pending),
+                "run_id": run_id,
+                "stopping": stopping,
+                "synced_records": len(synced),
+            },
+            sort_keys=True,
+        ),
+        flush=True,
+    )
     return 0
 
 

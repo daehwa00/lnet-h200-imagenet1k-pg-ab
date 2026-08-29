@@ -68,9 +68,18 @@ def test_baseline_entrypoint_is_always_owner_controlled() -> None:
     assert "scripts/run_h200_owner_controlled.py" in script
     assert 'CONTROL_REF="refs/heads/control/imagenet1k-baselines"' in script
     assert 'CONTROL_PATH="h200/baselines/control.json"' in script
-    assert 'value != "h200-imagenet1k-moga-emo-100ep-s501-v1"' in script
+    assert 'value != "h200-imagenet1k-moga-emo-100ep-s501-v2"' in script
     assert '-- env H200_OWNER_CONTROL_INNER=1 bash "$0"' in script
     assert script.index(guard) < script.index('ACTUAL_COMMIT="$(git rev-parse --verify HEAD)"')
+
+
+def test_baseline_entrypoint_requires_wandb_canary_before_training() -> None:
+    script = (ROOT / "h200/run_baselines.sh").read_text(encoding="utf-8")
+    canary = '"${ENV_ROOT}/bin/python" cloudflare/baseline-relay/canary.py'
+    dataset = '"${ENV_ROOT}/bin/python" h200/validate_imagenet1k.py'
+    assert canary in script
+    assert script.index(canary) < script.index(dataset)
+    assert "H200_BASELINE_WANDB_CANARY_ONLY_COMPLETE=1" in script
 
 
 def test_baseline_dependency_lock_is_exact_and_hashed() -> None:

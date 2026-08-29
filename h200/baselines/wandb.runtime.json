@@ -1,9 +1,9 @@
 {
-  "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v1",
-  "campaign_manifest_sha256": "5c2c873130a4a009a6ae65c46a431e71bcdc3bbfea31ed4341e167d649fffe36",
+  "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
+  "campaign_manifest_sha256": "bfd46cad39be839592d6b5adad12beff65a4be993708ba729e1fbcc2e32edbc3",
   "canary": {
     "display_name": "H200-baseline-relay-permanent-canary-v1",
-    "id": "163de600e660c7ce",
+    "id": "53332014b74f7a45",
     "tags": [
       "H200",
       "ImageNet-1K",
@@ -13,7 +13,7 @@
   },
   "console": "off",
   "entity": "daehwa",
-  "group": "h200-imagenet1k-moga-emo-100ep-s501-v1",
+  "group": "h200-imagenet1k-moga-emo-100ep-s501-v2",
   "project": "alphabet2d-imagenet1k-h200-baselines",
   "relay_protocol_version": "wandb-0.22.3-h200-baselines-v1",
   "relay_url": "https://lnet-h200-baseline-relay-v1.gpupulse-monitor.workers.dev",
@@ -23,7 +23,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-convnextv2_atto-s501",
-          "id": "437dc4b7625407bf",
+          "id": "81780d43c245cf5d",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -35,7 +35,7 @@
         },
         "509": {
           "display_name": "H200-BL-convnextv2_atto-s509",
-          "id": "8d58eb8dc4dce718",
+          "id": "4c533d92bc21439a",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -47,7 +47,7 @@
         },
         "521": {
           "display_name": "H200-BL-convnextv2_atto-s521",
-          "id": "03f4dbf9d01a622b",
+          "id": "da5e56f457ef3212",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -64,7 +64,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-efficientformerv2_s0-s501",
-          "id": "4d66f8afed44103d",
+          "id": "0d2555a53f588405",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -76,7 +76,7 @@
         },
         "509": {
           "display_name": "H200-BL-efficientformerv2_s0-s509",
-          "id": "5f6af93b1df16c63",
+          "id": "e639a6ac6a6597e9",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -88,7 +88,7 @@
         },
         "521": {
           "display_name": "H200-BL-efficientformerv2_s0-s521",
-          "id": "9065a06c2db48fd5",
+          "id": "836a6acc82157f1d",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -105,7 +105,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-efficientmod_xxs-s501",
-          "id": "efc174403c29aaba",
+          "id": "f86fed2601b0626f",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -117,7 +117,7 @@
         },
         "509": {
           "display_name": "H200-BL-efficientmod_xxs-s509",
-          "id": "ebe62fa246ee9fd9",
+          "id": "7267114d86cd96a0",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -129,7 +129,7 @@
         },
         "521": {
           "display_name": "H200-BL-efficientmod_xxs-s521",
-          "id": "bfdfa28348473944",
+          "id": "30d48827e2911f2a",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -146,7 +146,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-emov2_1m-s501",
-          "id": "cd62e3bec09b4c83",
+          "id": "2f2f995922b5c122",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -158,7 +158,7 @@
         },
         "509": {
           "display_name": "H200-BL-emov2_1m-s509",
-          "id": "4aa1c15b259aee69",
+          "id": "a72af23a31e0d90b",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -170,7 +170,7 @@
         },
         "521": {
           "display_name": "H200-BL-emov2_1m-s521",
-          "id": "aa4f796667254c11",
+          "id": "462b0560fd64a95d",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -187,7 +187,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-emov2_2m-s501",
-          "id": "44fb05537240ea81",
+          "id": "8c55b51baabe45a5",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -199,7 +199,7 @@
         },
         "509": {
           "display_name": "H200-BL-emov2_2m-s509",
-          "id": "e2b61be87d4ea46b",
+          "id": "29d068e90904bd6c",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -211,7 +211,7 @@
         },
         "521": {
           "display_name": "H200-BL-emov2_2m-s521",
-          "id": "fbb5f7f977bcdf93",
+          "id": "f81fb80e5b6c5375",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -228,7 +228,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-fastvit_t8-s501",
-          "id": "6b42eea4fcaac9ba",
+          "id": "4a8d135549aa68a9",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -240,7 +240,7 @@
         },
         "509": {
           "display_name": "H200-BL-fastvit_t8-s509",
-          "id": "f2506a2c49cec0ff",
+          "id": "a6175dbc6691b0bc",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -252,7 +252,7 @@
         },
         "521": {
           "display_name": "H200-BL-fastvit_t8-s521",
-          "id": "c5cb518e0405f05a",
+          "id": "a2b0a3722dbc344a",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -269,7 +269,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-mobileone_s0-s501",
-          "id": "64e6136f18811964",
+          "id": "8d69c30e365d5d8c",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -281,7 +281,7 @@
         },
         "509": {
           "display_name": "H200-BL-mobileone_s0-s509",
-          "id": "855b36f1ae765e08",
+          "id": "7aac4714b8447917",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -293,7 +293,7 @@
         },
         "521": {
           "display_name": "H200-BL-mobileone_s0-s521",
-          "id": "c927330109f33fa4",
+          "id": "84f6775cae126d9a",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -310,7 +310,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-mobileone_s1-s501",
-          "id": "583a476ae9ec63c6",
+          "id": "c5fabb6cf5fc193b",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -322,7 +322,7 @@
         },
         "509": {
           "display_name": "H200-BL-mobileone_s1-s509",
-          "id": "335401cc6bb7f480",
+          "id": "29420bf188b605c0",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -334,7 +334,7 @@
         },
         "521": {
           "display_name": "H200-BL-mobileone_s1-s521",
-          "id": "5ca96f806c9e1866",
+          "id": "0a6dc2239978bca5",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -351,7 +351,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-mobilevitv2_050-s501",
-          "id": "1dcb9cdcbf201dbc",
+          "id": "f1085f6c9dd880a6",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -363,7 +363,7 @@
         },
         "509": {
           "display_name": "H200-BL-mobilevitv2_050-s509",
-          "id": "3de1cedfb9aa3e26",
+          "id": "8720104de02377ea",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -375,7 +375,7 @@
         },
         "521": {
           "display_name": "H200-BL-mobilevitv2_050-s521",
-          "id": "c5642da87314fc10",
+          "id": "ec9d50f84bae2059",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -392,7 +392,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-mobilevitv2_075-s501",
-          "id": "72941bf16b6f5c43",
+          "id": "c461a36a830b448d",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -404,7 +404,7 @@
         },
         "509": {
           "display_name": "H200-BL-mobilevitv2_075-s509",
-          "id": "0a4922a984bbe16d",
+          "id": "d92c7b9be8cf191c",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -416,7 +416,7 @@
         },
         "521": {
           "display_name": "H200-BL-mobilevitv2_075-s521",
-          "id": "14415b34b2d11908",
+          "id": "47624db7775ef88d",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -433,7 +433,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-mobilevitv2_100-s501",
-          "id": "89eeacbe865d02a9",
+          "id": "30740f8eb5fbac48",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -445,7 +445,7 @@
         },
         "509": {
           "display_name": "H200-BL-mobilevitv2_100-s509",
-          "id": "75104bc8ec379dbf",
+          "id": "bc4b91c4837d1eac",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -457,7 +457,7 @@
         },
         "521": {
           "display_name": "H200-BL-mobilevitv2_100-s521",
-          "id": "2c613d8db0ca9064",
+          "id": "1f72c4a0503849cb",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -474,7 +474,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-moganet_xt-s501",
-          "id": "b0d98a46fea59a9f",
+          "id": "d8a0e86658d1e5fa",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -486,7 +486,7 @@
         },
         "509": {
           "display_name": "H200-BL-moganet_xt-s509",
-          "id": "4434e4f00e3d1151",
+          "id": "c83df32df56a613c",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -498,7 +498,7 @@
         },
         "521": {
           "display_name": "H200-BL-moganet_xt-s521",
-          "id": "4357fb9083633d70",
+          "id": "ae0737afed233e48",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -515,7 +515,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-parc_net_s-s501",
-          "id": "4708941a0f6865b7",
+          "id": "3a8ade548d469ee1",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -527,7 +527,7 @@
         },
         "509": {
           "display_name": "H200-BL-parc_net_s-s509",
-          "id": "c2a9e577d69e6d92",
+          "id": "9a3fcfa42cd92a42",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -539,7 +539,7 @@
         },
         "521": {
           "display_name": "H200-BL-parc_net_s-s521",
-          "id": "2ef6e40cfc4f1ff7",
+          "id": "291db6703a93660c",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -556,7 +556,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-parc_net_xs-s501",
-          "id": "3b631687ea362341",
+          "id": "762c311e1e37a309",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -568,7 +568,7 @@
         },
         "509": {
           "display_name": "H200-BL-parc_net_xs-s509",
-          "id": "da3754c90541dc99",
+          "id": "acbf8883480b5cfe",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -580,7 +580,7 @@
         },
         "521": {
           "display_name": "H200-BL-parc_net_xs-s521",
-          "id": "587fed2bdb52102d",
+          "id": "4e4bfae5b7e8e71c",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -597,7 +597,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-sret_tiny-s501",
-          "id": "b6904aaf3d05a0f5",
+          "id": "10d502fd0d931aa3",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -609,7 +609,7 @@
         },
         "509": {
           "display_name": "H200-BL-sret_tiny-s509",
-          "id": "a8a98f0f98d4d395",
+          "id": "9ed1e2bc3cb14347",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -621,7 +621,7 @@
         },
         "521": {
           "display_name": "H200-BL-sret_tiny-s521",
-          "id": "46d47d8589d8f519",
+          "id": "3b515fadaa6af21b",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -638,7 +638,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-swiftformer_xs-s501",
-          "id": "384e7c8150ff6073",
+          "id": "bb8647fb14ae22d4",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -650,7 +650,7 @@
         },
         "509": {
           "display_name": "H200-BL-swiftformer_xs-s509",
-          "id": "27c1e8dca8e41d7f",
+          "id": "aba9ea70ffcded6c",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -662,7 +662,7 @@
         },
         "521": {
           "display_name": "H200-BL-swiftformer_xs-s521",
-          "id": "627645185351867d",
+          "id": "f9b08e45fe52273f",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -679,7 +679,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-tinynext_m-s501",
-          "id": "53fba8585abcd3f2",
+          "id": "7672d03f5002cd2e",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -691,7 +691,7 @@
         },
         "509": {
           "display_name": "H200-BL-tinynext_m-s509",
-          "id": "1b47e6a7d02d5dbc",
+          "id": "fe5ed895bed23f60",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -703,7 +703,7 @@
         },
         "521": {
           "display_name": "H200-BL-tinynext_m-s521",
-          "id": "39c91dcd7c84f98c",
+          "id": "959602bfc72dd2d7",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -720,7 +720,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-tinynext_s-s501",
-          "id": "0cd578250f5ce8a1",
+          "id": "1726a3a38b918664",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -732,7 +732,7 @@
         },
         "509": {
           "display_name": "H200-BL-tinynext_s-s509",
-          "id": "8f2c0706009f17a1",
+          "id": "229f5c85bcbce281",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -744,7 +744,7 @@
         },
         "521": {
           "display_name": "H200-BL-tinynext_s-s521",
-          "id": "8a83c39f29f61746",
+          "id": "0166f1935c8fd1d5",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -761,7 +761,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-tinynext_t-s501",
-          "id": "f54f8dc3cfeffdb6",
+          "id": "e611233788333433",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -773,7 +773,7 @@
         },
         "509": {
           "display_name": "H200-BL-tinynext_t-s509",
-          "id": "7fa155242db7ee17",
+          "id": "ac16df3bf18b8aaf",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -785,7 +785,7 @@
         },
         "521": {
           "display_name": "H200-BL-tinynext_t-s521",
-          "id": "dcb6b9f331fcf544",
+          "id": "ef506f63c39328f7",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -802,7 +802,7 @@
       "seeds": {
         "501": {
           "display_name": "H200-BL-uniconvnet_a-s501",
-          "id": "8ae75d9c00c00ebd",
+          "id": "8c8c458658c29f77",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -814,7 +814,7 @@
         },
         "509": {
           "display_name": "H200-BL-uniconvnet_a-s509",
-          "id": "87122004adb4ade9",
+          "id": "6f1f49d367eb7860",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -826,7 +826,7 @@
         },
         "521": {
           "display_name": "H200-BL-uniconvnet_a-s521",
-          "id": "65441d1262888f09",
+          "id": "eb18940bc1a0f468",
           "tags": [
             "H200",
             "ImageNet-1K",

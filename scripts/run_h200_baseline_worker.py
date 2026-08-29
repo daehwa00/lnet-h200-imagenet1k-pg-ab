@@ -886,6 +886,7 @@ class _WandbMirror:
         self.log_stream: Any | None = None
         self.next_retry_record = 0
         self.stop_path = _telemetry_spool_path(task).with_suffix(".stop.json")
+        self.cursor_path = _telemetry_spool_path(task).with_suffix(".cursor.json")
         self.complete_path = _telemetry_spool_path(task).with_suffix(".mirror-complete.json")
         if not task.result_path.exists() and self.stop_path.exists():
             self.stop_path.replace(self.stop_path.with_suffix(f".stale-{os.getpid()}.json"))
@@ -931,6 +932,8 @@ class _WandbMirror:
                 str(self.task.result_path),
                 "--stop",
                 str(self.stop_path),
+                "--cursor",
+                str(self.cursor_path),
                 "--complete-marker",
                 str(self.complete_path),
                 "--contract",
@@ -939,8 +942,6 @@ class _WandbMirror:
                 self.task.model_key,
                 "--seed",
                 str(self.task.seed),
-                "--parent-pid",
-                str(os.getpid()),
             ],
             cwd=Path(__file__).resolve().parents[1],
             env=os.environ.copy(),
@@ -960,7 +961,7 @@ class _WandbMirror:
             return_code = self.process.poll()
             self._close_process()
             if return_code not in (None, 0):
-                self.next_retry_record = len(records) + 10
+                self.next_retry_record = len(records) + 1
         if len(records) < self.next_retry_record:
             return
         try:
@@ -972,18 +973,25 @@ class _WandbMirror:
                 "seed": self.task.seed,
             }
             print(f"{WANDB_DEGRADED_PREFIX}{json.dumps(degraded, sort_keys=True)}", flush=True)
-            self.next_retry_record = len(records) + 10
+            self.next_retry_record = len(records) + 1
 
     def finish(self, result: dict[str, Any]) -> None:
         del result
         if not self.enabled or self.complete_path.is_file():
             return
         _atomic_json(self.stop_path, {"stop": True})
+        if self.process is not None:
+            try:
+                self.process.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                with suppress(ProcessLookupError):
+                    os.killpg(self.process.pid, signal.SIGTERM)
+                with suppress(subprocess.TimeoutExpired):
+                    self.process.wait(timeout=3)
+            finally:
+                self._close_process()
         self.next_retry_record = 0
         self.sync()
-        if self.process is None:
-            self.next_retry_record = 0
-            self.sync()
         if self.process is None:
             return
         try:
