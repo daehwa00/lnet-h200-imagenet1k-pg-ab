@@ -1216,6 +1216,7 @@ def main() -> None:
             "alphabet2_qk",
             "alphabet2_vector_d4",
             "alphabet2_matrix_k4v4",
+            "alphabet2_nonseparable_k4v4",
             "mamba",
         ),
         required=True,
