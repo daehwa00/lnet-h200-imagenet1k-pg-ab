@@ -1432,6 +1432,7 @@ def main() -> None:
         enabled=(
             args.slow_cnn_pole_vector_width > 1
             and not args.slow_cnn_pole_complex_vector_excitation
+            and not args.slow_cnn_pole_specific_reader
         ),
     )
     slow_complex_vector_initialization = _initialize_slow_complex_vector_from_trunk(
