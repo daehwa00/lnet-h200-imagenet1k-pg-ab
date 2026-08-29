@@ -1,0 +1,91 @@
+{
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.v1",
+  "campaign_id": "kau-alphabet-lm-coordinate-vs-mamba-30m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-coordinate-vs-mamba-30m-v1",
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "common": {},
+    "variants": {
+      "coordinate-read-r16-e2e-30m": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "cnn_pole_memory": true,
+        "cnn_pole_interval": 2,
+        "cnn_pole_modes": 128,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_use_recurrence": false,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_vector_width": 16,
+        "slow_cnn_pole_complex_vector_excitation": true,
+        "slow_cnn_pole_complex_vector_query": true,
+        "slow_cnn_pole_coordinate_read": true
+      },
+      "mamba-standard-e2e-30m": {}
+    }
+  },
+  "source": {
+    "coordinate_4m_checkpoint": "/home/daehwa/alphabet-lm-4090-vector-arch-search-runs/aedab1db2a734506/coordinate-read-r16-e2e-4m/checkpoint.pt",
+    "coordinate_4m_sha256": "843d49a013c05dfe42984c4b920c140198d2a7b673a0245aee1bed7af8304050",
+    "coordinate_4m_validation_loss": 6.327895316151598,
+    "mamba_4m_checkpoint": "/home/daehwa/alphabet-lm-4090-r16-mamba-4m-runs/90589bb568433949/mamba-e2e-4m/checkpoint.pt",
+    "mamba_4m_sha256": "64f09e24395f0eda95483cfbba8ca8d43a6a08d5fc057b969d1367c4985d979a",
+    "mamba_4m_validation_loss": 6.302452384889687
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 30000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "coordinate-read-r16-e2e-30m",
+      "mamba-standard-e2e-30m"
+    ]
+  },
+  "comparison": {
+    "primary": "same seed, data, optimizer, scheduler horizon, and 30M token budget",
+    "resume_is_exact": true,
+    "parameter_counts_differ": true
+  },
+  "parameter_counts": {
+    "coordinate-read-r16-e2e-30m": 45510922,
+    "mamba-standard-e2e-30m": 35425280
+  },
+  "total_parameter_counts": {
+    "coordinate-read-r16-e2e-30m": 46559498,
+    "mamba-standard-e2e-30m": 35425280
+  },
+  "diagnostics": {
+    "intermediate_evaluations": false,
+    "final_validation_only": true
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-Coordinate-vs-Mamba-30M-S501-v1"
+  }
+}
