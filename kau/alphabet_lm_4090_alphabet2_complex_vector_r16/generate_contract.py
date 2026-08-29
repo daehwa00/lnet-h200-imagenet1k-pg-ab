@@ -25,8 +25,6 @@ def _render() -> str:
         for label in execution
     }
     expected = [
-        "alphabet2-complex-vector-r16-1m",
-        "alphabet2-complex-vector-r16-2m",
         "alphabet2-complex-vector-r16-4m",
     ]
     if (

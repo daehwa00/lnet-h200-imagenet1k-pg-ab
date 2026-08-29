@@ -50,6 +50,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _validate_slow_complex_vector_source,
     _validate_slow_full_complex_vector_source,
     _validate_slow_vector_pole_source,
+    _validate_vector_initialization_selection,
 )
 
 
@@ -1579,6 +1580,13 @@ def test_full_complex_r16_source_digest_is_enforced() -> None:
             {"source": {"token_q_10m_sha256": "different"}},
             enabled=True,
         )
+
+
+def test_vector_initialization_source_must_be_unambiguous(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "checkpoint.pt"
+    _validate_vector_initialization_selection(checkpoint, None, None)
+    with pytest.raises(RuntimeError, match="initialization source is ambiguous"):
+        _validate_vector_initialization_selection(checkpoint, checkpoint, None)
 
 
 def _vector_slow_config() -> AlphabetLMConfig:

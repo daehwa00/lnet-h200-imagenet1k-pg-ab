@@ -33,8 +33,6 @@
       "slow_cnn_pole_complex_vector_excitation": true
     },
     "variants": {
-      "alphabet2-complex-vector-r16-1m": {},
-      "alphabet2-complex-vector-r16-2m": {},
       "alphabet2-complex-vector-r16-4m": {}
     }
   },
@@ -61,8 +59,6 @@
     "warmup_updates": 20,
     "checkpoint_updates": 25,
     "execution": [
-      "alphabet2-complex-vector-r16-1m",
-      "alphabet2-complex-vector-r16-2m",
       "alphabet2-complex-vector-r16-4m"
     ]
   },
@@ -74,17 +70,13 @@
     "projection_parameter_confound": "R16 has 2161152 more total parameters than Matrix-K4V4"
   },
   "parameter_counts": {
-    "alphabet2-complex-vector-r16-1m": 2950656,
-    "alphabet2-complex-vector-r16-2m": 2950656,
     "alphabet2-complex-vector-r16-4m": 2950656
   },
   "total_parameter_counts": {
-    "alphabet2-complex-vector-r16-1m": 43413258,
-    "alphabet2-complex-vector-r16-2m": 43413258,
     "alphabet2-complex-vector-r16-4m": 43413258
   },
   "diagnostics": {
-    "milestones": [1000000, 2000000, 4000000],
+    "milestones": [4000000],
     "vector_pole_extra_off": true,
     "vector_excitation_shift": true,
     "vector_excitation_time_mean": true,

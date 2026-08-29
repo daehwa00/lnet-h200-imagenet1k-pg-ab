@@ -679,6 +679,11 @@ def _validate_slow_full_complex_vector_source(
         raise RuntimeError("full complex vector source checkpoint digest changed")
 
 
+def _validate_vector_initialization_selection(*paths: Path | None) -> None:
+    if sum(path is not None for path in paths) > 1:
+        raise RuntimeError("vector-pole initialization source is ambiguous")
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -1327,6 +1332,11 @@ def main() -> None:
             model,
             args.initialize_slow_independent_value_checkpoint,
         )
+    )
+    _validate_vector_initialization_selection(
+        args.initialize_slow_vector_pole_checkpoint,
+        args.initialize_slow_complex_vector_checkpoint,
+        args.initialize_slow_full_complex_vector_checkpoint,
     )
     slow_vector_pole_initialization = _initialize_slow_vector_pole_from_trunk(
         model,

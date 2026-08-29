@@ -97,11 +97,6 @@ run_stage() {
   fi
 }
 
-run_stage alphabet2-complex-vector-r16-1m none 1000000 "${OUTPUT_ROOT}/complex-vector-r16-1m"
-run_stage alphabet2-complex-vector-r16-2m \
-  "${OUTPUT_ROOT}/complex-vector-r16-1m/checkpoint.pt" 2000000 \
-  "${OUTPUT_ROOT}/complex-vector-r16-2m"
-run_stage alphabet2-complex-vector-r16-4m \
-  "${OUTPUT_ROOT}/complex-vector-r16-2m/checkpoint.pt" 4000000 \
+run_stage alphabet2-complex-vector-r16-4m none 4000000 \
   "${OUTPUT_ROOT}/complex-vector-r16-4m"
 echo "KAU_ALPHABET_LM_COMPLEX_VECTOR_R16_COMPLETE=${OUTPUT_ROOT}"
