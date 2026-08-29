@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
-  "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v1",
-  "target_commit": "c3b275ca11d0d99aa9436345b9f8ebb01ca4836d",
-  "generation": 4,
-  "action": "stop",
-  "updated_at": "2026-08-29T21:53:18+09:00",
-  "reason": "stop the stalled H200 backlog after 22 hours without epoch telemetry"
+  "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
+  "target_commit": "95b06ec8fec3b6557eb6a47e74e8d1fc4f5a28ce",
+  "generation": 5,
+  "action": "run",
+  "updated_at": "2026-08-29T22:24:18+09:00",
+  "reason": "arm the v2 backlog only after mandatory W&B relay canary"
 }
