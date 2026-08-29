@@ -6,6 +6,7 @@ from __future__ import annotations
 # pyright: reportExplicitAny=false, reportMissingImports=false
 import argparse
 import hashlib
+import io
 import json
 import math
 import os
@@ -514,8 +515,11 @@ def _initialize_slow_vector_pole_from_trunk(
     slow = model.slow_cnn_pole_memory
     if slow.vector_excitation is None or slow.vector_query is None:
         raise RuntimeError("vector pole initialization requires vector pole memory")
+    checkpoint_bytes = checkpoint_path.read_bytes()
+    checkpoint_sha = hashlib.sha256(checkpoint_bytes).hexdigest()
     payload = cast(
-        "dict[str, Any]", torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+        "dict[str, Any]",
+        torch.load(io.BytesIO(checkpoint_bytes), map_location="cpu", weights_only=True),
     )
     source = cast("dict[str, Tensor]", payload["model"])
     prefixes = (
@@ -533,7 +537,7 @@ def _initialize_slow_vector_pole_from_trunk(
     return {
         "enabled": True,
         "checkpoint": str(checkpoint_path),
-        "checkpoint_sha256": sha256_file(checkpoint_path),
+        "checkpoint_sha256": checkpoint_sha,
         "missing_vector_pole_tensors": len(expected_missing),
         "token_q_frozen": True,
     }
