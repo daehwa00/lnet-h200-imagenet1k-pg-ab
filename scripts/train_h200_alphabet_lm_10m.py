@@ -819,6 +819,8 @@ def _build(
     slow_cnn_pole_transport_rank: int = 16,
     slow_cnn_pole_transport_scale: float = 0.1,
     slow_cnn_pole_transport_bound: float = 1.0,
+    slow_cnn_pole_specific_reader: bool = False,
+    slow_cnn_pole_reader_kernel: int = 3,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -904,6 +906,8 @@ def _build(
         slow_cnn_pole_transport_rank=slow_cnn_pole_transport_rank,
         slow_cnn_pole_transport_scale=slow_cnn_pole_transport_scale,
         slow_cnn_pole_transport_bound=slow_cnn_pole_transport_bound,
+        slow_cnn_pole_specific_reader=slow_cnn_pole_specific_reader,
+        slow_cnn_pole_reader_kernel=slow_cnn_pole_reader_kernel,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -1170,6 +1174,8 @@ def main() -> None:
     parser.add_argument("--slow-cnn-pole-transport-rank", type=int, default=16)
     parser.add_argument("--slow-cnn-pole-transport-scale", type=float, default=0.1)
     parser.add_argument("--slow-cnn-pole-transport-bound", type=float, default=1.0)
+    parser.add_argument("--slow-cnn-pole-specific-reader", action="store_true")
+    parser.add_argument("--slow-cnn-pole-reader-kernel", type=int, default=3)
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-query-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-key-trunk-checkpoint", type=Path)
@@ -1324,6 +1330,8 @@ def main() -> None:
         slow_cnn_pole_transport_rank=args.slow_cnn_pole_transport_rank,
         slow_cnn_pole_transport_scale=args.slow_cnn_pole_transport_scale,
         slow_cnn_pole_transport_bound=args.slow_cnn_pole_transport_bound,
+        slow_cnn_pole_specific_reader=args.slow_cnn_pole_specific_reader,
+        slow_cnn_pole_reader_kernel=args.slow_cnn_pole_reader_kernel,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -1534,6 +1542,8 @@ def main() -> None:
             "slow_cnn_pole_transport_rank": args.slow_cnn_pole_transport_rank,
             "slow_cnn_pole_transport_scale": args.slow_cnn_pole_transport_scale,
             "slow_cnn_pole_transport_bound": args.slow_cnn_pole_transport_bound,
+            "slow_cnn_pole_specific_reader": args.slow_cnn_pole_specific_reader,
+            "slow_cnn_pole_reader_kernel": args.slow_cnn_pole_reader_kernel,
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -1725,6 +1735,8 @@ def main() -> None:
         "slow_cnn_pole_transport_scale": args.slow_cnn_pole_transport_scale,
         "slow_cnn_pole_transport_bound": args.slow_cnn_pole_transport_bound,
         "slow_dynamic_transport_initialization": slow_dynamic_transport_initialization,
+        "slow_cnn_pole_specific_reader": args.slow_cnn_pole_specific_reader,
+        "slow_cnn_pole_reader_kernel": args.slow_cnn_pole_reader_kernel,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,

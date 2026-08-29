@@ -196,6 +196,37 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_transport_scale=0.1,
             slow_cnn_pole_transport_bound=1.0,
         )
+    elif kind == "alphabet2_pole_reader_r16":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            cnn_pole_memory=True,
+            cnn_pole_interval=2,
+            cnn_pole_modes=128,
+            cnn_pole_evidence_width=512,
+            cnn_pole_kernel_size=4,
+            cnn_pole_beta_initial=0.01,
+            cnn_pole_use_recurrence=False,
+            cnn_pole_minimum_half_life=8.0,
+            cnn_pole_maximum_half_life=4_096.0,
+            slow_cnn_pole_memory=True,
+            slow_cnn_pole_stride=1,
+            slow_cnn_pole_modes=128,
+            slow_cnn_pole_evidence_width=512,
+            slow_cnn_pole_kernel_size=4,
+            slow_cnn_pole_upper_blocks=4,
+            slow_cnn_pole_beta_initial=0.01,
+            slow_cnn_pole_use_recurrence=True,
+            slow_cnn_pole_minimum_half_life=16.0,
+            slow_cnn_pole_maximum_half_life=4_096.0,
+            slow_cnn_pole_query="token",
+            slow_cnn_pole_query_rho=0.5,
+            slow_cnn_pole_vector_width=16,
+            slow_cnn_pole_complex_vector_query=True,
+            slow_cnn_pole_coordinate_read=True,
+            slow_cnn_pole_specific_reader=True,
+            slow_cnn_pole_reader_kernel=3,
+        )
     elif kind in {"alphabet2_anchor_q", "alphabet2_token_q"}:
         config = AlphabetLMConfig(
             reader_type="dense_k3",
@@ -690,6 +721,31 @@ def _slow_transport_override(
     return [module.register_forward_hook(override)]
 
 
+def _slow_pole_reader_override(
+    model: nn.Module,
+    *,
+    mode: Literal["off", "shift", "time_mean"],
+) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM):
+        return []
+    slow = model.slow_cnn_pole_memory
+    if not isinstance(slow, SlowCausalCNNPoleMemory) or slow.pole_specific_reader is None:
+        return []
+
+    def override(_module: nn.Module, _inputs: tuple[object, ...], output: object) -> object:
+        real, imag = cast("tuple[Tensor, Tensor]", output)
+        if mode == "off":
+            return torch.zeros_like(real), torch.zeros_like(imag)
+        if mode == "shift":
+            return torch.roll(real, shifts=1, dims=1), torch.roll(imag, shifts=1, dims=1)
+        return (
+            real.mean(dim=1, keepdim=True).expand_as(real),
+            imag.mean(dim=1, keepdim=True).expand_as(imag),
+        )
+
+    return [slow.pole_specific_reader.register_forward_hook(override)]
+
+
 @torch.no_grad()
 def _sidecar_metrics(
     model: AlphabetLM,
@@ -948,13 +1004,64 @@ def _slow_cnn_pole_metrics(
             return eigenvalues, effective_rank
 
         if slow.vector_width > 1:
-            drive_real, drive_imag = slow.pole_drive(real, imag)
-            anchors = (
-                drive_real[:, slow.stride - 1 : full_anchors * slow.stride : slow.stride],
-                drive_imag[:, slow.stride - 1 : full_anchors * slow.stride : slow.stride],
-            )
-            excitation_real = slow.vector_excitation_axes(anchor_source)
-            excitation_imag = slow.vector_excitation_imag_axes(anchor_source)
+            if slow.pole_specific_reader is not None:
+                transported_real, transported_imag = slow.pole_specific_reader(real, imag)
+                excitation_magnitude = transported_real.float().square().add(
+                    transported_imag.float().square()
+                ).sqrt()
+                excitation_extra_rms = float(
+                    transported_real[..., 1:]
+                    .float()
+                    .square()
+                    .add(transported_imag[..., 1:].float().square())
+                    .mean()
+                    .sqrt()
+                )
+                excitation_imag_rms = float(
+                    transported_imag[..., 1:].float().square().mean().sqrt()
+                )
+                reader_metrics = {
+                    "magnitude_mean": float(excitation_magnitude.mean()),
+                    "magnitude_std": float(excitation_magnitude.std()),
+                    "near_zero_fraction": float(
+                        (excitation_magnitude < 0.1 * excitation_magnitude.mean())
+                        .float()
+                        .mean()
+                    ),
+                    "temporal_delta_mean": float(
+                        (excitation_magnitude[:, 1:] - excitation_magnitude[:, :-1])
+                        .abs()
+                        .mean()
+                    ),
+                }
+            else:
+                reader_metrics = None
+                drive_real, drive_imag = slow.pole_drive(real, imag)
+                anchors = (
+                    drive_real[:, slow.stride - 1 : full_anchors * slow.stride : slow.stride],
+                    drive_imag[:, slow.stride - 1 : full_anchors * slow.stride : slow.stride],
+                )
+                excitation_real = slow.vector_excitation_axes(anchor_source)
+                excitation_imag = slow.vector_excitation_imag_axes(anchor_source)
+                transported_real = (
+                    anchors[0].unsqueeze(-1) * excitation_real
+                    - anchors[1].unsqueeze(-1) * excitation_imag
+                )
+                transported_imag = (
+                    anchors[0].unsqueeze(-1) * excitation_imag
+                    + anchors[1].unsqueeze(-1) * excitation_real
+                )
+                excitation_extra_rms = float(
+                    excitation_real[..., 1:]
+                    .float()
+                    .square()
+                    .add(excitation_imag[..., 1:].float().square())
+                    .mean()
+                    .sqrt()
+                )
+                excitation_imag_rms = float(
+                    excitation_imag[..., 1:].float().square().mean().sqrt()
+                )
             damping_control = None
             if slow.transport_selector is not None:
                 anchor_real = real[
@@ -974,20 +1081,11 @@ def _slow_cnn_pole_metrics(
                         (active_control[:, 1:] - active_control[:, :-1]).abs().mean()
                     ),
                 }
-            if slow.complex_vector_excitation:
-                state_real, state_imag = slow.memory(
-                    anchors[0].unsqueeze(-1) * excitation_real
-                    - anchors[1].unsqueeze(-1) * excitation_imag,
-                    anchors[0].unsqueeze(-1) * excitation_imag
-                    + anchors[1].unsqueeze(-1) * excitation_real,
-                    damping_control=damping_control,
-                )
-            else:
-                state_real, state_imag = slow.memory(
-                    anchors[0].unsqueeze(-1) * excitation_real,
-                    anchors[1].unsqueeze(-1) * excitation_real,
-                    damping_control=damping_control,
-                )
+            state_real, state_imag = slow.memory(
+                transported_real,
+                transported_imag,
+                damping_control=damping_control,
+            )
             rows = torch.complex(state_real.float(), state_imag.float()).flatten(0, 2)
             eigenvalues, effective_rank = spectrum(rows)
             coordinate_energy = state_real.float().square().add(state_imag.float().square()).mean(
@@ -999,17 +1097,8 @@ def _slow_cnn_pole_metrics(
             )
             vector_metrics = {
                 "vector_width": slow.vector_width,
-                "excitation_extra_rms": float(
-                    excitation_real[..., 1:]
-                    .float()
-                    .square()
-                    .add(excitation_imag[..., 1:].float().square())
-                    .mean()
-                    .sqrt()
-                ),
-                "excitation_imag_rms": float(
-                    excitation_imag[..., 1:].float().square().mean().sqrt()
-                ),
+                "excitation_extra_rms": excitation_extra_rms,
+                "excitation_imag_rms": excitation_imag_rms,
                 "query_extra_rms": float(
                     query_real[..., 1:]
                     .float()
@@ -1041,6 +1130,8 @@ def _slow_cnn_pole_metrics(
                     coordinate_energy.max() / coordinate_energy.sum().clamp_min(1e-12)
                 ),
             }
+            if reader_metrics is not None:
+                vector_metrics["pole_specific_reader"] = reader_metrics
         elif slow.value_width > 1:
             drive_real, drive_imag = slow.pole_drive(real, imag)
             anchors = (
@@ -1531,6 +1622,7 @@ def main() -> None:
             "alphabet2_token_rate_r16",
             "alphabet2_coordinate_read_r16",
             "alphabet2_dynamic_transport_r16",
+            "alphabet2_pole_reader_r16",
             "mamba",
         ),
         required=True,
@@ -1862,6 +1954,30 @@ def main() -> None:
             for mode in ("shift", "time_mean"):
                 handles = _slow_transport_override(model, mode=mode)
                 results[f"dynamic_transport_{mode}"] = _evaluate(
+                    model,
+                    dataset,
+                    segment=2_048,
+                    token_limit=args.token_limit,
+                    sequence_limit=args.sequence_limit,
+                    device=device,
+                )
+                for handle in handles:
+                    handle.remove()
+        pole_reader_off = _slow_pole_reader_override(model, mode="off")
+        if pole_reader_off:
+            results["pole_reader_off"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in pole_reader_off:
+                handle.remove()
+            for mode in ("shift", "time_mean"):
+                handles = _slow_pole_reader_override(model, mode=mode)
+                results[f"pole_reader_{mode}"] = _evaluate(
                     model,
                     dataset,
                     segment=2_048,

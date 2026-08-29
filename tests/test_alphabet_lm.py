@@ -23,6 +23,7 @@ from lnet.alphabet_lm import (
     FixedPoleResidualSidecar,
     IdentityComplexMemory1D,
     LowRankDecaySelector,
+    PoleSpecificCausalVectorReader,
     QueryConditionedLowRankReadout,
     SemanticEdgePoleMemory,
     SlowCausalCNNPoleMemory,
@@ -1697,6 +1698,37 @@ def test_dynamic_transport_source_digest_is_enforced() -> None:
             {"source": {"coordinate_30m_sha256": "different"}},
             enabled=True,
         )
+
+
+def test_pole_specific_vector_reader_is_causal_and_vector_valued() -> None:
+    torch.manual_seed(501)
+    reader = PoleSpecificCausalVectorReader(8, 4, 3, kernel_size=4)
+    real = torch.randn(2, 9, 8)
+    imag = torch.randn_like(real)
+    changed_real = real.clone()
+    changed_imag = imag.clone()
+    changed_real[:, 5:] = torch.randn_like(changed_real[:, 5:])
+    changed_imag[:, 5:] = torch.randn_like(changed_imag[:, 5:])
+    output = reader(real, imag)
+    changed = reader(changed_real, changed_imag)
+    assert output[0].shape == (2, 9, 4, 3)
+    assert output[1].shape == (2, 9, 4, 3)
+    torch.testing.assert_close(changed[0][:, :5], output[0][:, :5], atol=0.0, rtol=0.0)
+    torch.testing.assert_close(changed[1][:, :5], output[1][:, :5], atol=0.0, rtol=0.0)
+
+
+def test_pole_specific_reader_requires_token_rate_late_fusion() -> None:
+    config = replace(
+        _complex_query_r16_config(coordinate_read=True),
+        slow_cnn_pole_stride=1,
+        slow_cnn_pole_minimum_half_life=16.0,
+        slow_cnn_pole_maximum_half_life=4_096.0,
+        slow_cnn_pole_specific_reader=True,
+    )
+    model = AlphabetLM(config)
+    assert model(torch.randint(64, (1, 16))).shape == (1, 16, 64)
+    with pytest.raises(ValueError, match="pole-specific reader requires"):
+        replace(config, slow_cnn_pole_stride=16)
 
 
 def _vector_slow_config() -> AlphabetLMConfig:

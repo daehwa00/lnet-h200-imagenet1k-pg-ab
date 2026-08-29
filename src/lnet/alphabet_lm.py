@@ -107,6 +107,8 @@ class AlphabetLMConfig:
     slow_cnn_pole_transport_rank: int = 16
     slow_cnn_pole_transport_scale: float = 0.1
     slow_cnn_pole_transport_bound: float = 1.0
+    slow_cnn_pole_specific_reader: bool = False
+    slow_cnn_pole_reader_kernel: int = 3
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -155,6 +157,7 @@ class AlphabetLMConfig:
             self.slow_cnn_pole_matrix_key_width,
             self.slow_cnn_pole_vector_width,
             self.slow_cnn_pole_transport_rank,
+            self.slow_cnn_pole_reader_kernel,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -252,6 +255,7 @@ class AlphabetLMConfig:
                 or self.slow_cnn_pole_complex_vector_query
                 or self.slow_cnn_pole_coordinate_read
                 or self.slow_cnn_pole_dynamic_transport
+                or self.slow_cnn_pole_specific_reader
             ):
                 raise ValueError("slow pole addressing requires a slow memory bank")
             return
@@ -301,6 +305,18 @@ class AlphabetLMConfig:
         ):
             raise ValueError("coordinate read requires complex vector query")
         self._validate_slow_dynamic_transport()
+        self._validate_slow_pole_reader()
+
+    def _validate_slow_pole_reader(self) -> None:
+        if not self.slow_cnn_pole_specific_reader:
+            return
+        if (
+            self.slow_cnn_pole_stride != 1
+            or self.slow_cnn_pole_vector_width <= 1
+            or not self.slow_cnn_pole_complex_vector_query
+            or not self.slow_cnn_pole_coordinate_read
+        ):
+            raise ValueError("pole-specific reader requires token-rate vector late fusion")
 
     def _validate_slow_dynamic_transport(self) -> None:
         if not self.slow_cnn_pole_dynamic_transport:
@@ -865,6 +881,52 @@ class SemanticEdgePoleMemory(nn.Module):
         )
 
 
+class PoleSpecificCausalVectorReader(nn.Module):
+    """Dense complex FIR reader with an independent filter per pole coordinate."""
+
+    def __init__(
+        self,
+        modes: int,
+        pole_modes: int,
+        vector_width: int,
+        *,
+        kernel_size: int,
+    ) -> None:
+        super().__init__()
+        if min(modes, pole_modes, vector_width, kernel_size) <= 0:
+            raise ValueError("invalid pole-specific reader dimensions")
+        self.modes = modes
+        self.pole_modes = pole_modes
+        self.vector_width = vector_width
+        self.kernel_size = kernel_size
+        outputs = pole_modes * vector_width
+        self.norm = ComplexRMSNorm(modes)
+        self.weight_real = nn.Parameter(torch.zeros(outputs, modes, kernel_size))
+        self.weight_imag = nn.Parameter(torch.zeros(outputs, modes, kernel_size))
+        with torch.no_grad():
+            nn.init.xavier_uniform_(self.weight_real[:, :, -1])
+            nn.init.xavier_uniform_(self.weight_imag[:, :, -1])
+            self.weight_real.mul_(math.sqrt(0.5))
+            self.weight_imag.mul_(math.sqrt(0.5))
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        if real.shape != imag.shape or real.ndim != 3 or real.shape[-1] != self.modes:
+            raise ValueError("pole-specific reader expects matching B,T,K coordinates")
+        real, imag = self.norm(real, imag)
+        packed_real = functional.pad(real.transpose(1, 2), (self.kernel_size - 1, 0))
+        packed_imag = functional.pad(imag.transpose(1, 2), (self.kernel_size - 1, 0))
+        output_real = functional.conv1d(packed_real, self.weight_real) - functional.conv1d(
+            packed_imag, self.weight_imag
+        )
+        output_imag = functional.conv1d(packed_real, self.weight_imag) + functional.conv1d(
+            packed_imag, self.weight_real
+        )
+        shape = (real.shape[0], real.shape[1], self.pole_modes, self.vector_width)
+        output_real = output_real.transpose(1, 2)
+        output_imag = output_imag.transpose(1, 2)
+        return output_real.reshape(shape), output_imag.reshape(shape)
+
+
 class CausalCNNPoleMemory(nn.Module):
     """Build local evidence with a causal CNN and persist it in a pole sidecar."""
 
@@ -1006,6 +1068,8 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         transport_rank: int = 16,
         transport_scale: float = 0.1,
         transport_bound: float = 1.0,
+        pole_specific_reader: bool = False,
+        reader_kernel: int = 16,
     ) -> None:
         super().__init__(
             modes,
@@ -1032,6 +1096,16 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         self.complex_vector_query = bool(complex_vector_query)
         self.coordinate_read = bool(coordinate_read)
         self.dynamic_transport = bool(dynamic_transport)
+        self.pole_specific_reader = (
+            PoleSpecificCausalVectorReader(
+                modes,
+                pole_modes,
+                vector_width,
+                kernel_size=reader_kernel,
+            )
+            if pole_specific_reader
+            else None
+        )
         initial_beta = float(self.beta.detach())
         self.beta = nn.Parameter(torch.full((upper_blocks,), initial_beta))
         if query_mode == "none":
@@ -1090,6 +1164,19 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             nn.init.zeros_(self.transport_selector.output.weight)
         else:
             self.transport_selector = None
+        if self.pole_specific_reader is not None:
+            for module in (
+                self.norm,
+                self.pointwise,
+                self.temporal,
+                self.analysis,
+                self.vector_excitation_norm,
+                self.vector_excitation,
+                self.vector_excitation_imag_norm,
+                self.vector_excitation_imag,
+            ):
+                if module is not None:
+                    module.requires_grad_(requires_grad=False)
 
     def _configure_matrix_axes(
         self,
@@ -1310,55 +1397,60 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         ]
         return self.transport_selector(anchor_real, anchor_imag)
 
-    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
-        steps = real.shape[1]
-        full_anchors = steps // self.stride
-        if full_anchors == 0:
-            return torch.zeros_like(real), torch.zeros_like(imag)
+    def build_transport_drive(
+        self,
+        real: Tensor,
+        imag: Tensor,
+        anchor_features: Tensor,
+        full_anchors: int,
+    ) -> ComplexField:
+        if self.pole_specific_reader is not None:
+            return self.pole_specific_reader(real, imag)
         drive_real, drive_imag = self.pole_drive(real, imag)
         anchors = (
             drive_real[:, self.stride - 1 : full_anchors * self.stride : self.stride],
             drive_imag[:, self.stride - 1 : full_anchors * self.stride : self.stride],
         )
-        packed = torch.cat((real, imag), dim=-1)
-        anchor_features = packed[
-            :, self.stride - 1 : full_anchors * self.stride : self.stride
-        ]
         key_gate = self.key_gate(anchor_features)
         anchors = anchors[0] * key_gate, anchors[1] * key_gate
         if self.vector_width > 1:
             excitation_real = self.vector_excitation_axes(anchor_features)
-            if self.complex_vector_excitation:
-                excitation_imag = self.vector_excitation_imag_axes(anchor_features)
-                transported_drive = (
-                    anchors[0].unsqueeze(-1) * excitation_real
-                    - anchors[1].unsqueeze(-1) * excitation_imag,
-                    anchors[0].unsqueeze(-1) * excitation_imag
-                    + anchors[1].unsqueeze(-1) * excitation_real,
-                )
-            else:
-                transported_drive = (
-                    anchors[0].unsqueeze(-1) * excitation_real,
-                    anchors[1].unsqueeze(-1) * excitation_real,
-                )
-        else:
-            value = self.anchor_value(anchor_features)
-            if self.matrix_key_width > 1:
-                matrix_key = self.matrix_key_axes(anchor_features)
-                matrix_value = self.matrix_value_axes(anchor_features, value)
-                transported_drive = (
-                    anchors[0].unsqueeze(-1).unsqueeze(-1)
-                    * matrix_key.unsqueeze(-1)
-                    * matrix_value.unsqueeze(-3),
-                    anchors[1].unsqueeze(-1).unsqueeze(-1)
-                    * matrix_key.unsqueeze(-1)
-                    * matrix_value.unsqueeze(-3),
-                )
-            else:
-                transported_drive = (
-                    anchors[0].unsqueeze(-1) * value.unsqueeze(-2),
-                    anchors[1].unsqueeze(-1) * value.unsqueeze(-2),
-                )
+            excitation_imag = self.vector_excitation_imag_axes(anchor_features)
+            return (
+                anchors[0].unsqueeze(-1) * excitation_real
+                - anchors[1].unsqueeze(-1) * excitation_imag,
+                anchors[0].unsqueeze(-1) * excitation_imag
+                + anchors[1].unsqueeze(-1) * excitation_real,
+            )
+        value = self.anchor_value(anchor_features)
+        if self.matrix_key_width <= 1:
+            return (
+                anchors[0].unsqueeze(-1) * value.unsqueeze(-2),
+                anchors[1].unsqueeze(-1) * value.unsqueeze(-2),
+            )
+        matrix_key = self.matrix_key_axes(anchor_features)
+        matrix_value = self.matrix_value_axes(anchor_features, value)
+        return (
+            anchors[0].unsqueeze(-1).unsqueeze(-1)
+            * matrix_key.unsqueeze(-1)
+            * matrix_value.unsqueeze(-3),
+            anchors[1].unsqueeze(-1).unsqueeze(-1)
+            * matrix_key.unsqueeze(-1)
+            * matrix_value.unsqueeze(-3),
+        )
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        steps = real.shape[1]
+        full_anchors = steps // self.stride
+        if full_anchors == 0:
+            return torch.zeros_like(real), torch.zeros_like(imag)
+        packed = torch.cat((real, imag), dim=-1)
+        anchor_features = packed[
+            :, self.stride - 1 : full_anchors * self.stride : self.stride
+        ]
+        transported_drive = self.build_transport_drive(
+            real, imag, anchor_features, full_anchors
+        )
         damping_control = self.transport_control(real, imag, full_anchors)
         state = (
             self.memory(*transported_drive, damping_control=damping_control)
@@ -2120,6 +2212,8 @@ class AlphabetLM(nn.Module):
                     transport_rank=config.slow_cnn_pole_transport_rank,
                     transport_scale=config.slow_cnn_pole_transport_scale,
                     transport_bound=config.slow_cnn_pole_transport_bound,
+                    pole_specific_reader=config.slow_cnn_pole_specific_reader,
+                    reader_kernel=config.slow_cnn_pole_reader_kernel,
                 )
         else:
             self.slow_cnn_pole_memory = None
