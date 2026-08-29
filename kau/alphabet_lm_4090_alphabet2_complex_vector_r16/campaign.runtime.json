@@ -33,7 +33,7 @@
     }
   },
   "campaign_id": "kau-alphabet-lm-complex-vector-r16-s501-v1",
-  "campaign_manifest_sha256": "3c49ecf89df2bfb0dbd94faa6030022d1c73d8bc561f7bfbce07e91df74b4bb4",
+  "campaign_manifest_sha256": "24aa0942576fe8fad1504fffb154323378df07777a4274f8501b2fa79ae0a978",
   "comparison": {
     "complex_states_per_pole": 16,
     "primary": "state-capacity-matched upper bound against Matrix-K4V4",
@@ -42,6 +42,9 @@
     "single_seed": true
   },
   "diagnostics": {
+    "complex_excitation_off": true,
+    "complex_excitation_shift": true,
+    "complex_excitation_time_mean": true,
     "context_segments": [
       2048,
       512,

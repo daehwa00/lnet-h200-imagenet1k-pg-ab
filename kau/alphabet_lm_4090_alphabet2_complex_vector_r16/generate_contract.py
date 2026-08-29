@@ -37,6 +37,14 @@ def _render() -> str:
         )
         or any(variant["slow_cnn_pole_query"] != "token" for variant in variants.values())
         or any(not variant["slow_cnn_pole_use_recurrence"] for variant in variants.values())
+        or not all(
+            manifest["diagnostics"][name]
+            for name in (
+                "complex_excitation_off",
+                "complex_excitation_shift",
+                "complex_excitation_time_mean",
+            )
+        )
     ):
         raise RuntimeError("invalid complex-vector R16 campaign")
     campaign_id = manifest["campaign_id"]
