@@ -13,7 +13,7 @@ if [[ ! "${KAU_EXPECTED_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] \
 fi
 python3 kau/alphabet_lm_4090_alphabet2_nonseparable/generate_contract.py --check
 
-readonly OUTPUT_ROOT="/home/daehwa/alphabet-lm-4090-nonseparable-k4v4-runs/${KAU_EXPECTED_COMMIT:0:16}"
+readonly OUTPUT_ROOT="${KAU_OUTPUT_ROOT:-/home/daehwa/alphabet-lm-4090-nonseparable-k4v4-runs/${KAU_EXPECTED_COMMIT:0:16}}"
 readonly DATA_ROOT="/home/daehwa/alphabet-lm-data-fineweb-edu-v1"
 readonly TRAIN_MANIFEST="${DATA_ROOT}/tokens/train.manifest.json"
 readonly VALIDATION_MANIFEST="${DATA_ROOT}/tokens/validation.manifest.json"
