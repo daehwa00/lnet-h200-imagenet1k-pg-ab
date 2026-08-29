@@ -112,6 +112,7 @@ class AlphabetLMConfig:
     slow_cnn_pole_write_scheduler: bool = False
     slow_cnn_pole_innovation: bool = False
     slow_cnn_pole_innovation_kernel: int = 3
+    slow_cnn_pole_semantic_clock: bool = False
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -262,6 +263,7 @@ class AlphabetLMConfig:
                 or self.slow_cnn_pole_specific_reader
                 or self.slow_cnn_pole_write_scheduler
                 or self.slow_cnn_pole_innovation
+                or self.slow_cnn_pole_semantic_clock
             ):
                 raise ValueError("slow pole addressing requires a slow memory bank")
             return
@@ -320,6 +322,14 @@ class AlphabetLMConfig:
             raise ValueError("innovation filter requires a pole-specific reader")
         if self.slow_cnn_pole_innovation and self.slow_cnn_pole_write_scheduler:
             raise ValueError("innovation and write scheduler controls must be isolated")
+        if self.slow_cnn_pole_semantic_clock and not self.slow_cnn_pole_specific_reader:
+            raise ValueError("semantic clock requires a pole-specific reader")
+        if self.slow_cnn_pole_semantic_clock and (
+            self.slow_cnn_pole_write_scheduler
+            or self.slow_cnn_pole_innovation
+            or self.slow_cnn_pole_dynamic_transport
+        ):
+            raise ValueError("semantic clock must be tested without other transport controls")
         if not self.slow_cnn_pole_specific_reader:
             return
         if (
@@ -1014,6 +1024,22 @@ class PoleInnovationFilter(nn.Module):
         return real - strength * predicted_real, imag - strength * predicted_imag
 
 
+class LearnedSemanticClock(nn.Module):
+    """Produce one bounded Laplace-time increment shared by every pole."""
+
+    def __init__(self, modes: int, *, epsilon: float) -> None:
+        super().__init__()
+        self.norm = nn.RMSNorm(2 * modes, eps=epsilon)
+        with torch.random.fork_rng(devices=[]):
+            self.hold = nn.Linear(2 * modes, 1, bias=True)
+        nn.init.zeros_(self.hold.weight)
+        nn.init.zeros_(self.hold.bias)
+
+    def forward(self, packed: Tensor) -> Tensor:
+        hold = self.hold(self.norm(packed)).squeeze(-1).clamp(0.0, 1.0)
+        return 1.0 - hold
+
+
 class CausalCNNPoleMemory(nn.Module):
     """Build local evidence with a causal CNN and persist it in a pole sidecar."""
 
@@ -1160,6 +1186,7 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         write_scheduler: bool = False,
         innovation: bool = False,
         innovation_kernel: int = 3,
+        semantic_clock: bool = False,
     ) -> None:
         super().__init__(
             modes,
@@ -1203,6 +1230,7 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             write_scheduler=write_scheduler,
             innovation=innovation,
             innovation_kernel=innovation_kernel,
+            semantic_clock=semantic_clock,
         )
         initial_beta = float(self.beta.detach())
         self.beta = nn.Parameter(torch.full((upper_blocks,), initial_beta))
@@ -1286,6 +1314,7 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         write_scheduler: bool,
         innovation: bool,
         innovation_kernel: int,
+        semantic_clock: bool,
     ) -> None:
         self.write_scheduler_norm = None
         self.write_scheduler = None
@@ -1303,6 +1332,9 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             )
             if innovation
             else None
+        )
+        self.semantic_clock = (
+            LearnedSemanticClock(modes, epsilon=epsilon) if semantic_clock else None
         )
 
     def _configure_matrix_axes(
@@ -1600,8 +1632,17 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
                 transported_drive[1] * write_gate,
             )
         damping_control = self.transport_control(real, imag, full_anchors)
+        clock_step = (
+            self.semantic_clock(anchor_features)
+            if self.semantic_clock is not None
+            else None
+        )
         state = (
-            self.memory(*transported_drive, damping_control=damping_control)
+            self.memory(
+                *transported_drive,
+                damping_control=damping_control,
+                clock_step=clock_step,
+            )
             if self.use_recurrence
             else transported_drive
         )
@@ -1860,11 +1901,61 @@ class FixedComplexPoleMemory1D(nn.Module):
     def coefficients(self) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         return discrete_pole_real2d(self.damping(), self.frequency(), 1.0)
 
+    def _active_coefficients(
+        self,
+        drive_real: Tensor,
+        *,
+        scan_dtype: torch.dtype,
+        vector_width: int,
+        damping_control: Tensor | None,
+        clock_step: Tensor | None,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        if damping_control is not None and clock_step is not None:
+            raise ValueError("dynamic damping and semantic clock are mutually exclusive")
+        if clock_step is not None:
+            if clock_step.shape != drive_real.shape[:2]:
+                raise ValueError("semantic clock must match the B,T pole drive axes")
+            damping = self.damping().to(device=drive_real.device, dtype=scan_dtype)
+            frequency = self.frequency().to(device=drive_real.device, dtype=scan_dtype)
+            coefficients = discrete_pole_real2d(
+                damping.view(1, 1, -1),
+                frequency.view(1, 1, -1),
+                clock_step.to(scan_dtype).unsqueeze(-1),
+            )
+        elif damping_control is None:
+            coefficients = self.coefficients()
+        else:
+            if damping_control.shape != drive_real.shape:
+                raise ValueError("dynamic damping control must match the pole drive")
+            frequency = self.frequency().to(device=drive_real.device, dtype=scan_dtype)
+            raw_damping = self.raw_damping.to(device=drive_real.device, dtype=scan_dtype)
+            if vector_width > 1:
+                frequency = frequency.repeat_interleave(vector_width)
+                raw_damping = raw_damping.repeat_interleave(vector_width)
+            coefficients = pole_gamma_from_control_real2d(
+                raw_damping,
+                frequency,
+                damping_control.to(scan_dtype),
+                self.minimum_damping,
+                1.0,
+            )
+        dr, di, gr, gi = (
+            value.to(device=drive_real.device, dtype=scan_dtype)
+            for value in coefficients
+        )
+        if vector_width > 1 and damping_control is None:
+            dr = dr.repeat_interleave(vector_width, dim=-1)
+            di = di.repeat_interleave(vector_width, dim=-1)
+            gr = gr.repeat_interleave(vector_width, dim=-1)
+            gi = gi.repeat_interleave(vector_width, dim=-1)
+        return dr, di, gr, gi
+
     def forward(
         self,
         drive_real: Tensor,
         drive_imag: Tensor,
         damping_control: Tensor | None = None,
+        clock_step: Tensor | None = None,
     ) -> ComplexField:
         if drive_real.shape != drive_imag.shape:
             raise ValueError("fixed-pole memory expects matching complex coordinates")
@@ -1889,32 +1980,13 @@ class FixedComplexPoleMemory1D(nn.Module):
             raise ValueError("fixed-pole memory expects B,T,P or B,T,P,... coordinates")
         scan_dtype = torch.float32 if self.scan_fp32 else drive_real.dtype
         active_real, active_imag = drive_real.to(scan_dtype), drive_imag.to(scan_dtype)
-        if damping_control is None:
-            coefficients = self.coefficients()
-        else:
-            if damping_control.shape != drive_real.shape:
-                raise ValueError("dynamic damping control must match the pole drive")
-            frequency = self.frequency().to(device=drive_real.device, dtype=scan_dtype)
-            raw_damping = self.raw_damping.to(device=drive_real.device, dtype=scan_dtype)
-            if vector_width > 1:
-                frequency = frequency.repeat_interleave(vector_width)
-                raw_damping = raw_damping.repeat_interleave(vector_width)
-            coefficients = pole_gamma_from_control_real2d(
-                raw_damping,
-                frequency,
-                damping_control.to(scan_dtype),
-                self.minimum_damping,
-                1.0,
-            )
-        values = tuple(
-            value.to(device=drive_real.device, dtype=scan_dtype) for value in coefficients
+        dr, di, gr, gi = self._active_coefficients(
+            drive_real,
+            scan_dtype=scan_dtype,
+            vector_width=vector_width,
+            damping_control=damping_control,
+            clock_step=clock_step,
         )
-        dr, di, gr, gi = values
-        if vector_width > 1 and damping_control is None:
-            dr = dr.repeat_interleave(vector_width)
-            di = di.repeat_interleave(vector_width)
-            gr = gr.repeat_interleave(vector_width)
-            gi = gi.repeat_interleave(vector_width)
         input_real = gr * active_real - gi * active_imag
         input_imag = gi * active_real + gr * active_imag
         shape = (1, 1, self.modes * vector_width)
@@ -2365,6 +2437,7 @@ class AlphabetLM(nn.Module):
                     write_scheduler=config.slow_cnn_pole_write_scheduler,
                     innovation=config.slow_cnn_pole_innovation,
                     innovation_kernel=config.slow_cnn_pole_innovation_kernel,
+                    semantic_clock=config.slow_cnn_pole_semantic_clock,
                 )
         else:
             self.slow_cnn_pole_memory = None

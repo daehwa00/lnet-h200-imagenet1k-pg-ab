@@ -49,6 +49,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_slow_key_from_trunk,
     _initialize_slow_matrix_from_trunk,
     _initialize_slow_query_from_trunk,
+    _initialize_slow_semantic_clock_from_trunk,
     _initialize_slow_value_from_trunk,
     _initialize_slow_vector_pole_from_trunk,
     _initialize_slow_write_scheduler_from_trunk,
@@ -56,6 +57,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _validate_slow_dynamic_transport_source,
     _validate_slow_full_complex_vector_source,
     _validate_slow_innovation_source,
+    _validate_slow_semantic_clock_source,
     _validate_slow_vector_pole_source,
     _validate_slow_write_scheduler_source,
     _validate_vector_initialization_selection,
@@ -1929,6 +1931,105 @@ def test_innovation_requires_pole_specific_reader_and_excludes_scheduler() -> No
         replace(
             _scheduled_pole_reader_config(),
             slow_cnn_pole_innovation=True,
+        )
+
+
+def _semantic_clock_pole_reader_config() -> AlphabetLMConfig:
+    return replace(
+        _scheduled_pole_reader_config(),
+        slow_cnn_pole_write_scheduler=False,
+        slow_cnn_pole_semantic_clock=True,
+    )
+
+
+def test_semantic_clock_unit_step_matches_fixed_and_zero_step_holds_state() -> None:
+    torch.manual_seed(501)
+    memory = FixedComplexPoleMemory1D(4, context_length=16, scan_fp32=False)
+    real = torch.randn(2, 7, 4)
+    imag = torch.randn_like(real)
+    fixed = memory(real, imag)
+    unit_clock = memory(real, imag, clock_step=torch.ones(2, 7))
+    torch.testing.assert_close(unit_clock, fixed, atol=0.0, rtol=0.0)
+    clock = torch.zeros(2, 7)
+    clock[:, 0] = 1.0
+    held_real, held_imag = memory(real, imag, clock_step=clock)
+    torch.testing.assert_close(
+        held_real[:, 1:], held_real[:, :1].expand_as(held_real[:, 1:])
+    )
+    torch.testing.assert_close(
+        held_imag[:, 1:], held_imag[:, :1].expand_as(held_imag[:, 1:])
+    )
+
+
+def test_semantic_clock_is_identity_initialized_shared_and_live() -> None:
+    torch.manual_seed(501)
+    baseline = AlphabetLM(
+        replace(_semantic_clock_pole_reader_config(), slow_cnn_pole_semantic_clock=False)
+    ).eval()
+    torch.manual_seed(501)
+    clocked = AlphabetLM(_semantic_clock_pole_reader_config()).eval()
+    clocked.load_state_dict(baseline.state_dict(), strict=False)
+    slow = cast("SlowCausalCNNPoleMemory", clocked.slow_cnn_pole_memory)
+    assert slow.semantic_clock is not None
+    packed = torch.randn(2, 9, 16)
+    step = slow.semantic_clock(packed)
+    assert step.shape == (2, 9)
+    torch.testing.assert_close(step, torch.ones_like(step), atol=0.0, rtol=0.0)
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        expected = baseline(tokens)
+        actual = clocked(tokens)
+    torch.testing.assert_close(actual, expected, atol=2e-6, rtol=2e-6)
+    clocked(tokens).square().mean().backward()
+    assert slow.semantic_clock.hold.weight.grad is not None
+    assert slow.semantic_clock.hold.weight.grad.abs().sum() > 0
+
+
+def test_semantic_clock_checkpoint_freezes_dense_k3_and_trains_only_clock(
+    tmp_path: Path,
+) -> None:
+    torch.manual_seed(501)
+    baseline = AlphabetLM(
+        replace(_semantic_clock_pole_reader_config(), slow_cnn_pole_semantic_clock=False)
+    ).eval()
+    checkpoint = tmp_path / "dense-k3.pt"
+    torch.save({"model": baseline.state_dict()}, checkpoint)
+    torch.manual_seed(501)
+    clocked = AlphabetLM(_semantic_clock_pole_reader_config()).eval()
+    contract = _initialize_slow_semantic_clock_from_trunk(clocked, checkpoint)
+    assert contract["enabled"] is True
+    trainable = [
+        name for name, parameter in clocked.named_parameters() if parameter.requires_grad
+    ]
+    assert set(trainable) == {
+        "slow_cnn_pole_memory.semantic_clock.norm.weight",
+        "slow_cnn_pole_memory.semantic_clock.hold.weight",
+        "slow_cnn_pole_memory.semantic_clock.hold.bias",
+    }
+
+
+def test_semantic_clock_source_digest_is_enforced() -> None:
+    initialization: dict[str, object] = {"checkpoint_sha256": "expected"}
+    runtime = {"source": {"pole_reader_30m_sha256": "expected"}}
+    _validate_slow_semantic_clock_source(initialization, runtime, enabled=True)
+    with pytest.raises(RuntimeError, match="semantic-clock source checkpoint"):
+        _validate_slow_semantic_clock_source(
+            initialization,
+            {"source": {"pole_reader_30m_sha256": "different"}},
+            enabled=True,
+        )
+
+
+def test_semantic_clock_requires_reader_and_excludes_other_transport_controls() -> None:
+    with pytest.raises(ValueError, match="semantic clock requires"):
+        replace(
+            _complex_query_r16_config(coordinate_read=True),
+            slow_cnn_pole_semantic_clock=True,
+        )
+    with pytest.raises(ValueError, match="without other transport controls"):
+        replace(
+            _scheduled_pole_reader_config(),
+            slow_cnn_pole_semantic_clock=True,
         )
 
 

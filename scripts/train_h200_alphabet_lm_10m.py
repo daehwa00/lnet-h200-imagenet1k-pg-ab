@@ -837,6 +837,55 @@ def _validate_slow_innovation_source(
         raise RuntimeError("innovation source checkpoint digest changed")
 
 
+def _initialize_slow_semantic_clock_from_trunk(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.slow_cnn_pole_memory is None:
+        raise RuntimeError("semantic-clock initialization requires slow memory")
+    clock = model.slow_cnn_pole_memory.semantic_clock
+    if clock is None:
+        raise RuntimeError("semantic-clock initialization requires a clock")
+    checkpoint_bytes = checkpoint_path.read_bytes()
+    checkpoint_sha = hashlib.sha256(checkpoint_bytes).hexdigest()
+    payload = cast(
+        "dict[str, Any]",
+        torch.load(io.BytesIO(checkpoint_bytes), map_location="cpu", weights_only=True),
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    prefix = "slow_cnn_pole_memory.semantic_clock."
+    expected_missing = {name for name in model.state_dict() if name.startswith(prefix)}
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("Dense-K3 checkpoint does not match semantic clock")
+    nn.init.zeros_(clock.hold.weight)
+    nn.init.zeros_(clock.hold.bias)
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(name.startswith(prefix))
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": checkpoint_sha,
+        "missing_clock_tensors": len(expected_missing),
+        "dense_k3_30m_frozen": True,
+    }
+
+
+def _validate_slow_semantic_clock_source(
+    initialization: dict[str, object],
+    runtime: dict[str, Any],
+    *,
+    enabled: bool,
+) -> None:
+    if not enabled:
+        return
+    expected = runtime.get("source", {}).get("pole_reader_30m_sha256")
+    if not isinstance(expected, str) or initialization.get("checkpoint_sha256") != expected:
+        raise RuntimeError("semantic-clock source checkpoint digest changed")
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -928,6 +977,7 @@ def _build(
     slow_cnn_pole_write_scheduler: bool = False,
     slow_cnn_pole_innovation: bool = False,
     slow_cnn_pole_innovation_kernel: int = 3,
+    slow_cnn_pole_semantic_clock: bool = False,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -1018,6 +1068,7 @@ def _build(
         slow_cnn_pole_write_scheduler=slow_cnn_pole_write_scheduler,
         slow_cnn_pole_innovation=slow_cnn_pole_innovation,
         slow_cnn_pole_innovation_kernel=slow_cnn_pole_innovation_kernel,
+        slow_cnn_pole_semantic_clock=slow_cnn_pole_semantic_clock,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -1289,6 +1340,7 @@ def main() -> None:
     parser.add_argument("--slow-cnn-pole-write-scheduler", action="store_true")
     parser.add_argument("--slow-cnn-pole-innovation", action="store_true")
     parser.add_argument("--slow-cnn-pole-innovation-kernel", type=int, default=3)
+    parser.add_argument("--slow-cnn-pole-semantic-clock", action="store_true")
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-query-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-key-trunk-checkpoint", type=Path)
@@ -1301,6 +1353,7 @@ def main() -> None:
     parser.add_argument("--initialize-slow-dynamic-transport-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-write-scheduler-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-innovation-checkpoint", type=Path)
+    parser.add_argument("--initialize-slow-semantic-clock-checkpoint", type=Path)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -1450,6 +1503,7 @@ def main() -> None:
         slow_cnn_pole_write_scheduler=args.slow_cnn_pole_write_scheduler,
         slow_cnn_pole_innovation=args.slow_cnn_pole_innovation,
         slow_cnn_pole_innovation_kernel=args.slow_cnn_pole_innovation_kernel,
+        slow_cnn_pole_semantic_clock=args.slow_cnn_pole_semantic_clock,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -1475,6 +1529,7 @@ def main() -> None:
             or args.initialize_slow_dynamic_transport_checkpoint is not None
             or args.initialize_slow_write_scheduler_checkpoint is not None
             or args.initialize_slow_innovation_checkpoint is not None
+            or args.initialize_slow_semantic_clock_checkpoint is not None
         ):
             raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
@@ -1604,6 +1659,17 @@ def main() -> None:
         runtime,
         enabled=args.initialize_slow_innovation_checkpoint is not None,
     )
+    slow_semantic_clock_initialization = (
+        _initialize_slow_semantic_clock_from_trunk(
+            model,
+            args.initialize_slow_semantic_clock_checkpoint,
+        )
+    )
+    _validate_slow_semantic_clock_source(
+        slow_semantic_clock_initialization,
+        runtime,
+        enabled=args.initialize_slow_semantic_clock_checkpoint is not None,
+    )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
         active_arguments = {
@@ -1688,6 +1754,7 @@ def main() -> None:
             "slow_cnn_pole_innovation_kernel": (
                 args.slow_cnn_pole_innovation_kernel
             ),
+            "slow_cnn_pole_semantic_clock": args.slow_cnn_pole_semantic_clock,
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -1888,6 +1955,8 @@ def main() -> None:
         "slow_cnn_pole_innovation": args.slow_cnn_pole_innovation,
         "slow_cnn_pole_innovation_kernel": args.slow_cnn_pole_innovation_kernel,
         "slow_innovation_initialization": slow_innovation_initialization,
+        "slow_cnn_pole_semantic_clock": args.slow_cnn_pole_semantic_clock,
+        "slow_semantic_clock_initialization": slow_semantic_clock_initialization,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
@@ -2131,6 +2200,14 @@ def main() -> None:
                         .mean()
                         .sqrt()
                     )
+                if model.slow_cnn_pole_memory.semantic_clock is not None:
+                    clock = model.slow_cnn_pole_memory.semantic_clock
+                    row["slow_semantic_clock_weight_rms"] = float(
+                        clock.hold.weight.detach().float().square().mean().sqrt()
+                    )
+                    row["slow_semantic_clock_bias"] = float(
+                        cast("Tensor", clock.hold.bias).detach().float().squeeze()
+                    )
         if update == 1:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
@@ -2271,6 +2348,13 @@ def main() -> None:
                 "slow_innovation_predictor_tail_rms",
             ):
                 wandb_metrics[f"model/{metric}"] = row[metric]
+        if "slow_semantic_clock_weight_rms" in row:
+            wandb_metrics["model/slow_semantic_clock_weight_rms"] = row[
+                "slow_semantic_clock_weight_rms"
+            ]
+            wandb_metrics["model/slow_semantic_clock_bias"] = row[
+                "slow_semantic_clock_bias"
+            ]
         wandb_run.log(wandb_metrics, step=update)
         print("ALPHABET_LM_PROGRESS=" + json.dumps(row, sort_keys=True), flush=True)
         if _STOP_EVENT.is_set():

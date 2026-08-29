@@ -200,6 +200,7 @@ def _build(kind: str) -> nn.Module:
         "alphabet2_pole_reader_r16",
         "alphabet2_pole_reader_write_scheduler_r16",
         "alphabet2_pole_reader_innovation_r16",
+        "alphabet2_pole_reader_semantic_clock_r16",
     }:
         config = AlphabetLMConfig(
             reader_type="dense_k3",
@@ -237,6 +238,9 @@ def _build(kind: str) -> nn.Module:
                 kind == "alphabet2_pole_reader_innovation_r16"
             ),
             slow_cnn_pole_innovation_kernel=3,
+            slow_cnn_pole_semantic_clock=(
+                kind == "alphabet2_pole_reader_semantic_clock_r16"
+            ),
         )
     elif kind in {"alphabet2_anchor_q", "alphabet2_token_q"}:
         config = AlphabetLMConfig(
@@ -811,6 +815,26 @@ def _slow_innovation_override(
     return [slow.innovation_filter.predictor.register_forward_hook(shuffle_prediction)]
 
 
+def _slow_semantic_clock_override(
+    model: nn.Module,
+    *,
+    shuffle: bool,
+) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM):
+        return []
+    slow = model.slow_cnn_pole_memory
+    if not isinstance(slow, SlowCausalCNNPoleMemory) or slow.semantic_clock is None:
+        return []
+
+    def override(_module: nn.Module, _inputs: tuple[object, ...], output: object) -> Tensor:
+        step = cast("Tensor", output)
+        if not shuffle:
+            return torch.ones_like(step)
+        return torch.roll(step, shifts=max(1, step.shape[1] // 2), dims=1)
+
+    return [slow.semantic_clock.register_forward_hook(override)]
+
+
 def _complex_autocorrelation(
     real: Tensor,
     imag: Tensor,
@@ -1099,6 +1123,7 @@ def _slow_cnn_pole_metrics(
         key_metrics = gate_metrics(slow.key_gate(anchor_source)) if slow.key is not None else None
         vector_metrics: dict[str, object] | None = None
         transport_metrics: dict[str, float] | None = None
+        clock_metrics: dict[str, float] | None = None
         def spectrum(rows: Tensor) -> tuple[Tensor, Tensor]:
             gram = rows.mH @ rows / max(1, rows.shape[0])
             eigenvalues = torch.linalg.eigvalsh(gram).real.clamp_min(0.0)
@@ -1269,6 +1294,7 @@ def _slow_cnn_pole_metrics(
                     excitation_imag[..., 1:].float().square().mean().sqrt()
                 )
             damping_control = None
+            clock_step = None
             if slow.transport_selector is not None:
                 anchor_real = real[
                     :, slow.stride - 1 : full_anchors * slow.stride : slow.stride
@@ -1287,10 +1313,30 @@ def _slow_cnn_pole_metrics(
                         (active_control[:, 1:] - active_control[:, :-1]).abs().mean()
                     ),
                 }
+            if slow.semantic_clock is not None:
+                clock_step = slow.semantic_clock(anchor_source)
+                active_step = clock_step.float()
+                clock_metrics = {
+                    "step_mean": float(active_step.mean()),
+                    "step_std": float(active_step.std()),
+                    "step_min": float(active_step.min()),
+                    "step_max": float(active_step.max()),
+                    "hold_below_0_1_fraction": float(
+                        (active_step < 0.1).float().mean()
+                    ),
+                    "hold_below_0_5_fraction": float(
+                        (active_step < 0.5).float().mean()
+                    ),
+                    "semantic_time_ratio": float(active_step.sum() / active_step.numel()),
+                    "temporal_delta_mean": float(
+                        (active_step[:, 1:] - active_step[:, :-1]).abs().mean()
+                    ),
+                }
             state_real, state_imag = slow.memory(
                 transported_real,
                 transported_imag,
                 damping_control=damping_control,
+                clock_step=clock_step,
             )
             rows = torch.complex(state_real.float(), state_imag.float()).flatten(0, 2)
             eigenvalues, effective_rank = spectrum(rows)
@@ -1454,6 +1500,8 @@ def _slow_cnn_pole_metrics(
         payload["write_scheduler"] = write_metrics
     if innovation_metrics is not None:
         payload["innovation"] = innovation_metrics
+    if clock_metrics is not None:
+        payload["semantic_clock"] = clock_metrics
     return payload
 
 
@@ -1835,6 +1883,7 @@ def main() -> None:
             "alphabet2_pole_reader_r16",
             "alphabet2_pole_reader_write_scheduler_r16",
             "alphabet2_pole_reader_innovation_r16",
+            "alphabet2_pole_reader_semantic_clock_r16",
             "mamba",
         ),
         required=True,
@@ -2250,6 +2299,29 @@ def main() -> None:
                 device=device,
             )
             for handle in innovation_shuffled:
+                handle.remove()
+        clock_identity = _slow_semantic_clock_override(model, shuffle=False)
+        if clock_identity:
+            results["semantic_clock_identity"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in clock_identity:
+                handle.remove()
+            clock_shuffled = _slow_semantic_clock_override(model, shuffle=True)
+            results["semantic_clock_shuffled"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in clock_shuffled:
                 handle.remove()
     for segment in (512, 128, 32, 1):
         results[f"reset_{segment}"] = _evaluate(
