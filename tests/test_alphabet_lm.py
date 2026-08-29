@@ -34,7 +34,11 @@ from lnet.alphabet_lm import (
 )
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 from lnet.pac_triton_recurrence_op import pac_triton_recurrence_opaque_op
-from scripts.evaluate_kau_alphabet_lm_context import _zero_memory
+from scripts.evaluate_kau_alphabet_lm_context import (
+    _factorized_extra_coordinate_override,
+    _factorized_pca_override,
+    _zero_memory,
+)
 from scripts.prepare_h200_alphabet_lm_data import _parquet_to_jsonl, _split_documents
 from scripts.train_h200_alphabet_lm_10m import (
     _copy_matching_legacy_initialization,
@@ -2211,6 +2215,50 @@ def test_factorized_write_is_instantaneously_low_rank_with_wide_state() -> None:
     singular = torch.linalg.svdvals(torch.complex(excitation[0], excitation[1]))
     assert int((singular > 1.0e-4).sum(dim=-1).max()) <= bank.write_rank
     assert excitation[0].shape[-1] == 16
+
+
+def test_factorized_state_functional_overrides_act_on_memory_coordinates() -> None:
+    model = AlphabetLM(_factorized_repeated_vector_pole_config()).eval()
+    banks = model.repeated_vector_pole_memories
+    assert banks is not None
+    bank = cast("FactorizedTokenRateVectorPoleBlock", banks[0])
+    excitation_real = torch.randn(1, 8, bank.pole_modes, bank.vector_width)
+    excitation_imag = torch.randn_like(excitation_real)
+    expected_real, expected_imag = bank.pole_memory(
+        excitation_real,
+        excitation_imag,
+    )
+
+    handles = _factorized_extra_coordinate_override(model)
+    truncated_real, truncated_imag = bank.pole_memory(
+        excitation_real,
+        excitation_imag,
+    )
+    for handle in handles:
+        handle.remove()
+    torch.testing.assert_close(
+        truncated_real[..., : bank.baseline_width],
+        expected_real[..., : bank.baseline_width],
+    )
+    torch.testing.assert_close(
+        truncated_imag[..., : bank.baseline_width],
+        expected_imag[..., : bank.baseline_width],
+    )
+    assert torch.count_nonzero(truncated_real[..., bank.baseline_width :]) == 0
+    assert torch.count_nonzero(truncated_imag[..., bank.baseline_width :]) == 0
+
+    bases = [torch.eye(bank.vector_width, dtype=torch.complex64) for _ in banks]
+    handles = _factorized_pca_override(model, bases, rank=4)
+    projected_real, projected_imag = bank.pole_memory(
+        excitation_real,
+        excitation_imag,
+    )
+    for handle in handles:
+        handle.remove()
+    assert torch.count_nonzero(projected_real[..., :-4]) == 0
+    assert torch.count_nonzero(projected_imag[..., :-4]) == 0
+    torch.testing.assert_close(projected_real[..., -4:], expected_real[..., -4:])
+    torch.testing.assert_close(projected_imag[..., -4:], expected_imag[..., -4:])
 
 
 def test_factorized_expansion_source_digest_is_enforced() -> None:

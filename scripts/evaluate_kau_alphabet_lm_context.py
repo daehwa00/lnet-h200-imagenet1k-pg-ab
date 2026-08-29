@@ -629,6 +629,117 @@ def _bypass_repeated_vector_poles(
     return [banks[index].register_forward_hook(bypass) for index in selected]
 
 
+def _factorized_state_memories(
+    model: nn.Module,
+) -> list[FixedComplexPoleMemory1D]:
+    if not isinstance(model, AlphabetLM) or model.repeated_vector_pole_memories is None:
+        return []
+    banks = list(model.repeated_vector_pole_memories)
+    if not banks or not all(
+        isinstance(bank, FactorizedTokenRateVectorPoleBlock) for bank in banks
+    ):
+        return []
+    return [
+        cast("FactorizedTokenRateVectorPoleBlock", bank).pole_memory
+        for bank in banks
+    ]
+
+
+def _factorized_extra_coordinate_override(
+    model: nn.Module,
+) -> list[torch.utils.hooks.RemovableHandle]:
+    memories = _factorized_state_memories(model)
+    if not memories:
+        return []
+    banks = cast("AlphabetLM", model).repeated_vector_pole_memories
+    if banks is None:
+        raise RuntimeError("factorized VectorPole banks disappeared")
+
+    def truncate(
+        baseline_width: int,
+        output: object,
+    ) -> tuple[Tensor, Tensor]:
+        real, imag = cast("tuple[Tensor, Tensor]", output)
+        truncated_real = real.clone()
+        truncated_imag = imag.clone()
+        truncated_real[..., baseline_width:] = 0
+        truncated_imag[..., baseline_width:] = 0
+        return truncated_real, truncated_imag
+
+    handles: list[torch.utils.hooks.RemovableHandle] = []
+    for bank, memory in zip(banks, memories, strict=True):
+        baseline_width = cast(
+            "FactorizedTokenRateVectorPoleBlock", bank
+        ).baseline_width
+
+        def override(
+            _module: nn.Module,
+            _inputs: tuple[object, ...],
+            output: object,
+            *,
+            active_width: int = baseline_width,
+        ) -> tuple[Tensor, Tensor]:
+            return truncate(active_width, output)
+
+        handles.append(memory.register_forward_hook(override))
+    return handles
+
+
+@torch.no_grad()
+def _calibrate_factorized_pca_bases(
+    model: nn.Module,
+    dataset: TokenBlockDataset,
+    device: torch.device,
+) -> list[Tensor]:
+    memories = _factorized_state_memories(model)
+    if not memories:
+        return []
+    grams: list[Tensor] = []
+
+    def capture(_module: nn.Module, _inputs: tuple[object, ...], output: object) -> None:
+        real, imag = cast("tuple[Tensor, Tensor]", output)
+        rows = torch.complex(real.float(), imag.float()).flatten(0, 2)
+        grams.append(rows.mH @ rows / max(1, rows.shape[0]))
+
+    handles = [memory.register_forward_hook(capture) for memory in memories]
+    sample = dataset[0][:-1].unsqueeze(0).to(device)
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        model(sample)
+    for handle in handles:
+        handle.remove()
+    if len(grams) != len(memories):
+        raise RuntimeError("failed to calibrate every factorized VectorPole bank")
+    return [torch.linalg.eigh(gram).eigenvectors for gram in grams]
+
+
+def _factorized_pca_override(
+    model: nn.Module,
+    bases: list[Tensor],
+    *,
+    rank: int,
+) -> list[torch.utils.hooks.RemovableHandle]:
+    memories = _factorized_state_memories(model)
+    if not memories:
+        return []
+    if len(bases) != len(memories):
+        raise ValueError("PCA basis count must match factorized VectorPole banks")
+
+    def project(basis: Tensor, output: object) -> tuple[Tensor, Tensor]:
+        real, imag = cast("tuple[Tensor, Tensor]", output)
+        active = basis[:, -min(rank, basis.shape[1]) :]
+        state = torch.complex(real.float(), imag.float())
+        coordinates = torch.matmul(state, active)
+        projected = torch.matmul(coordinates, active.mH)
+        return projected.real.to(real.dtype), projected.imag.to(imag.dtype)
+
+    return [
+        memory.register_forward_hook(
+            lambda _module, _inputs, output, basis=basis: project(basis, output)
+        )
+        for memory, basis in zip(memories, bases, strict=True)
+    ]
+
+
 def _slow_query_override(
     model: nn.Module,
     *,
@@ -2114,6 +2225,35 @@ def main() -> None:
             device=device,
         )
     }
+    factorized_pca_bases = _calibrate_factorized_pca_bases(model, dataset, device)
+    if factorized_pca_bases:
+        extra_coordinate_handles = _factorized_extra_coordinate_override(model)
+        results["factorized_extra_coordinates_off"] = _evaluate(
+            model,
+            dataset,
+            segment=2_048,
+            token_limit=args.token_limit,
+            sequence_limit=args.sequence_limit,
+            device=device,
+        )
+        for handle in extra_coordinate_handles:
+            handle.remove()
+        for rank in (4, 8):
+            pca_handles = _factorized_pca_override(
+                model,
+                factorized_pca_bases,
+                rank=rank,
+            )
+            results[f"factorized_state_pca_rank_{rank}"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in pca_handles:
+                handle.remove()
     if args.kind != "mamba":
         handles = _zero_memory(model)
         results["memory_zero"] = _evaluate(
