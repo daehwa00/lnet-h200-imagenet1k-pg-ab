@@ -2199,6 +2199,38 @@ def test_factorized_expansion_trains_only_new_state_interface(tmp_path: Path) ->
     assert bank.extra_synthesis.weight.grad.abs().sum() > 0
 
 
+def test_factorized_r4_interface_preserves_source_and_has_live_synthesis(
+    tmp_path: Path,
+) -> None:
+    dense_config = replace(_repeated_vector_pole_config(), repeated_vector_pole_width=4)
+    torch.manual_seed(501)
+    dense = AlphabetLM(dense_config).eval()
+    checkpoint = tmp_path / "dense-repeated.pt"
+    torch.save({"model": dense.state_dict()}, checkpoint)
+    factorized_config = replace(
+        dense_config,
+        repeated_vector_pole_factorized=True,
+        repeated_vector_pole_write_rank=4,
+        repeated_vector_pole_query_rank=4,
+        repeated_vector_pole_synthesis_rank=4,
+    )
+    torch.manual_seed(501)
+    factorized = AlphabetLM(factorized_config).eval()
+    _initialize_repeated_factorized_expansion(factorized, checkpoint)
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        expected = dense(tokens)
+        actual = factorized(tokens)
+    torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+    banks = factorized.repeated_vector_pole_memories
+    assert banks is not None
+    bank = cast("FactorizedTokenRateVectorPoleBlock", banks[0])
+    assert torch.count_nonzero(bank.extra_projection_basis) > 0
+    factorized.train()(tokens).square().mean().backward()
+    assert bank.extra_synthesis.weight.grad is not None
+    assert bank.extra_synthesis.weight.grad.abs().sum() > 0
+
+
 def test_factorized_write_is_instantaneously_low_rank_with_wide_state() -> None:
     model = AlphabetLM(_factorized_repeated_vector_pole_config()).eval()
     banks = model.repeated_vector_pole_memories

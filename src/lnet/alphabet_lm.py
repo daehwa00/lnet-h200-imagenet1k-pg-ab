@@ -2602,10 +2602,13 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
             identity = torch.eye(baseline_width)
             self.content_basis_real[:baseline_width, :baseline_width].copy_(identity)
             self.query_basis_real[:baseline_width, :baseline_width].copy_(identity)
-            if self.vector_width > baseline_width:
-                self.extra_projection_basis[:, :, baseline_width:].normal_(
-                    std=1.0 / math.sqrt(self.vector_width - baseline_width)
-                )
+            projection_start = (
+                baseline_width if self.vector_width > baseline_width else 0
+            )
+            projection_width = self.vector_width - projection_start
+            self.extra_projection_basis[:, :, projection_start:].normal_(
+                std=1.0 / math.sqrt(projection_width)
+            )
         nn.init.zeros_(self.query.weight)
         nn.init.zeros_(self.vector_query_real.weight)
         nn.init.xavier_uniform_(self.vector_query_imag.weight)
