@@ -39,12 +39,14 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_semantic_edge_from_trunk,
     _initialize_sidecar_from_trunk,
     _initialize_slow_cnn_pole_from_trunk,
+    _initialize_slow_complex_vector_from_trunk,
     _initialize_slow_independent_value_from_trunk,
     _initialize_slow_key_from_trunk,
     _initialize_slow_matrix_from_trunk,
     _initialize_slow_query_from_trunk,
     _initialize_slow_value_from_trunk,
     _initialize_slow_vector_pole_from_trunk,
+    _validate_slow_complex_vector_source,
     _validate_slow_vector_pole_source,
 )
 
@@ -1444,6 +1446,62 @@ def test_vector_pole_source_digest_is_enforced_inside_the_trainer() -> None:
             initialization,
             {"source": {"token_q_10m_sha256": "different"}},
             4,
+        )
+
+
+def _complex_vector_pole_config() -> AlphabetLMConfig:
+    return replace(
+        _vector_pole_slow_config(),
+        slow_cnn_pole_complex_vector_excitation=True,
+    )
+
+
+def test_complex_vector_excitation_preserves_shared_phase_and_has_live_gradient(
+    tmp_path: Path,
+) -> None:
+    torch.manual_seed(501)
+    shared_phase = AlphabetLM(_vector_pole_slow_config()).eval()
+    shared_slow = cast("SlowCausalCNNPoleMemory", shared_phase.slow_cnn_pole_memory)
+    assert shared_slow.vector_query is not None
+    torch.nn.init.normal_(shared_slow.vector_query.weight, std=0.02)
+    checkpoint = tmp_path / "shared-phase.pt"
+    torch.save({"model": shared_phase.state_dict()}, checkpoint)
+    torch.manual_seed(501)
+    complex_vector = AlphabetLM(_complex_vector_pole_config()).eval()
+    contract = _initialize_slow_complex_vector_from_trunk(complex_vector, checkpoint)
+    assert contract["enabled"] is True
+    complex_slow = cast("SlowCausalCNNPoleMemory", complex_vector.slow_cnn_pole_memory)
+    assert complex_slow.vector_excitation_imag is not None
+    torch.testing.assert_close(
+        complex_slow.vector_excitation_imag.weight,
+        torch.zeros_like(complex_slow.vector_excitation_imag.weight),
+    )
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        expected = shared_phase(tokens)
+        actual = complex_vector(tokens)
+    torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+    complex_vector(tokens).square().mean().backward()
+    assert complex_slow.vector_excitation_imag.weight.grad is not None
+    assert complex_slow.vector_excitation_imag.weight.grad.abs().sum() > 0
+    trainable = [
+        name for name, parameter in complex_vector.named_parameters() if parameter.requires_grad
+    ]
+    assert set(trainable) == {
+        "slow_cnn_pole_memory.vector_excitation_imag_norm.weight",
+        "slow_cnn_pole_memory.vector_excitation_imag.weight",
+    }
+
+
+def test_complex_vector_source_digest_is_enforced() -> None:
+    initialization: dict[str, object] = {"checkpoint_sha256": "expected"}
+    runtime = {"source": {"vector_pole_r4_4m_sha256": "expected"}}
+    _validate_slow_complex_vector_source(initialization, runtime, enabled=True)
+    with pytest.raises(RuntimeError, match="complex vector source checkpoint digest changed"):
+        _validate_slow_complex_vector_source(
+            initialization,
+            {"source": {"vector_pole_r4_4m_sha256": "different"}},
+            enabled=True,
         )
 
 
