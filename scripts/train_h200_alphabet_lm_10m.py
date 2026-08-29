@@ -70,6 +70,9 @@ KAU_ALPHABET2_QUERY_10M_RUNTIME_SCHEMA = (
 KAU_ALPHABET2_QK_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.alphabet2_qk.runtime.v1"
 KAU_ALPHABET2_VECTOR_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.alphabet2_vector.runtime.v1"
 KAU_ALPHABET2_MATRIX_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.alphabet2_matrix.runtime.v1"
+KAU_ALPHABET2_NONSEPARABLE_RUNTIME_SCHEMA = (
+    "lnet.kau.alphabet_lm.alphabet2_nonseparable.runtime.v1"
+)
 _STOP_EVENT = threading.Event()
 
 
@@ -953,6 +956,7 @@ def main() -> None:
         KAU_ALPHABET2_QK_RUNTIME_SCHEMA,
         KAU_ALPHABET2_VECTOR_RUNTIME_SCHEMA,
         KAU_ALPHABET2_MATRIX_RUNTIME_SCHEMA,
+        KAU_ALPHABET2_NONSEPARABLE_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
