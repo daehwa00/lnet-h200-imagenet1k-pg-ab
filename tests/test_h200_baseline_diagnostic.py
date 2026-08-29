@@ -63,3 +63,11 @@ def test_diagnostic_entrypoint_requires_an_immutable_commit() -> None:
     assert "H200_EXPECTED_DIAGNOSTIC_COMMIT" in script
     assert "git status --porcelain" in script
     assert "scripts/diagnose_h200_baseline_backlog.py" in script
+
+
+def test_diagnostic_uses_python310_compatible_utc() -> None:
+    source = (
+        Path(__file__).parents[1] / "scripts/diagnose_h200_baseline_backlog.py"
+    ).read_text(encoding="utf-8")
+    assert "from datetime import UTC" not in source
+    assert "timezone.utc" in source

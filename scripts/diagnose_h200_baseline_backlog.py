@@ -7,7 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -48,7 +48,7 @@ def _stat(path: Path) -> dict[str, Any]:
     value = path.stat()
     return {
         "exists": True,
-        "modified_utc": datetime.fromtimestamp(value.st_mtime, UTC).isoformat(),
+        "modified_utc": datetime.fromtimestamp(value.st_mtime, timezone.utc).isoformat(),
         "path": str(path),
         "size_bytes": value.st_size,
     }
@@ -161,7 +161,7 @@ def diagnose(
         }
     return {
         "schema": SCHEMA,
-        "diagnosed_at_utc": datetime.now(UTC).isoformat(),
+        "diagnosed_at_utc": datetime.now(timezone.utc).isoformat(),
         "execution_source_commit": "c3b275ca11d0d99aa9436345b9f8ebb01ca4836d",
         "models": models,
         "output_root": str(root),
