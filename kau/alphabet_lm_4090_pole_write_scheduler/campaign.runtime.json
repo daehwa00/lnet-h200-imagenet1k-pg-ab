@@ -1,0 +1,103 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "pole-write-scheduler-r16-frozen-4m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_complex_vector_query": true,
+        "slow_cnn_pole_coordinate_read": true,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_maximum_half_life": 4096.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 16.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_reader_kernel": 3,
+        "slow_cnn_pole_specific_reader": true,
+        "slow_cnn_pole_stride": 1,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_vector_width": 16,
+        "slow_cnn_pole_write_scheduler": true
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-pole-write-scheduler-r16-4m-s501-v1",
+  "campaign_manifest_sha256": "1956645dffdb3e6fc0d14c96b3a4b6c63263462470211473ac5fad06b6ac9772",
+  "diagnostics": {
+    "effective_write_rate": true,
+    "excitation_autocorrelation_lags": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "identity_initialization": true,
+    "write_scheduler_neutral": true,
+    "write_scheduler_shuffle": true
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-PoleWriteSchedulerR16-4M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-pole-write-scheduler-r16-4m-v1",
+  "parameter_counts": {
+    "pole-write-scheduler-r16-frozen-4m": 66176
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "pole-write-scheduler-r16-frozen-4m": {
+      "display_name": "RTX4090-S501-ALPHABET2-PoleWriteSchedulerR16-Frozen-4M",
+      "id": "4adc9bb364c34d65",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "PoleReader",
+        "WriteScheduler",
+        "Frozen"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "mamba_30m_validation_loss": 4.985551627853659,
+    "pole_reader_30m_checkpoint": "/home/daehwa/alphabet-lm-4090-pole-reader-30m-runs/18eda3702b9de858/pole-reader-30m/checkpoint.pt",
+    "pole_reader_30m_sha256": "262d16303b374158822574032ea0d622d0ec305d534ceed92b3ca722e69337a5",
+    "pole_reader_30m_validation_loss": 5.2721833219281375,
+    "stride16_30m_validation_loss": 5.209424313665039
+  },
+  "total_parameter_counts": {
+    "pole-write-scheduler-r16-frozen-4m": 48788106
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "pole-write-scheduler-r16-frozen-4m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 4000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

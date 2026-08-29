@@ -196,7 +196,10 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_transport_scale=0.1,
             slow_cnn_pole_transport_bound=1.0,
         )
-    elif kind == "alphabet2_pole_reader_r16":
+    elif kind in {
+        "alphabet2_pole_reader_r16",
+        "alphabet2_pole_reader_write_scheduler_r16",
+    }:
         config = AlphabetLMConfig(
             reader_type="dense_k3",
             memory_layout="local_only",
@@ -226,6 +229,9 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_coordinate_read=True,
             slow_cnn_pole_specific_reader=True,
             slow_cnn_pole_reader_kernel=3,
+            slow_cnn_pole_write_scheduler=(
+                kind == "alphabet2_pole_reader_write_scheduler_r16"
+            ),
         )
     elif kind in {"alphabet2_anchor_q", "alphabet2_token_q"}:
         config = AlphabetLMConfig(
@@ -746,6 +752,26 @@ def _slow_pole_reader_override(
     return [slow.pole_specific_reader.register_forward_hook(override)]
 
 
+def _slow_write_scheduler_override(
+    model: nn.Module,
+    *,
+    mode: Literal["neutral", "shuffle"],
+) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM):
+        return []
+    slow = model.slow_cnn_pole_memory
+    if not isinstance(slow, SlowCausalCNNPoleMemory) or slow.write_scheduler is None:
+        return []
+
+    def override(_module: nn.Module, _inputs: tuple[object, ...], output: object) -> Tensor:
+        logits = cast("Tensor", output)
+        if mode == "neutral":
+            return torch.zeros_like(logits)
+        return torch.roll(logits, shifts=max(1, logits.shape[1] // 2), dims=1)
+
+    return [slow.write_scheduler.register_forward_hook(override)]
+
+
 @torch.no_grad()
 def _sidecar_metrics(
     model: AlphabetLM,
@@ -985,6 +1011,25 @@ def _slow_cnn_pole_metrics(
         anchor_source = packed_source[
             :, slow.stride - 1 : full_anchors * slow.stride : slow.stride
         ]
+        write_metrics: dict[str, object] | None = None
+        write_gate: Tensor | None = None
+        if slow.write_scheduler is not None:
+            write_gate = slow.write_gate(anchor_source)
+            active_gate = write_gate.float()
+            sample_count = active_gate.shape[0] * active_gate.shape[1]
+            gate_by_pole = active_gate.flatten(0, 1)
+            effective_fraction = gate_by_pole.sum(dim=0).square() / (
+                sample_count
+                * gate_by_pole.square().sum(dim=0).clamp_min(1.0e-12)
+            )
+            write_metrics = {
+                **gate_metrics(write_gate),
+                "effective_write_fraction_mean": float(effective_fraction.mean()),
+                "effective_write_fraction_min": float(effective_fraction.min()),
+                "effective_write_fraction_max": float(effective_fraction.max()),
+                "gate_below_0_5_fraction": float((active_gate < 0.5).float().mean()),
+                "gate_above_1_5_fraction": float((active_gate > 1.5).float().mean()),
+            }
         query_metrics: dict[str, float | str] | None = None
         if slow.query is not None:
             query_source = anchor_source if slow.query_mode == "anchor" else packed_source
@@ -1034,6 +1079,46 @@ def _slow_cnn_pole_metrics(
                         .mean()
                     ),
                 }
+                if write_gate is not None and write_metrics is not None:
+                    gated_real = transported_real * write_gate.unsqueeze(-1)
+                    gated_imag = transported_imag * write_gate.unsqueeze(-1)
+
+                    def autocorrelation(
+                        active_real: Tensor,
+                        active_imag: Tensor,
+                        lag: int,
+                    ) -> float:
+                        left_real = active_real[:, :-lag].float()
+                        left_imag = active_imag[:, :-lag].float()
+                        right_real = active_real[:, lag:].float()
+                        right_imag = active_imag[:, lag:].float()
+                        correlation_real = (
+                            left_real * right_real + left_imag * right_imag
+                        ).mean()
+                        correlation_imag = (
+                            left_real * right_imag - left_imag * right_real
+                        ).mean()
+                        left_energy = left_real.square().add(left_imag.square()).mean()
+                        right_energy = right_real.square().add(right_imag.square()).mean()
+                        return float(
+                            correlation_real.square()
+                            .add(correlation_imag.square())
+                            .sqrt()
+                            / (left_energy * right_energy).sqrt().clamp_min(1.0e-12)
+                        )
+
+                    lags = (1, 2, 4, 8, 16)
+                    write_metrics["excitation_autocorrelation"] = {
+                        str(lag): autocorrelation(
+                            transported_real, transported_imag, lag
+                        )
+                        for lag in lags
+                    }
+                    write_metrics["gated_excitation_autocorrelation"] = {
+                        str(lag): autocorrelation(gated_real, gated_imag, lag)
+                        for lag in lags
+                    }
+                    transported_real, transported_imag = gated_real, gated_imag
             else:
                 reader_metrics = None
                 drive_real, drive_imag = slow.pole_drive(real, imag)
@@ -1244,6 +1329,8 @@ def _slow_cnn_pole_metrics(
         payload["vector_state"] = vector_metrics
     if transport_metrics is not None:
         payload["dynamic_transport"] = transport_metrics
+    if write_metrics is not None:
+        payload["write_scheduler"] = write_metrics
     return payload
 
 
@@ -1623,6 +1710,7 @@ def main() -> None:
             "alphabet2_coordinate_read_r16",
             "alphabet2_dynamic_transport_r16",
             "alphabet2_pole_reader_r16",
+            "alphabet2_pole_reader_write_scheduler_r16",
             "mamba",
         ),
         required=True,
@@ -1987,6 +2075,32 @@ def main() -> None:
                 )
                 for handle in handles:
                     handle.remove()
+        scheduler_neutral = _slow_write_scheduler_override(model, mode="neutral")
+        if scheduler_neutral:
+            results["write_scheduler_neutral"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in scheduler_neutral:
+                handle.remove()
+            scheduler_shuffled = _slow_write_scheduler_override(
+                model,
+                mode="shuffle",
+            )
+            results["write_scheduler_shuffled"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in scheduler_shuffled:
+                handle.remove()
     for segment in (512, 128, 32, 1):
         results[f"reset_{segment}"] = _evaluate(
             model,

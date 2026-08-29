@@ -109,6 +109,7 @@ class AlphabetLMConfig:
     slow_cnn_pole_transport_bound: float = 1.0
     slow_cnn_pole_specific_reader: bool = False
     slow_cnn_pole_reader_kernel: int = 3
+    slow_cnn_pole_write_scheduler: bool = False
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -256,6 +257,7 @@ class AlphabetLMConfig:
                 or self.slow_cnn_pole_coordinate_read
                 or self.slow_cnn_pole_dynamic_transport
                 or self.slow_cnn_pole_specific_reader
+                or self.slow_cnn_pole_write_scheduler
             ):
                 raise ValueError("slow pole addressing requires a slow memory bank")
             return
@@ -308,6 +310,8 @@ class AlphabetLMConfig:
         self._validate_slow_pole_reader()
 
     def _validate_slow_pole_reader(self) -> None:
+        if self.slow_cnn_pole_write_scheduler and not self.slow_cnn_pole_specific_reader:
+            raise ValueError("write scheduler requires a pole-specific reader")
         if not self.slow_cnn_pole_specific_reader:
             return
         if (
@@ -1070,6 +1074,7 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         transport_bound: float = 1.0,
         pole_specific_reader: bool = False,
         reader_kernel: int = 16,
+        write_scheduler: bool = False,
     ) -> None:
         super().__init__(
             modes,
@@ -1095,7 +1100,6 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         self.complex_vector_excitation = bool(complex_vector_excitation)
         self.complex_vector_query = bool(complex_vector_query)
         self.coordinate_read = bool(coordinate_read)
-        self.dynamic_transport = bool(dynamic_transport)
         self.pole_specific_reader = (
             PoleSpecificCausalVectorReader(
                 modes,
@@ -1105,6 +1109,12 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             )
             if pole_specific_reader
             else None
+        )
+        self._configure_write_scheduler(
+            modes=modes,
+            pole_modes=pole_modes,
+            epsilon=epsilon,
+            enabled=write_scheduler,
         )
         initial_beta = float(self.beta.detach())
         self.beta = nn.Parameter(torch.full((upper_blocks,), initial_beta))
@@ -1177,6 +1187,23 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             ):
                 if module is not None:
                     module.requires_grad_(requires_grad=False)
+
+    def _configure_write_scheduler(
+        self,
+        *,
+        modes: int,
+        pole_modes: int,
+        epsilon: float,
+        enabled: bool,
+    ) -> None:
+        self.write_scheduler_norm = None
+        self.write_scheduler = None
+        if not enabled:
+            return
+        self.write_scheduler_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+        self.write_scheduler = nn.Linear(2 * modes, pole_modes, bias=True)
+        nn.init.zeros_(self.write_scheduler.weight)
+        nn.init.zeros_(self.write_scheduler.bias)
 
     def _configure_matrix_axes(
         self,
@@ -1279,6 +1306,17 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         logits = self.key(self.key_norm(packed))
         gate = 1.0 + self.key_rho * torch.tanh(logits)
         return gate / gate.mean(dim=-1, keepdim=True)
+
+    def write_gate(self, packed: Tensor) -> Tensor:
+        if self.write_scheduler_norm is None or self.write_scheduler is None:
+            return torch.ones(
+                *packed.shape[:-1],
+                self.memory.modes,
+                device=packed.device,
+                dtype=packed.dtype,
+            )
+        logits = self.write_scheduler(self.write_scheduler_norm(packed))
+        return 2.0 * torch.sigmoid(logits)
 
     def anchor_value(self, packed: Tensor) -> Tensor:
         ones = torch.ones(*packed.shape[:-1], 1, device=packed.device, dtype=packed.dtype)
@@ -1451,6 +1489,14 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         transported_drive = self.build_transport_drive(
             real, imag, anchor_features, full_anchors
         )
+        if self.write_scheduler is not None:
+            write_gate = self.write_gate(anchor_features)
+            for _ in range(transported_drive[0].ndim - write_gate.ndim):
+                write_gate = write_gate.unsqueeze(-1)
+            transported_drive = (
+                transported_drive[0] * write_gate,
+                transported_drive[1] * write_gate,
+            )
         damping_control = self.transport_control(real, imag, full_anchors)
         state = (
             self.memory(*transported_drive, damping_control=damping_control)
@@ -2214,6 +2260,7 @@ class AlphabetLM(nn.Module):
                     transport_bound=config.slow_cnn_pole_transport_bound,
                     pole_specific_reader=config.slow_cnn_pole_specific_reader,
                     reader_kernel=config.slow_cnn_pole_reader_kernel,
+                    write_scheduler=config.slow_cnn_pole_write_scheduler,
                 )
         else:
             self.slow_cnn_pole_memory = None

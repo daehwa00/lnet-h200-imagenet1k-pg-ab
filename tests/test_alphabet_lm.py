@@ -49,10 +49,12 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_slow_query_from_trunk,
     _initialize_slow_value_from_trunk,
     _initialize_slow_vector_pole_from_trunk,
+    _initialize_slow_write_scheduler_from_trunk,
     _validate_slow_complex_vector_source,
     _validate_slow_dynamic_transport_source,
     _validate_slow_full_complex_vector_source,
     _validate_slow_vector_pole_source,
+    _validate_slow_write_scheduler_source,
     _validate_vector_initialization_selection,
 )
 
@@ -1729,6 +1731,89 @@ def test_pole_specific_reader_requires_token_rate_late_fusion() -> None:
     assert model(torch.randint(64, (1, 16))).shape == (1, 16, 64)
     with pytest.raises(ValueError, match="pole-specific reader requires"):
         replace(config, slow_cnn_pole_stride=16)
+
+
+def _scheduled_pole_reader_config() -> AlphabetLMConfig:
+    return replace(
+        _complex_query_r16_config(coordinate_read=True),
+        slow_cnn_pole_stride=1,
+        slow_cnn_pole_minimum_half_life=16.0,
+        slow_cnn_pole_maximum_half_life=4_096.0,
+        slow_cnn_pole_specific_reader=True,
+        slow_cnn_pole_write_scheduler=True,
+    )
+
+
+def test_write_scheduler_is_identity_initialized_pole_wise_and_live() -> None:
+    torch.manual_seed(501)
+    baseline = AlphabetLM(
+        replace(_scheduled_pole_reader_config(), slow_cnn_pole_write_scheduler=False)
+    ).eval()
+    torch.manual_seed(501)
+    scheduled = AlphabetLM(_scheduled_pole_reader_config()).eval()
+    scheduled.load_state_dict(baseline.state_dict(), strict=False)
+    slow = cast("SlowCausalCNNPoleMemory", scheduled.slow_cnn_pole_memory)
+    assert slow.write_scheduler is not None
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        packed = torch.randn(2, 9, 16)
+        gate = slow.write_gate(packed)
+        expected = baseline(tokens)
+        actual = scheduled(tokens)
+    assert gate.shape == (2, 9, slow.memory.modes)
+    torch.testing.assert_close(gate, torch.ones_like(gate), atol=0.0, rtol=0.0)
+    torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+    scheduled(tokens).square().mean().backward()
+    assert slow.write_scheduler.weight.grad is not None
+    assert slow.write_scheduler.weight.grad.abs().sum() > 0
+
+
+def test_write_scheduler_checkpoint_freezes_dense_k3_and_trains_only_gate(
+    tmp_path: Path,
+) -> None:
+    torch.manual_seed(501)
+    baseline = AlphabetLM(
+        replace(_scheduled_pole_reader_config(), slow_cnn_pole_write_scheduler=False)
+    ).eval()
+    checkpoint = tmp_path / "dense-k3.pt"
+    torch.save({"model": baseline.state_dict()}, checkpoint)
+    torch.manual_seed(501)
+    scheduled = AlphabetLM(_scheduled_pole_reader_config()).eval()
+    contract = _initialize_slow_write_scheduler_from_trunk(scheduled, checkpoint)
+    assert contract["enabled"] is True
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        torch.testing.assert_close(
+            scheduled(tokens), baseline(tokens), atol=0.0, rtol=0.0
+        )
+    trainable = [
+        name for name, parameter in scheduled.named_parameters() if parameter.requires_grad
+    ]
+    assert set(trainable) == {
+        "slow_cnn_pole_memory.write_scheduler_norm.weight",
+        "slow_cnn_pole_memory.write_scheduler.weight",
+        "slow_cnn_pole_memory.write_scheduler.bias",
+    }
+
+
+def test_write_scheduler_source_digest_is_enforced() -> None:
+    initialization: dict[str, object] = {"checkpoint_sha256": "expected"}
+    runtime = {"source": {"pole_reader_30m_sha256": "expected"}}
+    _validate_slow_write_scheduler_source(initialization, runtime, enabled=True)
+    with pytest.raises(RuntimeError, match="write-scheduler source checkpoint"):
+        _validate_slow_write_scheduler_source(
+            initialization,
+            {"source": {"pole_reader_30m_sha256": "different"}},
+            enabled=True,
+        )
+
+
+def test_write_scheduler_requires_pole_specific_reader() -> None:
+    with pytest.raises(ValueError, match="write scheduler requires"):
+        replace(
+            _complex_query_r16_config(coordinate_read=True),
+            slow_cnn_pole_write_scheduler=True,
+        )
 
 
 def _vector_slow_config() -> AlphabetLMConfig:
