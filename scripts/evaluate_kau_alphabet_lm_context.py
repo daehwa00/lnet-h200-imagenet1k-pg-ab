@@ -1594,6 +1594,12 @@ def _repeated_vector_pole_metrics(
             packed_source = torch.cat((real, imag), dim=-1)
             if isinstance(bank, FactorizedTokenRateVectorPoleBlock):
                 coefficient = bank.reader(real, imag)
+                if bank.extra_reader is not None:
+                    extra_coefficient = bank.extra_reader(real, imag)
+                    coefficient = (
+                        torch.cat((coefficient[0], extra_coefficient[0]), dim=-1),
+                        torch.cat((coefficient[1], extra_coefficient[1]), dim=-1),
+                    )
                 content_basis = bank.content_basis(packed_source)
                 excitation_real, excitation_imag = bank.complex_factor_product(
                     coefficient[0],
