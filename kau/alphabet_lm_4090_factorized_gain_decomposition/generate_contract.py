@@ -42,7 +42,7 @@ def _render() -> str:
             raise RuntimeError(f"invalid factorized gain variant: {label}")
     campaign_id = manifest["campaign_id"]
     runtime = {
-        "schema": "lnet.kau.alphabet_lm.factorized_gain_decomposition.runtime.v1",
+        "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
         "campaign_id": campaign_id,
         "campaign_manifest_sha256": hashlib.sha256(raw).hexdigest(),
         "output_namespace": manifest["output_namespace"],

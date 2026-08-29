@@ -80,7 +80,7 @@
       ]
     }
   },
-  "schema": "lnet.kau.alphabet_lm.factorized_gain_decomposition.runtime.v1",
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
   "source": {
     "factorized_p32r32_js16_validation_loss": 5.2335753285052435,
     "repeated_p32r4_30m_checkpoint": "/home/daehwa/alphabet-lm-4090-repeated-vector-pole-30m-runs/29d0c393a1f22e2e/repeated-vector-pole-30m/checkpoint.pt",
