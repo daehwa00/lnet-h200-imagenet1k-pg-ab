@@ -34,6 +34,7 @@ def _render() -> str:
         or variant["repeated_vector_pole_write_rank"] != 4
         or variant["repeated_vector_pole_query_rank"] != 4
         or variant["repeated_vector_pole_synthesis_rank"] != 16
+        or not variant["repeated_vector_pole_activation_checkpoint"]
         or not variant["repeated_vector_pole_factorized"]
     ):
         raise RuntimeError("invalid factorized P32R32 campaign")
