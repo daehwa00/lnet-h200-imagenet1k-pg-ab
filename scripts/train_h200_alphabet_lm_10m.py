@@ -30,6 +30,7 @@ from lnet.alphabet_lm import (
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
     SlowCausalCNNPoleMemory,
+    TokenRateVectorPoleBlock,
 )
 from lnet.alphabet_lm_data import TokenBlockDataset, sha256_file
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
@@ -978,6 +979,14 @@ def _build(
     slow_cnn_pole_innovation: bool = False,
     slow_cnn_pole_innovation_kernel: int = 3,
     slow_cnn_pole_semantic_clock: bool = False,
+    repeated_vector_pole_memory: bool = False,
+    repeated_vector_pole_interval: int = 1,
+    repeated_vector_pole_modes: int = 32,
+    repeated_vector_pole_width: int = 4,
+    repeated_vector_pole_reader_kernel: int = 3,
+    repeated_vector_pole_beta_initial: float = 0.01,
+    repeated_vector_pole_minimum_half_life: float = 16.0,
+    repeated_vector_pole_maximum_half_life: float = 4_096.0,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -1069,6 +1078,18 @@ def _build(
         slow_cnn_pole_innovation=slow_cnn_pole_innovation,
         slow_cnn_pole_innovation_kernel=slow_cnn_pole_innovation_kernel,
         slow_cnn_pole_semantic_clock=slow_cnn_pole_semantic_clock,
+        repeated_vector_pole_memory=repeated_vector_pole_memory,
+        repeated_vector_pole_interval=repeated_vector_pole_interval,
+        repeated_vector_pole_modes=repeated_vector_pole_modes,
+        repeated_vector_pole_width=repeated_vector_pole_width,
+        repeated_vector_pole_reader_kernel=repeated_vector_pole_reader_kernel,
+        repeated_vector_pole_beta_initial=repeated_vector_pole_beta_initial,
+        repeated_vector_pole_minimum_half_life=(
+            repeated_vector_pole_minimum_half_life
+        ),
+        repeated_vector_pole_maximum_half_life=(
+            repeated_vector_pole_maximum_half_life
+        ),
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -1341,6 +1362,18 @@ def main() -> None:
     parser.add_argument("--slow-cnn-pole-innovation", action="store_true")
     parser.add_argument("--slow-cnn-pole-innovation-kernel", type=int, default=3)
     parser.add_argument("--slow-cnn-pole-semantic-clock", action="store_true")
+    parser.add_argument("--repeated-vector-pole-memory", action="store_true")
+    parser.add_argument("--repeated-vector-pole-interval", type=int, default=1)
+    parser.add_argument("--repeated-vector-pole-modes", type=int, default=32)
+    parser.add_argument("--repeated-vector-pole-width", type=int, default=4)
+    parser.add_argument("--repeated-vector-pole-reader-kernel", type=int, default=3)
+    parser.add_argument("--repeated-vector-pole-beta-initial", type=float, default=0.01)
+    parser.add_argument(
+        "--repeated-vector-pole-minimum-half-life", type=float, default=16.0
+    )
+    parser.add_argument(
+        "--repeated-vector-pole-maximum-half-life", type=float, default=4_096.0
+    )
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-query-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-key-trunk-checkpoint", type=Path)
@@ -1504,6 +1537,18 @@ def main() -> None:
         slow_cnn_pole_innovation=args.slow_cnn_pole_innovation,
         slow_cnn_pole_innovation_kernel=args.slow_cnn_pole_innovation_kernel,
         slow_cnn_pole_semantic_clock=args.slow_cnn_pole_semantic_clock,
+        repeated_vector_pole_memory=args.repeated_vector_pole_memory,
+        repeated_vector_pole_interval=args.repeated_vector_pole_interval,
+        repeated_vector_pole_modes=args.repeated_vector_pole_modes,
+        repeated_vector_pole_width=args.repeated_vector_pole_width,
+        repeated_vector_pole_reader_kernel=args.repeated_vector_pole_reader_kernel,
+        repeated_vector_pole_beta_initial=args.repeated_vector_pole_beta_initial,
+        repeated_vector_pole_minimum_half_life=(
+            args.repeated_vector_pole_minimum_half_life
+        ),
+        repeated_vector_pole_maximum_half_life=(
+            args.repeated_vector_pole_maximum_half_life
+        ),
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -1755,6 +1800,22 @@ def main() -> None:
                 args.slow_cnn_pole_innovation_kernel
             ),
             "slow_cnn_pole_semantic_clock": args.slow_cnn_pole_semantic_clock,
+            "repeated_vector_pole_memory": args.repeated_vector_pole_memory,
+            "repeated_vector_pole_interval": args.repeated_vector_pole_interval,
+            "repeated_vector_pole_modes": args.repeated_vector_pole_modes,
+            "repeated_vector_pole_width": args.repeated_vector_pole_width,
+            "repeated_vector_pole_reader_kernel": (
+                args.repeated_vector_pole_reader_kernel
+            ),
+            "repeated_vector_pole_beta_initial": (
+                args.repeated_vector_pole_beta_initial
+            ),
+            "repeated_vector_pole_minimum_half_life": (
+                args.repeated_vector_pole_minimum_half_life
+            ),
+            "repeated_vector_pole_maximum_half_life": (
+                args.repeated_vector_pole_maximum_half_life
+            ),
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -1957,6 +2018,22 @@ def main() -> None:
         "slow_innovation_initialization": slow_innovation_initialization,
         "slow_cnn_pole_semantic_clock": args.slow_cnn_pole_semantic_clock,
         "slow_semantic_clock_initialization": slow_semantic_clock_initialization,
+        "repeated_vector_pole_memory": args.repeated_vector_pole_memory,
+        "repeated_vector_pole_interval": args.repeated_vector_pole_interval,
+        "repeated_vector_pole_modes": args.repeated_vector_pole_modes,
+        "repeated_vector_pole_width": args.repeated_vector_pole_width,
+        "repeated_vector_pole_reader_kernel": (
+            args.repeated_vector_pole_reader_kernel
+        ),
+        "repeated_vector_pole_beta_initial": (
+            args.repeated_vector_pole_beta_initial
+        ),
+        "repeated_vector_pole_minimum_half_life": (
+            args.repeated_vector_pole_minimum_half_life
+        ),
+        "repeated_vector_pole_maximum_half_life": (
+            args.repeated_vector_pole_maximum_half_life
+        ),
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
@@ -2208,6 +2285,14 @@ def main() -> None:
                     row["slow_semantic_clock_bias"] = float(
                         cast("Tensor", clock.hold.bias).detach().float().squeeze()
                     )
+            if model.repeated_vector_pole_memories is not None:
+                repeated_betas = [
+                    float(cast("TokenRateVectorPoleBlock", bank).beta.detach())
+                    for bank in model.repeated_vector_pole_memories
+                ]
+                row["repeated_vector_pole_beta_mean"] = sum(repeated_betas) / len(
+                    repeated_betas
+                )
         if update == 1:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
@@ -2354,6 +2439,10 @@ def main() -> None:
             ]
             wandb_metrics["model/slow_semantic_clock_bias"] = row[
                 "slow_semantic_clock_bias"
+            ]
+        if "repeated_vector_pole_beta_mean" in row:
+            wandb_metrics["model/repeated_vector_pole_beta_mean"] = row[
+                "repeated_vector_pole_beta_mean"
             ]
         wandb_run.log(wandb_metrics, step=update)
         print("ALPHABET_LM_PROGRESS=" + json.dumps(row, sort_keys=True), flush=True)

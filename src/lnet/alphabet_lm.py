@@ -113,6 +113,14 @@ class AlphabetLMConfig:
     slow_cnn_pole_innovation: bool = False
     slow_cnn_pole_innovation_kernel: int = 3
     slow_cnn_pole_semantic_clock: bool = False
+    repeated_vector_pole_memory: bool = False
+    repeated_vector_pole_interval: int = 1
+    repeated_vector_pole_modes: int = 32
+    repeated_vector_pole_width: int = 4
+    repeated_vector_pole_reader_kernel: int = 3
+    repeated_vector_pole_beta_initial: float = 0.01
+    repeated_vector_pole_minimum_half_life: float = 16.0
+    repeated_vector_pole_maximum_half_life: float = 4_096.0
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -163,6 +171,10 @@ class AlphabetLMConfig:
             self.slow_cnn_pole_transport_rank,
             self.slow_cnn_pole_reader_kernel,
             self.slow_cnn_pole_innovation_kernel,
+            self.repeated_vector_pole_interval,
+            self.repeated_vector_pole_modes,
+            self.repeated_vector_pole_width,
+            self.repeated_vector_pole_reader_kernel,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -199,6 +211,7 @@ class AlphabetLMConfig:
         self._validate_semantic_edge_memory()
         self._validate_cnn_pole_memory()
         self._validate_slow_cnn_pole_memory()
+        self._validate_repeated_vector_pole_memory()
         if self.write_map == "dynamic_low_rank" and (
             self.reader_type != "dense_k3"
             or self.memory_layout != "flat"
@@ -350,6 +363,24 @@ class AlphabetLMConfig:
             or self.slow_cnn_pole_transport_bound <= 0.0
         ):
             raise ValueError("dynamic transport requires recurrent vector pole memory")
+
+    def _validate_repeated_vector_pole_memory(self) -> None:
+        if not self.repeated_vector_pole_memory:
+            return
+        if (
+            self.memory_layout != "local_only"
+            or self.reader_type != "dense_k3"
+            or self.chunk_memory
+            or self.semantic_edge_memory
+            or self.cnn_pole_memory
+            or self.slow_cnn_pole_memory
+            or self.layers % self.repeated_vector_pole_interval
+            or self.repeated_vector_pole_width <= 1
+            or not 0.0 < self.repeated_vector_pole_beta_initial < 1.0
+            or self.repeated_vector_pole_minimum_half_life
+            >= self.repeated_vector_pole_maximum_half_life
+        ):
+            raise ValueError("invalid repeated token-rate VectorPole configuration")
 
     def _validate_memory_layout(self) -> None:
         if self.memory_layout == "tensor_product" and (
@@ -2335,6 +2366,104 @@ class AlphabetLMBlock(nn.Module):
         return output if self.sidecar is None else self.sidecar(*output)
 
 
+class TokenRateVectorPoleBlock(nn.Module):
+    """Detect, transport, and selectively read one depth-local modal state."""
+
+    def __init__(
+        self,
+        modes: int,
+        *,
+        pole_modes: int,
+        vector_width: int,
+        reader_kernel: int,
+        beta_initial: float,
+        context_length: int,
+        scan_fp32: bool,
+        minimum_half_life: float,
+        maximum_half_life: float,
+        epsilon: float,
+        query_rho: float = 0.5,
+    ) -> None:
+        super().__init__()
+        self.modes = int(modes)
+        self.pole_modes = int(pole_modes)
+        self.vector_width = int(vector_width)
+        self.query_rho = float(query_rho)
+        self.epsilon = float(epsilon)
+        self.reader = PoleSpecificCausalVectorReader(
+            modes,
+            pole_modes,
+            vector_width,
+            kernel_size=reader_kernel,
+        )
+        self.pole_memory = FixedComplexPoleMemory1D(
+            pole_modes,
+            context_length=context_length,
+            scan_fp32=scan_fp32,
+            initialization="lifetime_palette",
+            minimum_half_life=minimum_half_life,
+            maximum_half_life=maximum_half_life,
+        )
+        self.query_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+        self.query = nn.Linear(2 * modes, pole_modes, bias=False)
+        self.vector_query_real = nn.Linear(
+            2 * modes, pole_modes * (vector_width - 1), bias=False
+        )
+        self.vector_query_imag = nn.Linear(
+            2 * modes, pole_modes * vector_width, bias=False
+        )
+        self.synthesis = nn.Linear(
+            2 * pole_modes * vector_width, 2 * modes, bias=False
+        )
+        self.beta = nn.Parameter(torch.tensor(float(beta_initial)))
+        nn.init.zeros_(self.query.weight)
+        nn.init.zeros_(self.vector_query_real.weight)
+        nn.init.xavier_uniform_(self.vector_query_imag.weight)
+        nn.init.xavier_uniform_(self.synthesis.weight)
+
+    def query_components(self, packed: Tensor) -> ComplexField:
+        normalized = self.query_norm(packed)
+        scalar = 1.0 + self.query_rho * torch.tanh(self.query(normalized))
+        scalar = scalar / scalar.mean(dim=-1, keepdim=True)
+        extra_real = torch.tanh(self.vector_query_real(normalized)).reshape(
+            *packed.shape[:-1], self.pole_modes, self.vector_width - 1
+        )
+        query_real = torch.cat((scalar.unsqueeze(-1), extra_real), dim=-1)
+        query_imag = torch.tanh(self.vector_query_imag(normalized)).reshape(
+            *packed.shape[:-1], self.pole_modes, self.vector_width
+        )
+        norm = (
+            query_real.float()
+            .square()
+            .add(query_imag.float().square())
+            .sum(dim=-1, keepdim=True)
+            .sqrt()
+            .clamp_min(self.epsilon)
+        )
+        scale = (scalar.abs().float().unsqueeze(-1) / norm).to(query_real.dtype)
+        return query_real * scale, query_imag * scale
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        excitation = self.reader(real, imag)
+        state_real, state_imag = self.pole_memory(*excitation)
+        query_real, query_imag = self.query_components(torch.cat((real, imag), dim=-1))
+        selected_real = state_real * query_real + state_imag * query_imag
+        selected_imag = state_imag * query_real - state_real * query_imag
+        projected = self.synthesis(
+            torch.cat((selected_real.flatten(-2), selected_imag.flatten(-2)), dim=-1)
+        )
+        memory_real, memory_imag = projected.chunk(2, dim=-1)
+        trunk_rms = real.float().square().add(imag.float().square()).mean(
+            dim=-1, keepdim=True
+        ).sqrt()
+        memory_rms = memory_real.float().square().add(memory_imag.float().square()).mean(
+            dim=-1, keepdim=True
+        ).sqrt()
+        scale = (trunk_rms / (memory_rms + self.epsilon)).detach().to(real.dtype)
+        beta = self.beta.to(real.dtype)
+        return real + beta * memory_real * scale, imag + beta * memory_imag * scale
+
+
 class AlphabetLM(nn.Module):
     def __init__(self, config: AlphabetLMConfig) -> None:
         super().__init__()
@@ -2441,6 +2570,31 @@ class AlphabetLM(nn.Module):
                 )
         else:
             self.slow_cnn_pole_memory = None
+        if config.repeated_vector_pole_memory:
+            with torch.random.fork_rng(devices=[]):
+                self.repeated_vector_pole_memories = nn.ModuleList(
+                    TokenRateVectorPoleBlock(
+                        config.modes,
+                        pole_modes=config.repeated_vector_pole_modes,
+                        vector_width=config.repeated_vector_pole_width,
+                        reader_kernel=config.repeated_vector_pole_reader_kernel,
+                        beta_initial=config.repeated_vector_pole_beta_initial,
+                        context_length=config.context_length,
+                        scan_fp32=config.scan_fp32,
+                        minimum_half_life=(
+                            config.repeated_vector_pole_minimum_half_life
+                        ),
+                        maximum_half_life=(
+                            config.repeated_vector_pole_maximum_half_life
+                        ),
+                        epsilon=config.rms_epsilon,
+                    )
+                    for _ in range(
+                        config.layers // config.repeated_vector_pole_interval
+                    )
+                )
+        else:
+            self.repeated_vector_pole_memories = None
         nn.init.normal_(self.embedding.weight, mean=0.0, std=0.02)
         nn.init.orthogonal_(self.analysis.weight)
 
@@ -2497,6 +2651,14 @@ class AlphabetLM(nn.Module):
             ):
                 bank_index = (index + 1) // self.config.cnn_pole_interval - 1
                 real, imag = self.cnn_pole_memories[bank_index](real, imag)
+            if (
+                self.repeated_vector_pole_memories is not None
+                and (index + 1) % self.config.repeated_vector_pole_interval == 0
+            ):
+                bank_index = (
+                    (index + 1) // self.config.repeated_vector_pole_interval - 1
+                )
+                real, imag = self.repeated_vector_pole_memories[bank_index](real, imag)
         return self.final_norm(torch.cat((real, imag), dim=-1))
 
     def forward(self, input_ids: Tensor) -> Tensor:
@@ -2523,4 +2685,5 @@ __all__ = [
     "SemanticEdgePoleMemory",
     "SlowCausalCNNPoleMemory",
     "TensorProductPoleMemory1D",
+    "TokenRateVectorPoleBlock",
 ]

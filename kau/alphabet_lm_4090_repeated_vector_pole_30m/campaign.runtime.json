@@ -1,0 +1,86 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "repeated-vector-pole-p32r4-e2e-30m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_width": 4
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-repeated-vector-pole-p32r4-30m-s501-v1",
+  "campaign_manifest_sha256": "73bd6b265bcc21e966ce454ed78c8ca094bade1f44dda9c6c9d72758dedd780f",
+  "diagnostics": {
+    "all_banks_off": true,
+    "per_bank_beta": true,
+    "per_bank_half_life": true,
+    "per_bank_off": true,
+    "per_bank_state_rank": true
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-RepeatedVectorPoleP32R4-30M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-repeated-vector-pole-p32r4-30m-v1",
+  "parameter_counts": {
+    "repeated-vector-pole-p32r4-e2e-30m": 42221836
+  },
+  "project": "alphabet-lm-viability",
+  "reference": {
+    "dense_k3_30m_validation_loss": 5.2721833219281375,
+    "dense_k3_4m_validation_loss": 6.330296587172284,
+    "local_only_10m_validation_loss": 5.864740199879449,
+    "mamba_10m_validation_loss": 5.6978587456397625,
+    "mamba_30m_validation_loss": 4.985551627853659,
+    "mamba_4m_validation_loss": 6.302452384889687,
+    "stride16_30m_validation_loss": 5.209424313665039,
+    "stride16_4m_validation_loss": 6.327895316151598
+  },
+  "runs": {
+    "repeated-vector-pole-p32r4-e2e-30m": {
+      "display_name": "RTX4090-S501-ALPHABET2-RepeatedVectorPoleP32R4-E2E-30M",
+      "id": "b112029ee391817e",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "RepeatedVectorPole",
+        "P32R4",
+        "30M"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "total_parameter_counts": {
+    "repeated-vector-pole-p32r4-e2e-30m": 42221836
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "repeated-vector-pole-p32r4-e2e-30m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 30000000,
+    "validation_milestone_tokens": [
+      4000000,
+      10000000,
+      20000000
+    ],
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

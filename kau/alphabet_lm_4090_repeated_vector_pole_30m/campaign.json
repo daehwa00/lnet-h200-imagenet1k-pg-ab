@@ -1,0 +1,69 @@
+{
+  "schema": "lnet.kau.alphabet_lm.alphabet2_repeated_vector_pole_30m.v1",
+  "campaign_id": "kau-alphabet-lm-repeated-vector-pole-p32r4-30m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-repeated-vector-pole-p32r4-30m-v1",
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "common": {
+      "reader_type": "dense_k3",
+      "memory_layout": "local_only",
+      "repeated_vector_pole_memory": true,
+      "repeated_vector_pole_interval": 1,
+      "repeated_vector_pole_modes": 32,
+      "repeated_vector_pole_width": 4,
+      "repeated_vector_pole_reader_kernel": 3,
+      "repeated_vector_pole_beta_initial": 0.01,
+      "repeated_vector_pole_minimum_half_life": 16.0,
+      "repeated_vector_pole_maximum_half_life": 4096.0
+    },
+    "variants": {
+      "repeated-vector-pole-p32r4-e2e-30m": {}
+    }
+  },
+  "reference": {
+    "local_only_10m_validation_loss": 5.864740199879449,
+    "dense_k3_4m_validation_loss": 6.330296587172284,
+    "dense_k3_30m_validation_loss": 5.2721833219281375,
+    "stride16_4m_validation_loss": 6.327895316151598,
+    "stride16_30m_validation_loss": 5.209424313665039,
+    "mamba_4m_validation_loss": 6.302452384889687,
+    "mamba_10m_validation_loss": 5.6978587456397625,
+    "mamba_30m_validation_loss": 4.985551627853659
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 30000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "validation_milestone_tokens": [4000000, 10000000, 20000000],
+    "execution": ["repeated-vector-pole-p32r4-e2e-30m"]
+  },
+  "parameter_counts": {
+    "repeated-vector-pole-p32r4-e2e-30m": 42221836
+  },
+  "total_parameter_counts": {
+    "repeated-vector-pole-p32r4-e2e-30m": 42221836
+  },
+  "diagnostics": {
+    "all_banks_off": true,
+    "per_bank_off": true,
+    "per_bank_beta": true,
+    "per_bank_state_rank": true,
+    "per_bank_half_life": true
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-RepeatedVectorPoleP32R4-30M-S501-v1"
+  }
+}

@@ -29,6 +29,7 @@ from lnet.alphabet_lm import (
     SemanticEdgePoleMemory,
     SlowCausalCNNPoleMemory,
     TensorProductPoleMemory1D,
+    TokenRateVectorPoleBlock,
 )
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 from lnet.pac_triton_recurrence_op import pac_triton_recurrence_opaque_op
@@ -2031,6 +2032,90 @@ def test_semantic_clock_requires_reader_and_excludes_other_transport_controls() 
             _scheduled_pole_reader_config(),
             slow_cnn_pole_semantic_clock=True,
         )
+
+
+def _repeated_vector_pole_config() -> AlphabetLMConfig:
+    return replace(
+        _small(),
+        layers=2,
+        reader_type="dense_k3",
+        memory_layout="local_only",
+        repeated_vector_pole_memory=True,
+        repeated_vector_pole_interval=1,
+        repeated_vector_pole_modes=4,
+        repeated_vector_pole_width=2,
+        repeated_vector_pole_reader_kernel=3,
+        repeated_vector_pole_beta_initial=0.01,
+        repeated_vector_pole_minimum_half_life=4.0,
+        repeated_vector_pole_maximum_half_life=16.0,
+    )
+
+
+def test_repeated_vector_poles_are_depth_local_token_rate_and_causal() -> None:
+    torch.manual_seed(501)
+    model = AlphabetLM(_repeated_vector_pole_config()).eval()
+    banks = model.repeated_vector_pole_memories
+    assert banks is not None
+    assert len(banks) == 2
+    assert all(isinstance(bank, TokenRateVectorPoleBlock) for bank in banks)
+    first = cast("TokenRateVectorPoleBlock", banks[0])
+    second = cast("TokenRateVectorPoleBlock", banks[1])
+    assert (
+        first.pole_memory.raw_damping.data_ptr()
+        != second.pole_memory.raw_damping.data_ptr()
+    )
+    tokens = torch.randint(64, (1, 16))
+    changed = tokens.clone()
+    changed[:, 8:] = torch.randint(64, changed[:, 8:].shape)
+    with torch.no_grad():
+        logits = model(tokens)
+        changed_logits = model(changed)
+    assert logits.shape == (1, 16, 64)
+    torch.testing.assert_close(changed_logits[:, :8], logits[:, :8], atol=2e-6, rtol=0.0)
+
+
+def test_repeated_vector_poles_preserve_matching_local_initialization() -> None:
+    repeated_config = _repeated_vector_pole_config()
+    torch.manual_seed(501)
+    baseline = AlphabetLM(
+        replace(repeated_config, repeated_vector_pole_memory=False)
+    )
+    torch.manual_seed(501)
+    repeated = AlphabetLM(repeated_config)
+    baseline_state = baseline.state_dict()
+    for name, value in repeated.state_dict().items():
+        if not name.startswith("repeated_vector_pole_memories."):
+            torch.testing.assert_close(value, baseline_state[name], atol=0.0, rtol=0.0)
+
+
+def test_repeated_vector_poles_have_live_reader_memory_query_and_synthesis() -> None:
+    model = AlphabetLM(_repeated_vector_pole_config())
+    model(torch.randint(64, (1, 16))).square().mean().backward()
+    memories = model.repeated_vector_pole_memories
+    assert memories is not None
+    bank = cast("TokenRateVectorPoleBlock", memories[0])
+    parameters = (
+        bank.reader.weight_real,
+        bank.pole_memory.raw_damping,
+        bank.vector_query_imag.weight,
+        bank.synthesis.weight,
+        bank.beta,
+    )
+    assert all(parameter.grad is not None for parameter in parameters)
+    assert all(
+        parameter.grad is not None and parameter.grad.abs().sum() > 0
+        for parameter in parameters
+    )
+
+
+def test_repeated_vector_poles_exclude_single_bank_and_invalid_schedules() -> None:
+    config = _repeated_vector_pole_config()
+    with pytest.raises(ValueError, match="invalid"):
+        replace(config, slow_cnn_pole_memory=True)
+    with pytest.raises(ValueError, match="invalid repeated"):
+        replace(config, repeated_vector_pole_interval=3)
+    with pytest.raises(ValueError, match="invalid repeated"):
+        replace(config, repeated_vector_pole_width=1)
 
 
 def _vector_slow_config() -> AlphabetLMConfig:

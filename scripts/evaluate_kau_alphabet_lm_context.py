@@ -28,6 +28,7 @@ from lnet.alphabet_lm import (
     SemanticEdgePoleMemory,
     SlowCausalCNNPoleMemory,
     TensorProductPoleMemory1D,
+    TokenRateVectorPoleBlock,
 )
 from lnet.alphabet_lm_data import TokenBlockDataset
 from lnet.alphabet_lm_mamba import MambaLM, MambaLMConfig
@@ -161,6 +162,19 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_use_recurrence=kind == "cnn_pole_p128_6bank_slow_p128",
             slow_cnn_pole_minimum_half_life=1.0,
             slow_cnn_pole_maximum_half_life=256.0,
+        )
+    elif kind == "alphabet2_repeated_vector_pole_p32r4":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            repeated_vector_pole_memory=True,
+            repeated_vector_pole_interval=1,
+            repeated_vector_pole_modes=32,
+            repeated_vector_pole_width=4,
+            repeated_vector_pole_reader_kernel=3,
+            repeated_vector_pole_beta_initial=0.01,
+            repeated_vector_pole_minimum_half_life=16.0,
+            repeated_vector_pole_maximum_half_life=4_096.0,
         )
     elif kind == "alphabet2_dynamic_transport_r16":
         config = AlphabetLMConfig(
@@ -572,6 +586,22 @@ def _zero_slow_cnn_memory(model: nn.Module) -> list[torch.utils.hooks.RemovableH
             )
         )
     return handles
+
+
+def _bypass_repeated_vector_poles(
+    model: nn.Module,
+    *,
+    bank_index: int | None = None,
+) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM) or model.repeated_vector_pole_memories is None:
+        return []
+    banks = model.repeated_vector_pole_memories
+    selected = range(len(banks)) if bank_index is None else (bank_index,)
+
+    def bypass(_module: nn.Module, inputs: tuple[object, ...], _output: object) -> object:
+        return cast("tuple[Tensor, Tensor]", inputs)
+
+    return [banks[index].register_forward_hook(bypass) for index in selected]
 
 
 def _slow_query_override(
@@ -1506,6 +1536,88 @@ def _slow_cnn_pole_metrics(
 
 
 @torch.no_grad()
+def _repeated_vector_pole_metrics(
+    model: AlphabetLM,
+    dataset: TokenBlockDataset,
+    device: torch.device,
+) -> dict[str, object] | None:
+    banks = model.repeated_vector_pole_memories
+    if banks is None:
+        return None
+    sample = dataset[0][:-1].unsqueeze(0).to(device)
+    beta: list[float] = []
+    branch_ratios: list[float] = []
+    state_ranks: list[float] = []
+    reader_temporal_delta: list[float] = []
+    query_extra_rms: list[float] = []
+    half_life_medians: list[float] = []
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        packed = model.analysis(model.embedding(sample))
+        real, imag = packed.split(model.config.modes, dim=-1)
+        bank_index = 0
+        for index, block in enumerate(model.blocks):
+            real, imag = block(real, imag)
+            if (index + 1) % model.config.repeated_vector_pole_interval:
+                continue
+            bank = cast("TokenRateVectorPoleBlock", banks[bank_index])
+            excitation_real, excitation_imag = bank.reader(real, imag)
+            state_real, state_imag = bank.pole_memory(excitation_real, excitation_imag)
+            query_real, query_imag = bank.query_components(
+                torch.cat((real, imag), dim=-1)
+            )
+            rows = torch.complex(state_real.float(), state_imag.float()).flatten(0, 2)
+            gram = rows.mH @ rows / max(1, rows.shape[0])
+            eigenvalues = torch.linalg.eigvalsh(gram).real.clamp_min(0.0)
+            state_ranks.append(
+                float(
+                    eigenvalues.sum().square()
+                    / eigenvalues.square().sum().clamp_min(1.0e-12)
+                )
+            )
+            magnitude = excitation_real.float().square().add(
+                excitation_imag.float().square()
+            ).sqrt()
+            reader_temporal_delta.append(
+                float((magnitude[:, 1:] - magnitude[:, :-1]).abs().mean())
+            )
+            query_extra_rms.append(
+                float(
+                    query_real[..., 1:]
+                    .float()
+                    .square()
+                    .add(query_imag[..., 1:].float().square())
+                    .mean()
+                    .sqrt()
+                )
+            )
+            half_lives = math.log(2.0) / bank.pole_memory.damping().float()
+            half_life_medians.append(float(half_lives.median()))
+            output_real, output_imag = bank(real, imag)
+            trunk_energy = real.float().square().add(imag.float().square()).mean()
+            branch_energy = (output_real - real).float().square().add(
+                (output_imag - imag).float().square()
+            ).mean()
+            branch_ratios.append(
+                float(torch.sqrt(branch_energy / trunk_energy.clamp_min(1.0e-12)))
+            )
+            beta.append(float(bank.beta))
+            real, imag = output_real, output_imag
+            bank_index += 1
+    return {
+        "banks": len(banks),
+        "interval": model.config.repeated_vector_pole_interval,
+        "pole_modes": model.config.repeated_vector_pole_modes,
+        "vector_width": model.config.repeated_vector_pole_width,
+        "beta_by_bank": beta,
+        "branch_to_trunk_rms_by_bank": branch_ratios,
+        "state_effective_rank_by_bank": state_ranks,
+        "reader_temporal_delta_by_bank": reader_temporal_delta,
+        "query_extra_rms_by_bank": query_extra_rms,
+        "half_life_median_by_bank": half_life_medians,
+    }
+
+
+@torch.no_grad()
 def _query_readout_metrics(
     model: AlphabetLM,
     dataset: TokenBlockDataset,
@@ -1884,6 +1996,7 @@ def main() -> None:
             "alphabet2_pole_reader_write_scheduler_r16",
             "alphabet2_pole_reader_innovation_r16",
             "alphabet2_pole_reader_semantic_clock_r16",
+            "alphabet2_repeated_vector_pole_p32r4",
             "mamba",
         ),
         required=True,
@@ -1934,6 +2047,36 @@ def main() -> None:
             )
             for handle in slow_handles:
                 handle.remove()
+        repeated_handles = _bypass_repeated_vector_poles(model)
+        if repeated_handles:
+            results["repeated_memory_zero"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in repeated_handles:
+                handle.remove()
+            repeated_banks = cast("AlphabetLM", model).repeated_vector_pole_memories
+            if repeated_banks is None:
+                raise RuntimeError("repeated VectorPole banks disappeared")
+            for bank_index in range(len(repeated_banks)):
+                bank_handles = _bypass_repeated_vector_poles(
+                    model,
+                    bank_index=bank_index,
+                )
+                results[f"repeated_bank_{bank_index + 1}_off"] = _evaluate(
+                    model,
+                    dataset,
+                    segment=2_048,
+                    token_limit=args.token_limit,
+                    sequence_limit=args.sequence_limit,
+                    device=device,
+                )
+                for handle in bank_handles:
+                    handle.remove()
         neutral_query_handles = _slow_query_override(model, shuffle=False)
         if neutral_query_handles:
             results["query_neutral"] = _evaluate(
@@ -2384,6 +2527,9 @@ def main() -> None:
         slow_cnn_pole_metrics = _slow_cnn_pole_metrics(model, dataset, device)
         if slow_cnn_pole_metrics is not None:
             payload["slow_cnn_pole"] = slow_cnn_pole_metrics
+        repeated_metrics = _repeated_vector_pole_metrics(model, dataset, device)
+        if repeated_metrics is not None:
+            payload["repeated_vector_pole"] = repeated_metrics
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print("KAU_LM_CONTEXT=" + json.dumps(payload, sort_keys=True), flush=True)
