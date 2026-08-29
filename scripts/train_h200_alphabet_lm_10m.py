@@ -685,6 +685,54 @@ def _validate_vector_initialization_selection(*paths: Path | None) -> None:
         raise RuntimeError("vector-pole initialization source is ambiguous")
 
 
+def _initialize_slow_dynamic_transport_from_trunk(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.slow_cnn_pole_memory is None:
+        raise RuntimeError("dynamic transport initialization requires slow memory")
+    selector = model.slow_cnn_pole_memory.transport_selector
+    if selector is None:
+        raise RuntimeError("dynamic transport initialization requires a selector")
+    checkpoint_bytes = checkpoint_path.read_bytes()
+    checkpoint_sha = hashlib.sha256(checkpoint_bytes).hexdigest()
+    payload = cast(
+        "dict[str, Any]",
+        torch.load(io.BytesIO(checkpoint_bytes), map_location="cpu", weights_only=True),
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    prefix = "slow_cnn_pole_memory.transport_selector."
+    expected_missing = {name for name in model.state_dict() if name.startswith(prefix)}
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("Coordinate-R16 checkpoint does not match dynamic transport")
+    nn.init.zeros_(selector.output.weight)
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(name.startswith(prefix))
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": checkpoint_sha,
+        "missing_transport_tensors": len(expected_missing),
+        "coordinate_r16_frozen": True,
+    }
+
+
+def _validate_slow_dynamic_transport_source(
+    initialization: dict[str, object],
+    runtime: dict[str, Any],
+    *,
+    enabled: bool,
+) -> None:
+    if not enabled:
+        return
+    expected = runtime.get("source", {}).get("coordinate_30m_sha256")
+    if not isinstance(expected, str) or initialization.get("checkpoint_sha256") != expected:
+        raise RuntimeError("dynamic transport source checkpoint digest changed")
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -767,6 +815,10 @@ def _build(
     slow_cnn_pole_complex_vector_excitation: bool = False,
     slow_cnn_pole_complex_vector_query: bool = False,
     slow_cnn_pole_coordinate_read: bool = False,
+    slow_cnn_pole_dynamic_transport: bool = False,
+    slow_cnn_pole_transport_rank: int = 16,
+    slow_cnn_pole_transport_scale: float = 0.1,
+    slow_cnn_pole_transport_bound: float = 1.0,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -848,6 +900,10 @@ def _build(
         ),
         slow_cnn_pole_complex_vector_query=slow_cnn_pole_complex_vector_query,
         slow_cnn_pole_coordinate_read=slow_cnn_pole_coordinate_read,
+        slow_cnn_pole_dynamic_transport=slow_cnn_pole_dynamic_transport,
+        slow_cnn_pole_transport_rank=slow_cnn_pole_transport_rank,
+        slow_cnn_pole_transport_scale=slow_cnn_pole_transport_scale,
+        slow_cnn_pole_transport_bound=slow_cnn_pole_transport_bound,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -1110,6 +1166,10 @@ def main() -> None:
     parser.add_argument("--slow-cnn-pole-complex-vector-excitation", action="store_true")
     parser.add_argument("--slow-cnn-pole-complex-vector-query", action="store_true")
     parser.add_argument("--slow-cnn-pole-coordinate-read", action="store_true")
+    parser.add_argument("--slow-cnn-pole-dynamic-transport", action="store_true")
+    parser.add_argument("--slow-cnn-pole-transport-rank", type=int, default=16)
+    parser.add_argument("--slow-cnn-pole-transport-scale", type=float, default=0.1)
+    parser.add_argument("--slow-cnn-pole-transport-bound", type=float, default=1.0)
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-query-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-key-trunk-checkpoint", type=Path)
@@ -1119,6 +1179,7 @@ def main() -> None:
     parser.add_argument("--initialize-slow-vector-pole-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-complex-vector-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-full-complex-vector-checkpoint", type=Path)
+    parser.add_argument("--initialize-slow-dynamic-transport-checkpoint", type=Path)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -1259,6 +1320,10 @@ def main() -> None:
         ),
         slow_cnn_pole_complex_vector_query=args.slow_cnn_pole_complex_vector_query,
         slow_cnn_pole_coordinate_read=args.slow_cnn_pole_coordinate_read,
+        slow_cnn_pole_dynamic_transport=args.slow_cnn_pole_dynamic_transport,
+        slow_cnn_pole_transport_rank=args.slow_cnn_pole_transport_rank,
+        slow_cnn_pole_transport_scale=args.slow_cnn_pole_transport_scale,
+        slow_cnn_pole_transport_bound=args.slow_cnn_pole_transport_bound,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -1281,6 +1346,7 @@ def main() -> None:
             or args.initialize_slow_vector_pole_checkpoint is not None
             or args.initialize_slow_complex_vector_checkpoint is not None
             or args.initialize_slow_full_complex_vector_checkpoint is not None
+            or args.initialize_slow_dynamic_transport_checkpoint is not None
         ):
             raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
@@ -1346,6 +1412,7 @@ def main() -> None:
         args.initialize_slow_vector_pole_checkpoint,
         args.initialize_slow_complex_vector_checkpoint,
         args.initialize_slow_full_complex_vector_checkpoint,
+        args.initialize_slow_dynamic_transport_checkpoint,
     )
     slow_vector_pole_initialization = _initialize_slow_vector_pole_from_trunk(
         model,
@@ -1378,6 +1445,17 @@ def main() -> None:
         slow_full_complex_vector_initialization,
         runtime,
         enabled=args.initialize_slow_full_complex_vector_checkpoint is not None,
+    )
+    slow_dynamic_transport_initialization = (
+        _initialize_slow_dynamic_transport_from_trunk(
+            model,
+            args.initialize_slow_dynamic_transport_checkpoint,
+        )
+    )
+    _validate_slow_dynamic_transport_source(
+        slow_dynamic_transport_initialization,
+        runtime,
+        enabled=args.initialize_slow_dynamic_transport_checkpoint is not None,
     )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
@@ -1452,6 +1530,10 @@ def main() -> None:
                 args.slow_cnn_pole_complex_vector_query
             ),
             "slow_cnn_pole_coordinate_read": args.slow_cnn_pole_coordinate_read,
+            "slow_cnn_pole_dynamic_transport": args.slow_cnn_pole_dynamic_transport,
+            "slow_cnn_pole_transport_rank": args.slow_cnn_pole_transport_rank,
+            "slow_cnn_pole_transport_scale": args.slow_cnn_pole_transport_scale,
+            "slow_cnn_pole_transport_bound": args.slow_cnn_pole_transport_bound,
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -1638,6 +1720,11 @@ def main() -> None:
         "slow_full_complex_vector_initialization": (
             slow_full_complex_vector_initialization
         ),
+        "slow_cnn_pole_dynamic_transport": args.slow_cnn_pole_dynamic_transport,
+        "slow_cnn_pole_transport_rank": args.slow_cnn_pole_transport_rank,
+        "slow_cnn_pole_transport_scale": args.slow_cnn_pole_transport_scale,
+        "slow_cnn_pole_transport_bound": args.slow_cnn_pole_transport_bound,
+        "slow_dynamic_transport_initialization": slow_dynamic_transport_initialization,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
@@ -1837,6 +1924,10 @@ def main() -> None:
                         .mean()
                         .sqrt()
                     )
+                if model.slow_cnn_pole_memory.transport_selector is not None:
+                    row["slow_transport_scale"] = float(
+                        model.slow_cnn_pole_memory.transport_selector.scale().detach()
+                    )
         if update == 1:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
@@ -1916,6 +2007,8 @@ def main() -> None:
             wandb_metrics["model/slow_vector_query_imag_weight_rms"] = row[
                 "slow_vector_query_imag_weight_rms"
             ]
+        if "slow_transport_scale" in row:
+            wandb_metrics["model/slow_transport_scale"] = row["slow_transport_scale"]
         wandb_run.log(wandb_metrics, step=update)
         print("ALPHABET_LM_PROGRESS=" + json.dumps(row, sort_keys=True), flush=True)
         if _STOP_EVENT.is_set():

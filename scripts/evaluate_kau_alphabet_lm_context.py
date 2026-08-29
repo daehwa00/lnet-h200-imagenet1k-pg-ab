@@ -162,6 +162,40 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_minimum_half_life=1.0,
             slow_cnn_pole_maximum_half_life=256.0,
         )
+    elif kind == "alphabet2_dynamic_transport_r16":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            cnn_pole_memory=True,
+            cnn_pole_interval=2,
+            cnn_pole_modes=128,
+            cnn_pole_evidence_width=512,
+            cnn_pole_kernel_size=4,
+            cnn_pole_beta_initial=0.01,
+            cnn_pole_use_recurrence=False,
+            cnn_pole_minimum_half_life=8.0,
+            cnn_pole_maximum_half_life=4_096.0,
+            slow_cnn_pole_memory=True,
+            slow_cnn_pole_stride=16,
+            slow_cnn_pole_modes=128,
+            slow_cnn_pole_evidence_width=512,
+            slow_cnn_pole_kernel_size=4,
+            slow_cnn_pole_upper_blocks=4,
+            slow_cnn_pole_beta_initial=0.01,
+            slow_cnn_pole_use_recurrence=True,
+            slow_cnn_pole_minimum_half_life=1.0,
+            slow_cnn_pole_maximum_half_life=256.0,
+            slow_cnn_pole_query="token",
+            slow_cnn_pole_query_rho=0.5,
+            slow_cnn_pole_vector_width=16,
+            slow_cnn_pole_complex_vector_excitation=True,
+            slow_cnn_pole_complex_vector_query=True,
+            slow_cnn_pole_coordinate_read=True,
+            slow_cnn_pole_dynamic_transport=True,
+            slow_cnn_pole_transport_rank=16,
+            slow_cnn_pole_transport_scale=0.1,
+            slow_cnn_pole_transport_bound=1.0,
+        )
     elif kind in {"alphabet2_anchor_q", "alphabet2_token_q"}:
         config = AlphabetLMConfig(
             reader_type="dense_k3",
@@ -633,6 +667,29 @@ def _slow_vector_pole_override(
     return [module.register_forward_hook(override)]
 
 
+def _slow_transport_override(
+    model: nn.Module,
+    *,
+    mode: Literal["off", "shift", "time_mean"],
+) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM):
+        return []
+    slow = model.slow_cnn_pole_memory
+    if not isinstance(slow, SlowCausalCNNPoleMemory) or slow.transport_selector is None:
+        return []
+    module = slow.transport_selector.output
+
+    def override(_module: nn.Module, _inputs: tuple[object, ...], output: object) -> Tensor:
+        value = cast("Tensor", output)
+        if mode == "off":
+            return torch.zeros_like(value)
+        if mode == "shift":
+            return torch.roll(value, shifts=1, dims=1)
+        return value.mean(dim=1, keepdim=True).expand_as(value)
+
+    return [module.register_forward_hook(override)]
+
+
 @torch.no_grad()
 def _sidecar_metrics(
     model: AlphabetLM,
@@ -881,6 +938,7 @@ def _slow_cnn_pole_metrics(
             }
         key_metrics = gate_metrics(slow.key_gate(anchor_source)) if slow.key is not None else None
         vector_metrics: dict[str, object] | None = None
+        transport_metrics: dict[str, float] | None = None
         def spectrum(rows: Tensor) -> tuple[Tensor, Tensor]:
             gram = rows.mH @ rows / max(1, rows.shape[0])
             eigenvalues = torch.linalg.eigvalsh(gram).real.clamp_min(0.0)
@@ -897,17 +955,38 @@ def _slow_cnn_pole_metrics(
             )
             excitation_real = slow.vector_excitation_axes(anchor_source)
             excitation_imag = slow.vector_excitation_imag_axes(anchor_source)
+            damping_control = None
+            if slow.transport_selector is not None:
+                anchor_real = real[
+                    :, slow.stride - 1 : full_anchors * slow.stride : slow.stride
+                ]
+                anchor_imag = imag[
+                    :, slow.stride - 1 : full_anchors * slow.stride : slow.stride
+                ]
+                damping_control = slow.transport_selector(anchor_real, anchor_imag)
+                active_control = damping_control.float()
+                transport_metrics = {
+                    "scale": float(slow.transport_selector.scale()),
+                    "control_mean": float(active_control.mean()),
+                    "control_std": float(active_control.std()),
+                    "control_abs_mean": float(active_control.abs().mean()),
+                    "temporal_delta_mean": float(
+                        (active_control[:, 1:] - active_control[:, :-1]).abs().mean()
+                    ),
+                }
             if slow.complex_vector_excitation:
                 state_real, state_imag = slow.memory(
                     anchors[0].unsqueeze(-1) * excitation_real
                     - anchors[1].unsqueeze(-1) * excitation_imag,
                     anchors[0].unsqueeze(-1) * excitation_imag
                     + anchors[1].unsqueeze(-1) * excitation_real,
+                    damping_control=damping_control,
                 )
             else:
                 state_real, state_imag = slow.memory(
                     anchors[0].unsqueeze(-1) * excitation_real,
                     anchors[1].unsqueeze(-1) * excitation_real,
+                    damping_control=damping_control,
                 )
             rows = torch.complex(state_real.float(), state_imag.float()).flatten(0, 2)
             eigenvalues, effective_rank = spectrum(rows)
@@ -1072,6 +1151,8 @@ def _slow_cnn_pole_metrics(
         payload["key"] = key_metrics
     if vector_metrics is not None:
         payload["vector_state"] = vector_metrics
+    if transport_metrics is not None:
+        payload["dynamic_transport"] = transport_metrics
     return payload
 
 
@@ -1449,6 +1530,7 @@ def main() -> None:
             "alphabet2_complex_query_r16",
             "alphabet2_token_rate_r16",
             "alphabet2_coordinate_read_r16",
+            "alphabet2_dynamic_transport_r16",
             "mamba",
         ),
         required=True,
@@ -1765,6 +1847,30 @@ def main() -> None:
                     )
                     for handle in handles:
                         handle.remove()
+        transport_off = _slow_transport_override(model, mode="off")
+        if transport_off:
+            results["dynamic_transport_off"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in transport_off:
+                handle.remove()
+            for mode in ("shift", "time_mean"):
+                handles = _slow_transport_override(model, mode=mode)
+                results[f"dynamic_transport_{mode}"] = _evaluate(
+                    model,
+                    dataset,
+                    segment=2_048,
+                    token_limit=args.token_limit,
+                    sequence_limit=args.sequence_limit,
+                    device=device,
+                )
+                for handle in handles:
+                    handle.remove()
     for segment in (512, 128, 32, 1):
         results[f"reset_{segment}"] = _evaluate(
             model,

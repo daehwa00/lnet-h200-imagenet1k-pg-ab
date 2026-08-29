@@ -40,6 +40,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_sidecar_from_trunk,
     _initialize_slow_cnn_pole_from_trunk,
     _initialize_slow_complex_vector_from_trunk,
+    _initialize_slow_dynamic_transport_from_trunk,
     _initialize_slow_full_complex_vector_from_trunk,
     _initialize_slow_independent_value_from_trunk,
     _initialize_slow_key_from_trunk,
@@ -48,6 +49,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_slow_value_from_trunk,
     _initialize_slow_vector_pole_from_trunk,
     _validate_slow_complex_vector_source,
+    _validate_slow_dynamic_transport_source,
     _validate_slow_full_complex_vector_source,
     _validate_slow_vector_pole_source,
     _validate_vector_initialization_selection,
@@ -1637,6 +1639,63 @@ def test_coordinate_read_returns_model_width_and_requires_complex_query() -> Non
             _addressed_slow_config(mode="token"),
             slow_cnn_pole_vector_width=16,
             slow_cnn_pole_coordinate_read=True,
+        )
+
+
+def _dynamic_transport_config() -> AlphabetLMConfig:
+    return replace(
+        _complex_query_r16_config(coordinate_read=True),
+        slow_cnn_pole_dynamic_transport=True,
+        slow_cnn_pole_transport_rank=4,
+    )
+
+
+def test_vector_dynamic_damping_zero_control_preserves_fixed_recurrence() -> None:
+    memory = FixedComplexPoleMemory1D(8, context_length=32, scan_fp32=False)
+    real = torch.randn(2, 7, 8, 4)
+    imag = torch.randn_like(real)
+    fixed = memory(real, imag)
+    dynamic = memory(real, imag, damping_control=torch.zeros(2, 7, 8))
+    torch.testing.assert_close(dynamic, fixed, atol=0.0, rtol=0.0)
+
+
+def test_dynamic_transport_checkpoint_is_exact_and_selector_is_live(tmp_path: Path) -> None:
+    torch.manual_seed(501)
+    fixed = AlphabetLM(_complex_query_r16_config(coordinate_read=True)).eval()
+    checkpoint = tmp_path / "coordinate.pt"
+    torch.save({"model": fixed.state_dict()}, checkpoint)
+    torch.manual_seed(501)
+    dynamic = AlphabetLM(_dynamic_transport_config()).eval()
+    contract = _initialize_slow_dynamic_transport_from_trunk(dynamic, checkpoint)
+    assert contract["enabled"] is True
+    slow = cast("SlowCausalCNNPoleMemory", dynamic.slow_cnn_pole_memory)
+    assert slow.transport_selector is not None
+    torch.testing.assert_close(
+        slow.transport_selector.output.weight,
+        torch.zeros_like(slow.transport_selector.output.weight),
+    )
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        expected = fixed(tokens)
+        actual = dynamic(tokens)
+    torch.testing.assert_close(actual, expected, atol=1e-7, rtol=1e-6)
+    dynamic(tokens).square().mean().backward()
+    assert slow.transport_selector.output.weight.grad is not None
+    assert slow.transport_selector.output.weight.grad.abs().sum() > 0
+    trainable = [name for name, parameter in dynamic.named_parameters() if parameter.requires_grad]
+    assert trainable
+    assert all(name.startswith("slow_cnn_pole_memory.transport_selector.") for name in trainable)
+
+
+def test_dynamic_transport_source_digest_is_enforced() -> None:
+    initialization: dict[str, object] = {"checkpoint_sha256": "expected"}
+    runtime = {"source": {"coordinate_30m_sha256": "expected"}}
+    _validate_slow_dynamic_transport_source(initialization, runtime, enabled=True)
+    with pytest.raises(RuntimeError, match="dynamic transport source checkpoint"):
+        _validate_slow_dynamic_transport_source(
+            initialization,
+            {"source": {"coordinate_30m_sha256": "different"}},
+            enabled=True,
         )
 
 

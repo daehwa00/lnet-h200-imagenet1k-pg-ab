@@ -103,6 +103,10 @@ class AlphabetLMConfig:
     slow_cnn_pole_complex_vector_excitation: bool = False
     slow_cnn_pole_complex_vector_query: bool = False
     slow_cnn_pole_coordinate_read: bool = False
+    slow_cnn_pole_dynamic_transport: bool = False
+    slow_cnn_pole_transport_rank: int = 16
+    slow_cnn_pole_transport_scale: float = 0.1
+    slow_cnn_pole_transport_bound: float = 1.0
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -150,6 +154,7 @@ class AlphabetLMConfig:
             self.slow_cnn_pole_value_width,
             self.slow_cnn_pole_matrix_key_width,
             self.slow_cnn_pole_vector_width,
+            self.slow_cnn_pole_transport_rank,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -246,6 +251,7 @@ class AlphabetLMConfig:
                 or self.slow_cnn_pole_complex_vector_excitation
                 or self.slow_cnn_pole_complex_vector_query
                 or self.slow_cnn_pole_coordinate_read
+                or self.slow_cnn_pole_dynamic_transport
             ):
                 raise ValueError("slow pole addressing requires a slow memory bank")
             return
@@ -294,6 +300,18 @@ class AlphabetLMConfig:
             and self.slow_cnn_pole_vector_width > 1
         ):
             raise ValueError("coordinate read requires complex vector query")
+        self._validate_slow_dynamic_transport()
+
+    def _validate_slow_dynamic_transport(self) -> None:
+        if not self.slow_cnn_pole_dynamic_transport:
+            return
+        if (
+            self.slow_cnn_pole_vector_width <= 1
+            or not self.slow_cnn_pole_use_recurrence
+            or not 0.0 < self.slow_cnn_pole_transport_scale < 1.0
+            or self.slow_cnn_pole_transport_bound <= 0.0
+        ):
+            raise ValueError("dynamic transport requires recurrent vector pole memory")
 
     def _validate_memory_layout(self) -> None:
         if self.memory_layout == "tensor_product" and (
@@ -984,6 +1002,10 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         complex_vector_excitation: bool = False,
         complex_vector_query: bool = False,
         coordinate_read: bool = False,
+        dynamic_transport: bool = False,
+        transport_rank: int = 16,
+        transport_scale: float = 0.1,
+        transport_bound: float = 1.0,
     ) -> None:
         super().__init__(
             modes,
@@ -1009,6 +1031,7 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         self.complex_vector_excitation = bool(complex_vector_excitation)
         self.complex_vector_query = bool(complex_vector_query)
         self.coordinate_read = bool(coordinate_read)
+        self.dynamic_transport = bool(dynamic_transport)
         initial_beta = float(self.beta.detach())
         self.beta = nn.Parameter(torch.full((upper_blocks,), initial_beta))
         if query_mode == "none":
@@ -1056,6 +1079,17 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             complex_query=complex_vector_query,
             coordinate_read=coordinate_read,
         )
+        if dynamic_transport:
+            self.transport_selector = LowRankDecaySelector(
+                modes,
+                pole_modes,
+                rank=transport_rank,
+                initial_scale=transport_scale,
+                control_bound=transport_bound,
+            )
+            nn.init.zeros_(self.transport_selector.output.weight)
+        else:
+            self.transport_selector = None
 
     def _configure_matrix_axes(
         self,
@@ -1263,6 +1297,19 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         projected_real, projected_imag = projected.chunk(2, dim=-1)
         return base[0] + projected_real, base[1] + projected_imag
 
+    def transport_control(
+        self, real: Tensor, imag: Tensor, full_anchors: int
+    ) -> Tensor | None:
+        if self.transport_selector is None:
+            return None
+        anchor_real = real[
+            :, self.stride - 1 : full_anchors * self.stride : self.stride
+        ]
+        anchor_imag = imag[
+            :, self.stride - 1 : full_anchors * self.stride : self.stride
+        ]
+        return self.transport_selector(anchor_real, anchor_imag)
+
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         steps = real.shape[1]
         full_anchors = steps // self.stride
@@ -1312,7 +1359,12 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
                     anchors[0].unsqueeze(-1) * value.unsqueeze(-2),
                     anchors[1].unsqueeze(-1) * value.unsqueeze(-2),
                 )
-        state = self.memory(*transported_drive) if self.use_recurrence else transported_drive
+        damping_control = self.transport_control(real, imag, full_anchors)
+        state = (
+            self.memory(*transported_drive, damping_control=damping_control)
+            if self.use_recurrence
+            else transported_drive
+        )
         zero = torch.zeros_like(state[0][:, :1]), torch.zeros_like(state[1][:, :1])
         delayed_state = (
             torch.cat((zero[0], state[0]), dim=1),
@@ -1580,10 +1632,19 @@ class FixedComplexPoleMemory1D(nn.Module):
         output_shape = drive_real.shape
         if drive_real.ndim >= 4 and drive_real.shape[2] == self.modes:
             vector_width = math.prod(drive_real.shape[3:])
+            if damping_control is not None:
+                expected_control_shape = drive_real.shape[:3]
+                if damping_control.shape != expected_control_shape:
+                    raise ValueError(
+                        "vector dynamic damping control must match B,T,P coordinates"
+                    )
+                damping_control = (
+                    damping_control.unsqueeze(-1)
+                    .expand(*expected_control_shape, vector_width)
+                    .flatten(2)
+                )
             drive_real = drive_real.flatten(2)
             drive_imag = drive_imag.flatten(2)
-            if damping_control is not None:
-                raise ValueError("vector pole memory uses token-independent poles")
         elif drive_real.ndim != 3 or drive_real.shape[-1] != self.modes:
             raise ValueError("fixed-pole memory expects B,T,P or B,T,P,... coordinates")
         scan_dtype = torch.float32 if self.scan_fp32 else drive_real.dtype
@@ -1594,8 +1655,12 @@ class FixedComplexPoleMemory1D(nn.Module):
             if damping_control.shape != drive_real.shape:
                 raise ValueError("dynamic damping control must match the pole drive")
             frequency = self.frequency().to(device=drive_real.device, dtype=scan_dtype)
+            raw_damping = self.raw_damping.to(device=drive_real.device, dtype=scan_dtype)
+            if vector_width > 1:
+                frequency = frequency.repeat_interleave(vector_width)
+                raw_damping = raw_damping.repeat_interleave(vector_width)
             coefficients = pole_gamma_from_control_real2d(
-                self.raw_damping.to(device=drive_real.device, dtype=scan_dtype),
+                raw_damping,
                 frequency,
                 damping_control.to(scan_dtype),
                 self.minimum_damping,
@@ -1605,7 +1670,7 @@ class FixedComplexPoleMemory1D(nn.Module):
             value.to(device=drive_real.device, dtype=scan_dtype) for value in coefficients
         )
         dr, di, gr, gi = values
-        if vector_width > 1:
+        if vector_width > 1 and damping_control is None:
             dr = dr.repeat_interleave(vector_width)
             di = di.repeat_interleave(vector_width)
             gr = gr.repeat_interleave(vector_width)
@@ -2051,6 +2116,10 @@ class AlphabetLM(nn.Module):
                     ),
                     complex_vector_query=config.slow_cnn_pole_complex_vector_query,
                     coordinate_read=config.slow_cnn_pole_coordinate_read,
+                    dynamic_transport=config.slow_cnn_pole_dynamic_transport,
+                    transport_rank=config.slow_cnn_pole_transport_rank,
+                    transport_scale=config.slow_cnn_pole_transport_scale,
+                    transport_bound=config.slow_cnn_pole_transport_bound,
                 )
         else:
             self.slow_cnn_pole_memory = None
