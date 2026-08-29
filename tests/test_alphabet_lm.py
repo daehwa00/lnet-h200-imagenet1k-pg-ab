@@ -45,6 +45,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_slow_query_from_trunk,
     _initialize_slow_value_from_trunk,
     _initialize_slow_vector_pole_from_trunk,
+    _validate_slow_vector_pole_source,
 )
 
 
@@ -1391,12 +1392,17 @@ def test_vector_pole_r4_preserves_token_q_and_has_live_query_gradient() -> None:
     with torch.no_grad():
         expected = token_q(tokens)
         actual = vector_pole(tokens)
-        changed_logits = vector_pole(changed)
     torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
-    torch.testing.assert_close(changed_logits[:, :8], actual[:, :8], atol=2e-6, rtol=0.0)
     vector_pole(tokens).square().mean().backward()
     assert slow.vector_query.weight.grad is not None
     assert slow.vector_query.weight.grad.abs().sum() > 0
+    with torch.no_grad():
+        torch.nn.init.normal_(slow.vector_query.weight, std=0.02)
+        active_logits = vector_pole(tokens)
+        changed_logits = vector_pole(changed)
+    torch.testing.assert_close(
+        changed_logits[:, :8], active_logits[:, :8], atol=2e-6, rtol=0.0
+    )
 
 
 def test_vector_pole_checkpoint_trains_only_extra_coordinates(tmp_path: Path) -> None:
@@ -1426,6 +1432,18 @@ def test_vector_pole_configuration_requires_an_active_recurrent_slow_bank() -> N
             _addressed_slow_config(mode="token"),
             slow_cnn_pole_vector_width=4,
             slow_cnn_pole_use_recurrence=False,
+        )
+
+
+def test_vector_pole_source_digest_is_enforced_inside_the_trainer() -> None:
+    initialization: dict[str, object] = {"checkpoint_sha256": "expected"}
+    runtime = {"source": {"token_q_10m_sha256": "expected"}}
+    _validate_slow_vector_pole_source(initialization, runtime, 4)
+    with pytest.raises(RuntimeError, match="source checkpoint digest changed"):
+        _validate_slow_vector_pole_source(
+            initialization,
+            {"source": {"token_q_10m_sha256": "different"}},
+            4,
         )
 
 

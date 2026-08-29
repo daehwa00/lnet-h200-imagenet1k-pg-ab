@@ -539,6 +539,21 @@ def _initialize_slow_vector_pole_from_trunk(
     }
 
 
+def _validate_slow_vector_pole_source(
+    initialization: dict[str, object],
+    runtime: dict[str, Any],
+    vector_width: int,
+) -> None:
+    if vector_width <= 1:
+        return
+    expected_source_sha = runtime.get("source", {}).get("token_q_10m_sha256")
+    if (
+        not isinstance(expected_source_sha, str)
+        or initialization.get("checkpoint_sha256") != expected_source_sha
+    ):
+        raise RuntimeError("vector-pole source checkpoint digest changed")
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -1176,6 +1191,11 @@ def main() -> None:
     slow_vector_pole_initialization = _initialize_slow_vector_pole_from_trunk(
         model,
         args.initialize_slow_vector_pole_checkpoint,
+    )
+    _validate_slow_vector_pole_source(
+        slow_vector_pole_initialization,
+        runtime,
+        args.slow_cnn_pole_vector_width,
     )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
