@@ -73,6 +73,9 @@ KAU_ALPHABET2_MATRIX_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.alphabet2_matrix.run
 KAU_ALPHABET2_NONSEPARABLE_RUNTIME_SCHEMA = (
     "lnet.kau.alphabet_lm.alphabet2_nonseparable.runtime.v1"
 )
+KAU_ALPHABET2_VECTOR_POLE_RUNTIME_SCHEMA = (
+    "lnet.kau.alphabet_lm.alphabet2_vector_pole.runtime.v1"
+)
 _STOP_EVENT = threading.Event()
 
 
@@ -500,6 +503,42 @@ def _initialize_slow_independent_value_from_trunk(
     }
 
 
+def _initialize_slow_vector_pole_from_trunk(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.slow_cnn_pole_memory is None:
+        raise RuntimeError("vector pole initialization requires a slow memory bank")
+    slow = model.slow_cnn_pole_memory
+    if slow.vector_excitation is None or slow.vector_query is None:
+        raise RuntimeError("vector pole initialization requires vector pole memory")
+    payload = cast(
+        "dict[str, Any]", torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    prefixes = (
+        "slow_cnn_pole_memory.vector_excitation_norm.",
+        "slow_cnn_pole_memory.vector_excitation.",
+        "slow_cnn_pole_memory.vector_query_norm.",
+        "slow_cnn_pole_memory.vector_query.",
+    )
+    expected_missing = {name for name in model.state_dict() if name.startswith(prefixes)}
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("Token-Q checkpoint does not match vector pole memory")
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(name.startswith(prefixes))
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": sha256_file(checkpoint_path),
+        "missing_vector_pole_tensors": len(expected_missing),
+        "token_q_frozen": True,
+    }
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -578,6 +617,7 @@ def _build(
     slow_cnn_pole_value_width: int = 1,
     slow_cnn_pole_matrix_key_width: int = 1,
     slow_cnn_pole_independent_matrix_value: bool = False,
+    slow_cnn_pole_vector_width: int = 1,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -653,6 +693,7 @@ def _build(
         slow_cnn_pole_independent_matrix_value=(
             slow_cnn_pole_independent_matrix_value
         ),
+        slow_cnn_pole_vector_width=slow_cnn_pole_vector_width,
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -911,12 +952,14 @@ def main() -> None:
     parser.add_argument("--slow-cnn-pole-value-width", type=int, default=1)
     parser.add_argument("--slow-cnn-pole-matrix-key-width", type=int, default=1)
     parser.add_argument("--slow-cnn-pole-independent-matrix-value", action="store_true")
+    parser.add_argument("--slow-cnn-pole-vector-width", type=int, default=1)
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-query-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-key-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-value-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-matrix-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-independent-value-checkpoint", type=Path)
+    parser.add_argument("--initialize-slow-vector-pole-checkpoint", type=Path)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -957,6 +1000,7 @@ def main() -> None:
         KAU_ALPHABET2_VECTOR_RUNTIME_SCHEMA,
         KAU_ALPHABET2_MATRIX_RUNTIME_SCHEMA,
         KAU_ALPHABET2_NONSEPARABLE_RUNTIME_SCHEMA,
+        KAU_ALPHABET2_VECTOR_POLE_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -1049,6 +1093,7 @@ def main() -> None:
         slow_cnn_pole_independent_matrix_value=(
             args.slow_cnn_pole_independent_matrix_value
         ),
+        slow_cnn_pole_vector_width=args.slow_cnn_pole_vector_width,
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
         dynamic_write_initial_scale=args.dynamic_write_initial_scale,
@@ -1128,6 +1173,10 @@ def main() -> None:
             args.initialize_slow_independent_value_checkpoint,
         )
     )
+    slow_vector_pole_initialization = _initialize_slow_vector_pole_from_trunk(
+        model,
+        args.initialize_slow_vector_pole_checkpoint,
+    )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
         active_arguments = {
@@ -1193,6 +1242,7 @@ def main() -> None:
             "slow_cnn_pole_independent_matrix_value": (
                 args.slow_cnn_pole_independent_matrix_value
             ),
+            "slow_cnn_pole_vector_width": args.slow_cnn_pole_vector_width,
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -1368,6 +1418,8 @@ def main() -> None:
         "slow_independent_value_initialization": (
             slow_independent_value_initialization
         ),
+        "slow_cnn_pole_vector_width": args.slow_cnn_pole_vector_width,
+        "slow_vector_pole_initialization": slow_vector_pole_initialization,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
@@ -1535,6 +1587,22 @@ def main() -> None:
                         .mean()
                         .sqrt()
                     )
+                if model.slow_cnn_pole_memory.vector_excitation is not None:
+                    row["slow_vector_excitation_weight_rms"] = float(
+                        model.slow_cnn_pole_memory.vector_excitation.weight.detach()
+                        .float()
+                        .square()
+                        .mean()
+                        .sqrt()
+                    )
+                if model.slow_cnn_pole_memory.vector_query is not None:
+                    row["slow_vector_query_weight_rms"] = float(
+                        model.slow_cnn_pole_memory.vector_query.weight.detach()
+                        .float()
+                        .square()
+                        .mean()
+                        .sqrt()
+                    )
         if update == 1:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
@@ -1597,6 +1665,14 @@ def main() -> None:
         if "slow_matrix_query_weight_rms" in row:
             wandb_metrics["model/slow_matrix_query_weight_rms"] = row[
                 "slow_matrix_query_weight_rms"
+            ]
+        if "slow_vector_excitation_weight_rms" in row:
+            wandb_metrics["model/slow_vector_excitation_weight_rms"] = row[
+                "slow_vector_excitation_weight_rms"
+            ]
+        if "slow_vector_query_weight_rms" in row:
+            wandb_metrics["model/slow_vector_query_weight_rms"] = row[
+                "slow_vector_query_weight_rms"
             ]
         wandb_run.log(wandb_metrics, step=update)
         print("ALPHABET_LM_PROGRESS=" + json.dumps(row, sort_keys=True), flush=True)

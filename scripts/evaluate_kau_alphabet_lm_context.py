@@ -300,6 +300,33 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_matrix_key_width=4,
             slow_cnn_pole_independent_matrix_value=True,
         )
+    elif kind == "alphabet2_vector_pole_r4":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            cnn_pole_memory=True,
+            cnn_pole_interval=2,
+            cnn_pole_modes=128,
+            cnn_pole_evidence_width=512,
+            cnn_pole_kernel_size=4,
+            cnn_pole_beta_initial=0.01,
+            cnn_pole_use_recurrence=False,
+            cnn_pole_minimum_half_life=8.0,
+            cnn_pole_maximum_half_life=4_096.0,
+            slow_cnn_pole_memory=True,
+            slow_cnn_pole_stride=16,
+            slow_cnn_pole_modes=128,
+            slow_cnn_pole_evidence_width=512,
+            slow_cnn_pole_kernel_size=4,
+            slow_cnn_pole_upper_blocks=4,
+            slow_cnn_pole_beta_initial=0.01,
+            slow_cnn_pole_use_recurrence=True,
+            slow_cnn_pole_minimum_half_life=1.0,
+            slow_cnn_pole_maximum_half_life=256.0,
+            slow_cnn_pole_query="token",
+            slow_cnn_pole_query_rho=0.5,
+            slow_cnn_pole_vector_width=4,
+        )
     return AlphabetLM(config)
 
 
@@ -478,6 +505,32 @@ def _slow_independent_value_override(
         return value.mean(dim=1, keepdim=True).expand_as(value)
 
     return [slow.matrix_value.register_forward_hook(override)]
+
+
+def _slow_vector_pole_override(
+    model: nn.Module,
+    *,
+    target: Literal["excitation", "query"],
+    mode: Literal["off", "shift", "time_mean"],
+) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM):
+        return []
+    slow = model.slow_cnn_pole_memory
+    if not isinstance(slow, SlowCausalCNNPoleMemory):
+        return []
+    module = slow.vector_excitation if target == "excitation" else slow.vector_query
+    if module is None:
+        return []
+
+    def override(_module: nn.Module, _inputs: tuple[object, ...], output: object) -> Tensor:
+        value = cast("Tensor", output)
+        if mode == "off":
+            return torch.zeros_like(value)
+        if mode == "shift":
+            return torch.roll(value, shifts=1, dims=1)
+        return value.mean(dim=1, keepdim=True).expand_as(value)
+
+    return [module.register_forward_hook(override)]
 
 
 @torch.no_grad()
@@ -728,15 +781,48 @@ def _slow_cnn_pole_metrics(
             }
         key_metrics = gate_metrics(slow.key_gate(anchor_source)) if slow.key is not None else None
         vector_metrics: dict[str, object] | None = None
-        if slow.value_width > 1:
-            def spectrum(rows: Tensor) -> tuple[Tensor, Tensor]:
-                gram = rows.mH @ rows / max(1, rows.shape[0])
-                eigenvalues = torch.linalg.eigvalsh(gram).real.clamp_min(0.0)
-                effective_rank = eigenvalues.sum().square() / eigenvalues.square().sum().clamp_min(
-                    1e-12
-                )
-                return eigenvalues, effective_rank
+        def spectrum(rows: Tensor) -> tuple[Tensor, Tensor]:
+            gram = rows.mH @ rows / max(1, rows.shape[0])
+            eigenvalues = torch.linalg.eigvalsh(gram).real.clamp_min(0.0)
+            effective_rank = eigenvalues.sum().square() / eigenvalues.square().sum().clamp_min(
+                1e-12
+            )
+            return eigenvalues, effective_rank
 
+        if slow.vector_width > 1:
+            drive_real, drive_imag = slow.pole_drive(real, imag)
+            anchors = (
+                drive_real[:, slow.stride - 1 : full_anchors * slow.stride : slow.stride],
+                drive_imag[:, slow.stride - 1 : full_anchors * slow.stride : slow.stride],
+            )
+            excitation = slow.vector_excitation_axes(anchor_source)
+            state_real, state_imag = slow.memory(
+                anchors[0].unsqueeze(-1) * excitation,
+                anchors[1].unsqueeze(-1) * excitation,
+            )
+            rows = torch.complex(state_real.float(), state_imag.float()).flatten(0, 2)
+            eigenvalues, effective_rank = spectrum(rows)
+            coordinate_energy = state_real.float().square().add(state_imag.float().square()).mean(
+                dim=(0, 1, 2)
+            )
+            scalar_query = slow.query_gate(packed_source)
+            vector_query = slow.vector_query_axes(packed_source, scalar_query)
+            vector_metrics = {
+                "vector_width": slow.vector_width,
+                "excitation_extra_rms": float(
+                    excitation[..., 1:].float().square().mean().sqrt()
+                ),
+                "query_extra_rms": float(
+                    vector_query[..., 1:].float().square().mean().sqrt()
+                ),
+                "state_effective_rank": float(effective_rank),
+                "state_eigenvalues": eigenvalues.detach().cpu().tolist(),
+                "state_coordinate_rms": coordinate_energy.sqrt().detach().cpu().tolist(),
+                "dominant_energy_fraction": float(
+                    coordinate_energy.max() / coordinate_energy.sum().clamp_min(1e-12)
+                ),
+            }
+        elif slow.value_width > 1:
             drive_real, drive_imag = slow.pole_drive(real, imag)
             anchors = (
                 drive_real[:, slow.stride - 1 : full_anchors * slow.stride : slow.stride],
@@ -1217,6 +1303,7 @@ def main() -> None:
             "alphabet2_vector_d4",
             "alphabet2_matrix_k4v4",
             "alphabet2_nonseparable_k4v4",
+            "alphabet2_vector_pole_r4",
             "mamba",
         ),
         required=True,
@@ -1446,6 +1533,37 @@ def main() -> None:
             )
             for handle in mean_independent_value:
                 handle.remove()
+        vector_query_off = _slow_vector_pole_override(
+            model, target="query", mode="off"
+        )
+        if vector_query_off:
+            results["vector_pole_extra_off"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in vector_query_off:
+                handle.remove()
+            for target in ("excitation", "query"):
+                for mode in ("shift", "time_mean"):
+                    handles = _slow_vector_pole_override(
+                        model,
+                        target=target,
+                        mode=mode,
+                    )
+                    results[f"vector_{target}_{mode}"] = _evaluate(
+                        model,
+                        dataset,
+                        segment=2_048,
+                        token_limit=args.token_limit,
+                        sequence_limit=args.sequence_limit,
+                        device=device,
+                    )
+                    for handle in handles:
+                        handle.remove()
     for segment in (512, 128, 32, 1):
         results[f"reset_{segment}"] = _evaluate(
             model,

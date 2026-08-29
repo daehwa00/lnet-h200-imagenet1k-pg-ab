@@ -99,6 +99,7 @@ class AlphabetLMConfig:
     slow_cnn_pole_value_width: int = 1
     slow_cnn_pole_matrix_key_width: int = 1
     slow_cnn_pole_independent_matrix_value: bool = False
+    slow_cnn_pole_vector_width: int = 1
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -145,6 +146,7 @@ class AlphabetLMConfig:
             self.slow_cnn_pole_upper_blocks,
             self.slow_cnn_pole_value_width,
             self.slow_cnn_pole_matrix_key_width,
+            self.slow_cnn_pole_vector_width,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -257,6 +259,12 @@ class AlphabetLMConfig:
             or self.slow_cnn_pole_value_width <= 1
         ):
             raise ValueError("independent matrix value requires matrix memory")
+        if self.slow_cnn_pole_vector_width > 1 and (
+            self.slow_cnn_pole_query != "token"
+            or self.slow_cnn_pole_value_width != 1
+            or self.slow_cnn_pole_matrix_key_width != 1
+        ):
+            raise ValueError("vector pole memory requires token query without value axes")
 
     def _validate_memory_layout(self) -> None:
         if self.memory_layout == "tensor_product" and (
@@ -943,6 +951,7 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         value_width: int = 1,
         matrix_key_width: int = 1,
         independent_matrix_value: bool = False,
+        vector_width: int = 1,
     ) -> None:
         super().__init__(
             modes,
@@ -964,6 +973,7 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         self.value_width = int(value_width)
         self.matrix_key_width = int(matrix_key_width)
         self.independent_matrix_value = bool(independent_matrix_value)
+        self.vector_width = int(vector_width)
         initial_beta = float(self.beta.detach())
         self.beta = nn.Parameter(torch.full((upper_blocks,), initial_beta))
         if query_mode == "none":
@@ -1002,6 +1012,12 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             epsilon=epsilon,
             independent_value=independent_matrix_value,
         )
+        self._configure_vector_poles(
+            modes=modes,
+            pole_modes=pole_modes,
+            vector_width=vector_width,
+            epsilon=epsilon,
+        )
 
     def _configure_matrix_axes(
         self,
@@ -1032,6 +1048,28 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             self.matrix_value_norm = nn.RMSNorm(2 * modes, eps=epsilon)
             self.matrix_value = nn.Linear(2 * modes, key_width * value_width, bias=False)
             nn.init.zeros_(self.matrix_value.weight)
+
+    def _configure_vector_poles(
+        self,
+        *,
+        modes: int,
+        pole_modes: int,
+        vector_width: int,
+        epsilon: float,
+    ) -> None:
+        self.vector_excitation_norm = None
+        self.vector_excitation = None
+        self.vector_query_norm = None
+        self.vector_query = None
+        if vector_width <= 1:
+            return
+        extra_coordinates = pole_modes * (vector_width - 1)
+        self.vector_excitation_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+        self.vector_excitation = nn.Linear(2 * modes, extra_coordinates, bias=False)
+        self.vector_query_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+        self.vector_query = nn.Linear(2 * modes, extra_coordinates, bias=False)
+        nn.init.xavier_uniform_(self.vector_excitation.weight)
+        nn.init.zeros_(self.vector_query.weight)
 
     def query_gate(self, packed: Tensor) -> Tensor:
         if self.query_norm is None or self.query is None:
@@ -1092,6 +1130,25 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             *packed.shape[:-1], self.matrix_key_width, self.value_width
         )
 
+    def vector_excitation_axes(self, packed: Tensor) -> Tensor:
+        shape = (*packed.shape[:-1], self.memory.modes, 1)
+        ones = torch.ones(shape, device=packed.device, dtype=packed.dtype)
+        if self.vector_excitation_norm is None or self.vector_excitation is None:
+            return ones
+        extra = torch.tanh(self.vector_excitation(self.vector_excitation_norm(packed)))
+        extra = extra.reshape(*packed.shape[:-1], self.memory.modes, self.vector_width - 1)
+        return torch.cat((ones, extra), dim=-1)
+
+    def vector_query_axes(self, packed: Tensor, scalar_query: Tensor) -> Tensor:
+        base = scalar_query.unsqueeze(-1)
+        if self.vector_query_norm is None or self.vector_query is None:
+            return base
+        extra = torch.tanh(self.vector_query(self.vector_query_norm(packed)))
+        extra = extra.reshape(*packed.shape[:-1], self.memory.modes, self.vector_width - 1)
+        raw = torch.cat((base, extra), dim=-1)
+        norm = raw.float().square().sum(dim=-1, keepdim=True).sqrt().clamp_min(self.epsilon)
+        return raw * (base.abs().float() / norm).to(raw.dtype)
+
     def synthesize_vector(self, state: ComplexField) -> ComplexField:
         state_real, state_imag = state
         base = self.synthesize((state_real[..., 0], state_imag[..., 0]))
@@ -1120,7 +1177,13 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
         key_gate = self.key_gate(anchor_features)
         anchors = anchors[0] * key_gate, anchors[1] * key_gate
         value = self.anchor_value(anchor_features)
-        if self.matrix_key_width > 1:
+        if self.vector_width > 1:
+            vector_excitation = self.vector_excitation_axes(anchor_features)
+            transported_drive = (
+                anchors[0].unsqueeze(-1) * vector_excitation,
+                anchors[1].unsqueeze(-1) * vector_excitation,
+            )
+        elif self.matrix_key_width > 1:
             matrix_key = self.matrix_key_axes(anchor_features)
             matrix_value = self.matrix_value_axes(anchor_features, value)
             transported_drive = (
@@ -1155,6 +1218,15 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
                 delayed_state[1].repeat_interleave(self.stride, dim=1)[:, :steps],
             )
             token_gate = self.query_gate(torch.cat((real, imag), dim=-1))
+            if self.vector_width > 1:
+                vector_query = self.vector_query_axes(
+                    torch.cat((real, imag), dim=-1), token_gate
+                )
+                contracted_state = (
+                    (repeated_state[0] * vector_query).sum(dim=-1),
+                    (repeated_state[1] * vector_query).sum(dim=-1),
+                )
+                return self.synthesize(contracted_state)
             if self.matrix_key_width > 1:
                 matrix_query = self.matrix_query_axes(
                     torch.cat((real, imag), dim=-1), token_gate
@@ -1851,6 +1923,7 @@ class AlphabetLM(nn.Module):
                     independent_matrix_value=(
                         config.slow_cnn_pole_independent_matrix_value
                     ),
+                    vector_width=config.slow_cnn_pole_vector_width,
                 )
         else:
             self.slow_cnn_pole_memory = None

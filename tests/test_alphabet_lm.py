@@ -43,6 +43,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_slow_matrix_from_trunk,
     _initialize_slow_query_from_trunk,
     _initialize_slow_value_from_trunk,
+    _initialize_slow_vector_pole_from_trunk,
 )
 
 
@@ -1360,6 +1361,56 @@ def test_qk_checkpoint_trains_only_mandatory_key(tmp_path: Path) -> None:
     slow = cast("SlowCausalCNNPoleMemory", qk.slow_cnn_pole_memory)
     assert slow.key is not None
     torch.testing.assert_close(slow.key.weight, torch.zeros_like(slow.key.weight))
+
+
+def _vector_pole_slow_config() -> AlphabetLMConfig:
+    return replace(
+        _addressed_slow_config(mode="token"),
+        slow_cnn_pole_vector_width=4,
+    )
+
+
+def test_vector_pole_r4_preserves_token_q_and_has_live_query_gradient() -> None:
+    torch.manual_seed(501)
+    token_q = AlphabetLM(_addressed_slow_config(mode="token")).eval()
+    torch.manual_seed(501)
+    vector_pole = AlphabetLM(_vector_pole_slow_config()).eval()
+    vector_pole.load_state_dict(token_q.state_dict(), strict=False)
+    slow = cast("SlowCausalCNNPoleMemory", vector_pole.slow_cnn_pole_memory)
+    assert slow.vector_excitation is not None
+    assert slow.vector_query is not None
+    assert slow.vector_excitation.weight.square().sum() > 0
+    torch.testing.assert_close(
+        slow.vector_query.weight,
+        torch.zeros_like(slow.vector_query.weight),
+    )
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        expected = token_q(tokens)
+        actual = vector_pole(tokens)
+    torch.testing.assert_close(actual, expected, atol=2e-6, rtol=2e-6)
+    vector_pole(tokens).square().mean().backward()
+    assert slow.vector_query.weight.grad is not None
+    assert slow.vector_query.weight.grad.abs().sum() > 0
+
+
+def test_vector_pole_checkpoint_trains_only_extra_coordinates(tmp_path: Path) -> None:
+    torch.manual_seed(501)
+    token_q = AlphabetLM(_addressed_slow_config(mode="token"))
+    checkpoint = tmp_path / "token-q.pt"
+    torch.save({"model": token_q.state_dict()}, checkpoint)
+    vector_pole = AlphabetLM(_vector_pole_slow_config())
+    contract = _initialize_slow_vector_pole_from_trunk(vector_pole, checkpoint)
+    assert contract["enabled"] is True
+    trainable = [
+        name for name, parameter in vector_pole.named_parameters() if parameter.requires_grad
+    ]
+    assert set(trainable) == {
+        "slow_cnn_pole_memory.vector_excitation_norm.weight",
+        "slow_cnn_pole_memory.vector_excitation.weight",
+        "slow_cnn_pole_memory.vector_query_norm.weight",
+        "slow_cnn_pole_memory.vector_query.weight",
+    }
 
 
 def _vector_slow_config() -> AlphabetLMConfig:
