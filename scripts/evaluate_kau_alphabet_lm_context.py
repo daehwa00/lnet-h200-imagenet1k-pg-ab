@@ -1141,6 +1141,39 @@ def _slow_cnn_pole_metrics(
                 if write_gate is not None and write_metrics is not None:
                     gated_real = transported_real * write_gate.unsqueeze(-1)
                     gated_imag = transported_imag * write_gate.unsqueeze(-1)
+                    excitation_magnitude_by_pole = (
+                        transported_real.float()
+                        .square()
+                        .add(transported_imag.float().square())
+                        .mean(dim=-1)
+                        .sqrt()
+                    )
+                    centered_excitation = excitation_magnitude_by_pole - (
+                        excitation_magnitude_by_pole.mean(dim=1, keepdim=True)
+                    )
+                    centered_gate = write_gate.float() - write_gate.float().mean(
+                        dim=1, keepdim=True
+                    )
+                    correlation = (centered_excitation * centered_gate).mean(dim=1) / (
+                        centered_excitation.square().mean(dim=1).sqrt()
+                        * centered_gate.square().mean(dim=1).sqrt()
+                    ).clamp_min(1.0e-12)
+                    write_metrics.update(
+                        {
+                            "excitation_temporal_variance_mean": float(
+                                excitation_magnitude_by_pole.var(dim=1).mean()
+                            ),
+                            "gate_temporal_variance_mean": float(
+                                write_gate.float().var(dim=1).mean()
+                            ),
+                            "excitation_gate_correlation_mean": float(
+                                correlation.mean()
+                            ),
+                            "excitation_gate_correlation_abs_mean": float(
+                                correlation.abs().mean()
+                            ),
+                        }
+                    )
                     lags = (1, 2, 4, 8, 16)
                     write_metrics["excitation_autocorrelation"] = {
                         str(lag): _complex_autocorrelation(

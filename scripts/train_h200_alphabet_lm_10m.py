@@ -1946,6 +1946,19 @@ def main() -> None:
         random.setstate(payload["python_rng_state"])
         if tokens_seen >= target_tokens:
             raise RuntimeError("extension checkpoint already reached the requested target")
+    validation_milestones = tuple(
+        int(value) for value in training.get("validation_milestone_tokens", ())
+    )
+    if (
+        tuple(sorted(set(validation_milestones))) != validation_milestones
+        or any(value <= 0 or value >= target_tokens for value in validation_milestones)
+    ):
+        raise RuntimeError("invalid validation milestone token contract")
+    pending_milestones = [
+        value
+        for value in validation_milestones
+        if not (args.root / f"validation-{value}.json").is_file()
+    ]
     wandb_run = _wandb_run(runtime, run_label, args.root, contract)
     runtime_model = cast(
         "nn.Module", torch.compile(model, mode="default", fullgraph=False, dynamic=False)
@@ -2143,6 +2156,51 @@ def main() -> None:
                 history=history,
             )
             _atomic_json(args.root / "history.json", history)
+        while pending_milestones and tokens_seen >= pending_milestones[0]:
+            requested_tokens = pending_milestones.pop(0)
+            milestone_loss = _evaluate(
+                runtime_model,
+                validation,
+                microbatch=int(training["microbatch"]),
+                device=device,
+            )
+            milestone_checkpoint = args.root / f"checkpoint-{requested_tokens}.pt"
+            _save_checkpoint(
+                milestone_checkpoint,
+                contract_sha=contract_sha,
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                batcher=batcher,
+                update=update,
+                tokens_seen=tokens_seen,
+                history=history,
+            )
+            milestone_receipt = {
+                "schema": "lnet.alphabet_lm.validation_milestone.v1",
+                "requested_tokens": requested_tokens,
+                "tokens_seen": tokens_seen,
+                "update": update,
+                "validation_loss": milestone_loss,
+                "checkpoint": str(milestone_checkpoint),
+            }
+            _atomic_json(
+                args.root / f"validation-{requested_tokens}.json",
+                milestone_receipt,
+            )
+            wandb_run.log(
+                {
+                    "validation/loss": milestone_loss,
+                    "validation/requested_tokens": requested_tokens,
+                    "validation/tokens": tokens_seen,
+                },
+                step=update,
+            )
+            print(
+                "ALPHABET_LM_VALIDATION_MILESTONE="
+                + json.dumps(milestone_receipt, sort_keys=True),
+                flush=True,
+            )
         wandb_metrics = {
             "train/loss": row["train_loss"],
             "training/tokens": tokens_seen,
@@ -2225,6 +2283,10 @@ def main() -> None:
         microbatch=int(training["microbatch"]),
         device=device,
     )
+    milestone_receipts = [
+        json.loads((args.root / f"validation-{value}.json").read_text())
+        for value in validation_milestones
+    ]
     receipt = {
         "schema": "lnet.h200.alphabet_lm.training_receipt.v1",
         "status": "completed",
@@ -2234,6 +2296,7 @@ def main() -> None:
         "tokens_seen": tokens_seen,
         "updates": update,
         "validation_loss": validation_loss,
+        "validation_milestones": milestone_receipts,
         "peak_memory_bytes": torch.cuda.max_memory_allocated(),
         "elapsed_seconds": time.perf_counter() - started,
         "source_commit": os.environ["H200_EXPECTED_COMMIT"],
