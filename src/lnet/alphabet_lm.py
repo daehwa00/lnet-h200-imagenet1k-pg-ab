@@ -1096,7 +1096,7 @@ class SlowCausalCNNPoleMemory(CausalCNNPoleMemory):
             self.vector_excitation_imag = nn.Linear(
                 2 * modes, extra_coordinates, bias=False
             )
-            nn.init.zeros_(self.vector_excitation_imag.weight)
+            nn.init.xavier_uniform_(self.vector_excitation_imag.weight)
 
     def query_gate(self, packed: Tensor) -> Tensor:
         if self.query_norm is None or self.query is None:

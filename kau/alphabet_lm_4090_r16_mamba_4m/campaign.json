@@ -1,0 +1,88 @@
+{
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.v1",
+  "campaign_id": "kau-alphabet-lm-r16-vs-mamba-4m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-r16-vs-mamba-4m-v1",
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "common": {},
+    "variants": {
+      "alphabet2-complex-vector-r16-e2e-4m": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "cnn_pole_memory": true,
+        "cnn_pole_interval": 2,
+        "cnn_pole_modes": 128,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_use_recurrence": false,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_vector_width": 16,
+        "slow_cnn_pole_complex_vector_excitation": true
+      },
+      "mamba-standard-e2e-4m": {}
+    }
+  },
+  "source": {
+    "initialization": "independent from-scratch seed501",
+    "reference_mamba_10m_validation_loss": 5.6978587456397625,
+    "reference_r16_frozen_validation_loss": 5.833408961635456
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 4000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet2-complex-vector-r16-e2e-4m",
+      "mamba-standard-e2e-4m"
+    ]
+  },
+  "comparison": {
+    "primary": "same seed, data, recipe, and 4M token budget from scratch",
+    "parameter_counts_differ": true,
+    "r16_total_parameters": 43413258,
+    "mamba_total_parameters": 35425280
+  },
+  "parameter_counts": {
+    "alphabet2-complex-vector-r16-e2e-4m": 43413258,
+    "mamba-standard-e2e-4m": 35425280
+  },
+  "total_parameter_counts": {
+    "alphabet2-complex-vector-r16-e2e-4m": 43413258,
+    "mamba-standard-e2e-4m": 35425280
+  },
+  "diagnostics": {
+    "r16_final_context": true,
+    "intermediate_evaluations": false,
+    "validation_sequence_limit": 512
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-R16-vs-Mamba-4M-S501-v1"
+  }
+}

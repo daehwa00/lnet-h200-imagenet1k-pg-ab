@@ -588,6 +588,7 @@ def _initialize_slow_complex_vector_from_trunk(
     incompatible = model.load_state_dict(source, strict=False)
     if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
         raise RuntimeError("VectorPole-R4 checkpoint does not match complex excitation")
+    nn.init.zeros_(slow.vector_excitation_imag.weight)
     for name, parameter in model.named_parameters():
         parameter.requires_grad_(name.startswith(prefixes))
     return {
