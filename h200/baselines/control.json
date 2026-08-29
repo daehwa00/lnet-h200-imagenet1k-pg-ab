@@ -2,8 +2,8 @@
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v1",
   "target_commit": "c3b275ca11d0d99aa9436345b9f8ebb01ca4836d",
-  "generation": 3,
-  "action": "run",
-  "updated_at": "2026-08-28T21:53:39+09:00",
-  "reason": "arm owner control for the two-model 100-epoch H200 backlog"
+  "generation": 4,
+  "action": "stop",
+  "updated_at": "2026-08-29T21:53:18+09:00",
+  "reason": "stop the stalled H200 backlog after 22 hours without epoch telemetry"
 }
