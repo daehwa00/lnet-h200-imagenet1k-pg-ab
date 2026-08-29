@@ -1,0 +1,190 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "alphabet2-nonseparable-k4v4-1m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_independent_matrix_value": true,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_matrix_key_width": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_value_width": 4
+      },
+      "alphabet2-nonseparable-k4v4-2m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_independent_matrix_value": true,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_matrix_key_width": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_value_width": 4
+      },
+      "alphabet2-nonseparable-k4v4-4m": {
+        "cnn_pole_beta_initial": 0.01,
+        "cnn_pole_evidence_width": 512,
+        "cnn_pole_interval": 2,
+        "cnn_pole_kernel_size": 4,
+        "cnn_pole_maximum_half_life": 4096.0,
+        "cnn_pole_memory": true,
+        "cnn_pole_minimum_half_life": 8.0,
+        "cnn_pole_modes": 128,
+        "cnn_pole_use_recurrence": false,
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "slow_cnn_pole_beta_initial": 0.01,
+        "slow_cnn_pole_evidence_width": 512,
+        "slow_cnn_pole_independent_matrix_value": true,
+        "slow_cnn_pole_kernel_size": 4,
+        "slow_cnn_pole_matrix_key_width": 4,
+        "slow_cnn_pole_maximum_half_life": 256.0,
+        "slow_cnn_pole_memory": true,
+        "slow_cnn_pole_minimum_half_life": 1.0,
+        "slow_cnn_pole_modes": 128,
+        "slow_cnn_pole_query": "token",
+        "slow_cnn_pole_query_rho": 0.5,
+        "slow_cnn_pole_stride": 16,
+        "slow_cnn_pole_upper_blocks": 4,
+        "slow_cnn_pole_use_recurrence": true,
+        "slow_cnn_pole_value_width": 4
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-nonseparable-k4v4-s501-v1",
+  "campaign_manifest_sha256": "78ab830e92e6185de61055a9cfe5f99593935a986c7e71597bee7feec90e8f3f",
+  "diagnostics": {
+    "context_segments": [
+      2048,
+      512,
+      128,
+      32,
+      1
+    ],
+    "independent_value_off": true,
+    "independent_value_shift": true,
+    "independent_value_time_mean": true,
+    "key_value_rank": true,
+    "memory_zero": true,
+    "milestones": [
+      1000000,
+      2000000,
+      4000000
+    ],
+    "validation_sequence_limit": 512
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-NonseparableK4V4-S501-v1",
+  "output_namespace": "alphabet-lm-4090-nonseparable-k4v4-v1",
+  "parameter_counts": {
+    "alphabet2-nonseparable-k4v4-1m": 8704,
+    "alphabet2-nonseparable-k4v4-2m": 8704,
+    "alphabet2-nonseparable-k4v4-4m": 8704
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "alphabet2-nonseparable-k4v4-1m": {
+      "display_name": "RTX4090-S501-ALPHABET2-NonseparableK4V4-1M",
+      "id": "416d0d1d3ab1f564",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "NonseparableK4V4",
+        "1M",
+        "seed501"
+      ]
+    },
+    "alphabet2-nonseparable-k4v4-2m": {
+      "display_name": "RTX4090-S501-ALPHABET2-NonseparableK4V4-2M",
+      "id": "da460d0922210f19",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "NonseparableK4V4",
+        "2M",
+        "seed501"
+      ]
+    },
+    "alphabet2-nonseparable-k4v4-4m": {
+      "display_name": "RTX4090-S501-ALPHABET2-NonseparableK4V4-4M",
+      "id": "d6260fe94e9b1454",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "NonseparableK4V4",
+        "4M",
+        "seed501"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_nonseparable.runtime.v1",
+  "source": {
+    "matrix_k4v4_4m": "/home/daehwa/alphabet-lm-4090-matrix-k4v4-runs/61d7b44d3d82207a/matrix-4m/checkpoint.pt",
+    "matrix_k4v4_4m_sha256": "ea324eaa04eed929f0955282c6f1ddac01cac8a701c07a85de6b3fc1b273a983",
+    "validation_loss": 5.833341242959004,
+    "wandb_url": "https://wandb.ai/daehwa/alphabet-lm-viability/runs/3f0c45c8f1f21075"
+  },
+  "total_parameter_counts": {
+    "alphabet2-nonseparable-k4v4-1m": 41260810,
+    "alphabet2-nonseparable-k4v4-2m": 41260810,
+    "alphabet2-nonseparable-k4v4-4m": 41260810
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "alphabet2-nonseparable-k4v4-1m",
+      "alphabet2-nonseparable-k4v4-2m",
+      "alphabet2-nonseparable-k4v4-4m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 4000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

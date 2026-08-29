@@ -38,6 +38,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_semantic_edge_from_trunk,
     _initialize_sidecar_from_trunk,
     _initialize_slow_cnn_pole_from_trunk,
+    _initialize_slow_independent_value_from_trunk,
     _initialize_slow_key_from_trunk,
     _initialize_slow_matrix_from_trunk,
     _initialize_slow_query_from_trunk,
@@ -1466,6 +1467,56 @@ def test_matrix_checkpoint_trains_only_extra_query_and_key_axes(tmp_path: Path) 
         "slow_cnn_pole_memory.matrix_key.weight",
         "slow_cnn_pole_memory.matrix_query_norm.weight",
         "slow_cnn_pole_memory.matrix_query.weight",
+    }
+
+
+def _nonseparable_slow_config() -> AlphabetLMConfig:
+    return replace(
+        _matrix_slow_config(),
+        slow_cnn_pole_independent_matrix_value=True,
+    )
+
+
+def test_nonseparable_value_preserves_matrix_k4v4_and_breaks_value_sharing() -> None:
+    torch.manual_seed(501)
+    matrix = AlphabetLM(_matrix_slow_config()).eval()
+    slow_matrix = cast("SlowCausalCNNPoleMemory", matrix.slow_cnn_pole_memory)
+    assert slow_matrix.matrix_query is not None
+    torch.nn.init.normal_(slow_matrix.matrix_query.weight, std=0.02)
+    torch.manual_seed(501)
+    nonseparable = AlphabetLM(_nonseparable_slow_config()).eval()
+    nonseparable.load_state_dict(matrix.state_dict(), strict=False)
+    slow = cast("SlowCausalCNNPoleMemory", nonseparable.slow_cnn_pole_memory)
+    assert slow.matrix_value is not None
+    torch.testing.assert_close(
+        slow.matrix_value.weight,
+        torch.zeros_like(slow.matrix_value.weight),
+    )
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        expected = matrix(tokens)
+        actual = nonseparable(tokens)
+    torch.testing.assert_close(actual, expected, atol=2e-6, rtol=2e-6)
+    torch.nn.init.normal_(slow.matrix_value.weight, std=0.02)
+    packed = torch.randn(2, 3, 16)
+    value_axes = slow.matrix_value_axes(packed, slow.anchor_value(packed))
+    assert not torch.allclose(value_axes[..., 0, :], value_axes[..., 1, :])
+
+
+def test_nonseparable_checkpoint_trains_only_independent_values(tmp_path: Path) -> None:
+    torch.manual_seed(501)
+    matrix = AlphabetLM(_matrix_slow_config())
+    checkpoint = tmp_path / "matrix.pt"
+    torch.save({"model": matrix.state_dict()}, checkpoint)
+    nonseparable = AlphabetLM(_nonseparable_slow_config())
+    contract = _initialize_slow_independent_value_from_trunk(nonseparable, checkpoint)
+    assert contract["enabled"] is True
+    trainable = [
+        name for name, parameter in nonseparable.named_parameters() if parameter.requires_grad
+    ]
+    assert set(trainable) == {
+        "slow_cnn_pole_memory.matrix_value_norm.weight",
+        "slow_cnn_pole_memory.matrix_value.weight",
     }
 
 

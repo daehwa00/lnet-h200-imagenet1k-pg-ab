@@ -271,6 +271,35 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_value_width=4,
             slow_cnn_pole_matrix_key_width=4,
         )
+    elif kind == "alphabet2_nonseparable_k4v4":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            cnn_pole_memory=True,
+            cnn_pole_interval=2,
+            cnn_pole_modes=128,
+            cnn_pole_evidence_width=512,
+            cnn_pole_kernel_size=4,
+            cnn_pole_beta_initial=0.01,
+            cnn_pole_use_recurrence=False,
+            cnn_pole_minimum_half_life=8.0,
+            cnn_pole_maximum_half_life=4_096.0,
+            slow_cnn_pole_memory=True,
+            slow_cnn_pole_stride=16,
+            slow_cnn_pole_modes=128,
+            slow_cnn_pole_evidence_width=512,
+            slow_cnn_pole_kernel_size=4,
+            slow_cnn_pole_upper_blocks=4,
+            slow_cnn_pole_beta_initial=0.01,
+            slow_cnn_pole_use_recurrence=True,
+            slow_cnn_pole_minimum_half_life=1.0,
+            slow_cnn_pole_maximum_half_life=256.0,
+            slow_cnn_pole_query="token",
+            slow_cnn_pole_query_rho=0.5,
+            slow_cnn_pole_value_width=4,
+            slow_cnn_pole_matrix_key_width=4,
+            slow_cnn_pole_independent_matrix_value=True,
+        )
     return AlphabetLM(config)
 
 
@@ -427,6 +456,28 @@ def _slow_matrix_override(
         return value.mean(dim=1, keepdim=True).expand_as(value)
 
     return [module.register_forward_hook(override)]
+
+
+def _slow_independent_value_override(
+    model: nn.Module,
+    *,
+    mode: Literal["off", "shift", "time_mean"],
+) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM):
+        return []
+    slow = model.slow_cnn_pole_memory
+    if not isinstance(slow, SlowCausalCNNPoleMemory) or slow.matrix_value is None:
+        return []
+
+    def override(_module: nn.Module, _inputs: tuple[object, ...], output: object) -> Tensor:
+        value = cast("Tensor", output)
+        if mode == "off":
+            return torch.zeros_like(value)
+        if mode == "shift":
+            return torch.roll(value, shifts=1, dims=1)
+        return value.mean(dim=1, keepdim=True).expand_as(value)
+
+    return [slow.matrix_value.register_forward_hook(override)]
 
 
 @torch.no_grad()
@@ -694,13 +745,14 @@ def _slow_cnn_pole_metrics(
             value = slow.anchor_value(anchor_source)
             if slow.matrix_key_width > 1:
                 matrix_key = slow.matrix_key_axes(anchor_source)
+                matrix_value = slow.matrix_value_axes(anchor_source, value)
                 state_real, state_imag = slow.memory(
                     anchors[0].unsqueeze(-1).unsqueeze(-1)
                     * matrix_key.unsqueeze(-1)
-                    * value.unsqueeze(-2).unsqueeze(-2),
+                    * matrix_value.unsqueeze(-3),
                     anchors[1].unsqueeze(-1).unsqueeze(-1)
                     * matrix_key.unsqueeze(-1)
-                    * value.unsqueeze(-2).unsqueeze(-2),
+                    * matrix_value.unsqueeze(-3),
                 )
                 complex_state = torch.complex(state_real.float(), state_imag.float())
                 key_rows = complex_state.permute(0, 1, 2, 4, 3).reshape(
@@ -720,6 +772,9 @@ def _slow_cnn_pole_metrics(
                     ),
                     "matrix_query_extra_rms": float(
                         matrix_query[..., 1:].float().square().mean().sqrt()
+                    ),
+                    "independent_value_delta_rms": float(
+                        (matrix_value - value.unsqueeze(-2)).float().square().mean().sqrt()
                     ),
                     "state_key_effective_rank": float(key_rank),
                     "state_key_eigenvalues": key_eigenvalues.detach().cpu().tolist(),
@@ -1351,6 +1406,44 @@ def main() -> None:
                 device=device,
             )
             for handle in mean_matrix_key:
+                handle.remove()
+        independent_value_off = _slow_independent_value_override(model, mode="off")
+        if independent_value_off:
+            results["independent_value_off"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in independent_value_off:
+                handle.remove()
+            shifted_independent_value = _slow_independent_value_override(
+                model, mode="shift"
+            )
+            results["independent_value_shifted"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in shifted_independent_value:
+                handle.remove()
+            mean_independent_value = _slow_independent_value_override(
+                model, mode="time_mean"
+            )
+            results["independent_value_time_mean"] = _evaluate(
+                model,
+                dataset,
+                segment=2_048,
+                token_limit=args.token_limit,
+                sequence_limit=args.sequence_limit,
+                device=device,
+            )
+            for handle in mean_independent_value:
                 handle.remove()
     for segment in (512, 128, 32, 1):
         results[f"reset_{segment}"] = _evaluate(
