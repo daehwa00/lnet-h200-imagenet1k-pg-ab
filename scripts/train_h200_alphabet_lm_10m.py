@@ -919,6 +919,14 @@ def _initialize_repeated_factorized_expansion(
         ".extra_projection_basis",
         ".extra_synthesis.",
     )
+    trainable_parts = (
+        ".content_delta_norm.",
+        ".content_delta.",
+        ".query_basis_delta_norm.",
+        ".query_basis_delta.",
+        ".extra_projection_basis",
+        ".extra_synthesis.",
+    )
     expected_missing = {
         name
         for name in model.state_dict()
@@ -933,7 +941,7 @@ def _initialize_repeated_factorized_expansion(
     for name, parameter in model.named_parameters():
         parameter.requires_grad_(
             name.startswith("repeated_vector_pole_memories.")
-            and any(part in name for part in expansion_parts)
+            and any(part in name for part in trainable_parts)
         )
     return {
         "enabled": True,

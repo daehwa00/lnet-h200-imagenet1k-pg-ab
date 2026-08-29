@@ -2572,11 +2572,6 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
             self.content_basis_real[:baseline_width, :baseline_width].copy_(identity)
             self.query_basis_real[:baseline_width, :baseline_width].copy_(identity)
             if self.vector_width > baseline_width:
-                scale = 1.0 / math.sqrt(2.0 * max(1, baseline_width))
-                self.content_basis_real[:, baseline_width:].normal_(std=scale)
-                self.content_basis_imag[:, baseline_width:].normal_(std=scale)
-                self.query_basis_real[:, baseline_width:].normal_(std=scale)
-                self.query_basis_imag[:, baseline_width:].normal_(std=scale)
                 self.extra_projection_basis[:, :, baseline_width:].normal_(
                     std=1.0 / math.sqrt(self.vector_width - baseline_width)
                 )
@@ -2584,8 +2579,19 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         nn.init.zeros_(self.vector_query_real.weight)
         nn.init.xavier_uniform_(self.vector_query_imag.weight)
         nn.init.xavier_uniform_(self.synthesis.weight)
-        nn.init.zeros_(self.content_delta.weight)
-        nn.init.zeros_(self.query_basis_delta.weight)
+        nn.init.xavier_uniform_(self.content_delta.weight)
+        nn.init.xavier_uniform_(self.query_basis_delta.weight)
+        with torch.no_grad():
+            content_mask = torch.ones(
+                2, self.write_rank, self.vector_width, 1
+            )
+            content_mask[:, :, :baseline_width] = 0.0
+            self.content_delta.weight.mul_(content_mask.flatten(0, 2))
+            query_mask = torch.ones(
+                2, self.query_rank, self.vector_width, 1
+            )
+            query_mask[:, :, :baseline_width] = 0.0
+            self.query_basis_delta.weight.mul_(query_mask.flatten(0, 2))
         nn.init.zeros_(self.extra_synthesis.weight)
 
     @staticmethod

@@ -37,7 +37,7 @@ export MKL_NUM_THREADS=8
 export WANDB_BASE_URL="https://api.wandb.ai"
 export WANDB_ENTITY="daehwa"
 export WANDB_PROJECT="alphabet-lm-viability"
-export WANDB_GROUP="ALPHABET-LM-RTX4090-FactorizedP32R32J4-4M-S501-v1"
+export WANDB_GROUP="ALPHABET-LM-RTX4090-FactorizedP32R32J4-4M-S501-v2"
 export WANDB_CONSOLE=off
 
 timeout --signal=TERM --kill-after=5m 1h \

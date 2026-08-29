@@ -22,8 +22,8 @@
       }
     }
   },
-  "campaign_id": "kau-alphabet-lm-factorized-p32r32-j4-4m-s501-v1",
-  "campaign_manifest_sha256": "fab96ba4242ab86437369c0676a4ab1bdbca6dfa911c634f6551342ed49bcfed",
+  "campaign_id": "kau-alphabet-lm-factorized-p32r32-j4-4m-s501-v2",
+  "campaign_manifest_sha256": "513506badd873884a00be01a05dfdc2647a8a931c2d0b318877e04fbd74e687a",
   "diagnostics": {
     "baseline_function_exact": true,
     "instantaneous_write_rank": true,
@@ -32,16 +32,16 @@
     "state_effective_rank": true
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-FactorizedP32R32J4-4M-S501-v1",
-  "output_namespace": "alphabet-lm-4090-factorized-p32r32-j4-4m-v1",
+  "group": "ALPHABET-LM-RTX4090-FactorizedP32R32J4-4M-S501-v2",
+  "output_namespace": "alphabet-lm-4090-factorized-p32r32-j4-4m-v2",
   "parameter_counts": {
-    "factorized-p32r32-j4-frozen-4m": 9652224
+    "factorized-p32r32-j4-frozen-4m": 9646080
   },
   "project": "alphabet-lm-viability",
   "runs": {
     "factorized-p32r32-j4-frozen-4m": {
       "display_name": "RTX4090-S501-ALPHABET2-FactorizedP32R32J4-Frozen-4M",
-      "id": "152cc0b981a2f6f2",
+      "id": "1c42b62c23294b73",
       "tags": [
         "RTX4090",
         "ALPHABET2",
