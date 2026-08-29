@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 import torch
 from torch import Tensor, nn
 from torch.nn import functional
+from torch.utils.checkpoint import checkpoint as activation_checkpoint
 
 from .complex_scan_transitions import ComplexRMSNorm
 from .pac_complex_layers import PackedComplexLinear
@@ -125,6 +126,7 @@ class AlphabetLMConfig:
     repeated_vector_pole_write_rank: int = 4
     repeated_vector_pole_query_rank: int = 4
     repeated_vector_pole_synthesis_rank: int = 16
+    repeated_vector_pole_activation_checkpoint: bool = False
     tensor_half_lives: tuple[float, ...] = (
         4.0,
         16.0,
@@ -373,7 +375,10 @@ class AlphabetLMConfig:
 
     def _validate_repeated_vector_pole_memory(self) -> None:
         if not self.repeated_vector_pole_memory:
-            if self.repeated_vector_pole_factorized:
+            if (
+                self.repeated_vector_pole_factorized
+                or self.repeated_vector_pole_activation_checkpoint
+            ):
                 raise ValueError("factorized VectorPole requires repeated memory")
             return
         if (
@@ -2840,9 +2845,54 @@ class AlphabetLM(nn.Module):
         nn.init.normal_(self.embedding.weight, mean=0.0, std=0.02)
         nn.init.orthogonal_(self.analysis.weight)
 
-    def hidden(self, input_ids: Tensor) -> Tensor:
+    def _checkpointed_repeated_hidden(
+        self,
+        real: Tensor,
+        imag: Tensor,
+    ) -> ComplexField:
+        banks = self.repeated_vector_pole_memories
+        if banks is None:
+            raise RuntimeError("checkpointed repeated memory disappeared")
+        bank_index = 0
+        for index, block in enumerate(self.blocks):
+            active_bank: nn.Module | None = None
+            if (index + 1) % self.config.repeated_vector_pole_interval == 0:
+                active_bank = banks[bank_index]
+                bank_index += 1
+
+            def stage(
+                active_real: Tensor,
+                active_imag: Tensor,
+                block: nn.Module = block,
+                bank: nn.Module | None = active_bank,
+            ) -> ComplexField:
+                output = cast("ComplexField", block(active_real, active_imag))
+                return output if bank is None else cast("ComplexField", bank(*output))
+
+            real, imag = cast(
+                "ComplexField",
+                activation_checkpoint(
+                    stage,
+                    real,
+                    imag,
+                    use_reentrant=False,
+                ),
+            )
+        return real, imag
+
+    def _use_repeated_activation_checkpoint(self) -> bool:
+        return (
+            self.config.repeated_vector_pole_activation_checkpoint
+            and self.training
+            and torch.is_grad_enabled()
+        )
+
+    def hidden(self, input_ids: Tensor) -> Tensor:  # noqa: C901
         packed = self.analysis(self.embedding(input_ids))
         real, imag = packed.split(self.config.modes, dim=-1)
+        if self._use_repeated_activation_checkpoint():
+            real, imag = self._checkpointed_repeated_hidden(real, imag)
+            return self.final_norm(torch.cat((real, imag), dim=-1))
         chunk_memory: ComplexField | None = None
         active_chunk_memory = self.chunk_memory
         active_edge_memory = self.semantic_edge_memory

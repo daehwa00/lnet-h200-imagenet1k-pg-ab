@@ -19,7 +19,8 @@
       "repeated_vector_pole_factorized": true,
       "repeated_vector_pole_write_rank": 4,
       "repeated_vector_pole_query_rank": 4,
-      "repeated_vector_pole_synthesis_rank": 16
+      "repeated_vector_pole_synthesis_rank": 16,
+      "repeated_vector_pole_activation_checkpoint": true
     },
     "variants": {
       "factorized-p32r32-j4-frozen-4m": {}

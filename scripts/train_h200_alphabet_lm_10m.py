@@ -1061,6 +1061,7 @@ def _build(
     repeated_vector_pole_write_rank: int = 4,
     repeated_vector_pole_query_rank: int = 4,
     repeated_vector_pole_synthesis_rank: int = 16,
+    repeated_vector_pole_activation_checkpoint: bool = False,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
@@ -1168,6 +1169,9 @@ def _build(
         repeated_vector_pole_write_rank=repeated_vector_pole_write_rank,
         repeated_vector_pole_query_rank=repeated_vector_pole_query_rank,
         repeated_vector_pole_synthesis_rank=repeated_vector_pole_synthesis_rank,
+        repeated_vector_pole_activation_checkpoint=(
+            repeated_vector_pole_activation_checkpoint
+        ),
         write_map=cast("Any", write_map),
         dynamic_write_rank=dynamic_write_rank,
         dynamic_write_initial_scale=dynamic_write_initial_scale,
@@ -1456,6 +1460,9 @@ def main() -> None:
     parser.add_argument("--repeated-vector-pole-write-rank", type=int, default=4)
     parser.add_argument("--repeated-vector-pole-query-rank", type=int, default=4)
     parser.add_argument("--repeated-vector-pole-synthesis-rank", type=int, default=16)
+    parser.add_argument(
+        "--repeated-vector-pole-activation-checkpoint", action="store_true"
+    )
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-query-trunk-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-key-trunk-checkpoint", type=Path)
@@ -1637,6 +1644,9 @@ def main() -> None:
         repeated_vector_pole_query_rank=args.repeated_vector_pole_query_rank,
         repeated_vector_pole_synthesis_rank=(
             args.repeated_vector_pole_synthesis_rank
+        ),
+        repeated_vector_pole_activation_checkpoint=(
+            args.repeated_vector_pole_activation_checkpoint
         ),
         write_map=args.write_map,
         dynamic_write_rank=args.dynamic_write_rank,
@@ -1927,6 +1937,9 @@ def main() -> None:
             "repeated_vector_pole_synthesis_rank": (
                 args.repeated_vector_pole_synthesis_rank
             ),
+            "repeated_vector_pole_activation_checkpoint": (
+                args.repeated_vector_pole_activation_checkpoint
+            ),
             "freeze_trunk": args.freeze_trunk,
             "write_map": args.write_map,
             "dynamic_write_rank": args.dynamic_write_rank,
@@ -2150,6 +2163,9 @@ def main() -> None:
         "repeated_vector_pole_query_rank": args.repeated_vector_pole_query_rank,
         "repeated_vector_pole_synthesis_rank": (
             args.repeated_vector_pole_synthesis_rank
+        ),
+        "repeated_vector_pole_activation_checkpoint": (
+            args.repeated_vector_pole_activation_checkpoint
         ),
         "repeated_factorized_initialization": repeated_factorized_initialization,
         "write_map": args.write_map,

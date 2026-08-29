@@ -6,6 +6,7 @@
       "factorized-p32r32-j4-frozen-4m": {
         "memory_layout": "local_only",
         "reader_type": "dense_k3",
+        "repeated_vector_pole_activation_checkpoint": true,
         "repeated_vector_pole_beta_initial": 0.01,
         "repeated_vector_pole_factorized": true,
         "repeated_vector_pole_interval": 1,
@@ -22,7 +23,7 @@
     }
   },
   "campaign_id": "kau-alphabet-lm-factorized-p32r32-j4-4m-s501-v1",
-  "campaign_manifest_sha256": "6bb10b2f3f2d1c2fcd4bba9f6f4ef987c8d73519173274591f56b4ba11b50806",
+  "campaign_manifest_sha256": "fab96ba4242ab86437369c0676a4ab1bdbca6dfa911c634f6551342ed49bcfed",
   "diagnostics": {
     "baseline_function_exact": true,
     "instantaneous_write_rank": true,

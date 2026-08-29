@@ -58,6 +58,7 @@ timeout --signal=TERM --kill-after=5m 1h \
   --repeated-vector-pole-write-rank 4 \
   --repeated-vector-pole-query-rank 4 \
   --repeated-vector-pole-synthesis-rank 16 \
+  --repeated-vector-pole-activation-checkpoint \
   --initialize-repeated-factorized-checkpoint "${SOURCE}" \
   --target-tokens-override 4000000 \
   --runtime "${RUNTIME}" \
