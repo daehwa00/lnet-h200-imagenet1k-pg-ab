@@ -67,6 +67,7 @@ def test_baseline_entrypoint_is_always_owner_controlled() -> None:
     assert guard in script
     assert "scripts/run_h200_owner_controlled.py" in script
     assert 'CONTROL_REF="refs/heads/control/imagenet1k-baselines"' in script
+    assert 'CONTROL_REF="refs/heads/control/imagenet1k-baselines-followup"' in script
     assert 'CONTROL_PATH="h200/baselines/control.json"' in script
     assert 'value != "h200-imagenet1k-moga-emo-100ep-s501-v2"' in script
     assert '-- env H200_OWNER_CONTROL_INNER=1 bash "$0"' in script

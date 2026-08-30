@@ -9,7 +9,11 @@ readonly UNICONV_PATCH="${PROJECT_ROOT}/h200/baselines/patches/uniconvnet-dcnv3-
 readonly WANDB_RUNTIME="${PROJECT_ROOT}/h200/baselines/wandb.runtime.json"
 readonly REQUIREMENTS_LOCK="${PROJECT_ROOT}/h200/baselines/requirements.lock"
 readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab.git"
-readonly CONTROL_REF="refs/heads/control/imagenet1k-baselines"
+CONTROL_REF="refs/heads/control/imagenet1k-baselines"
+if [[ "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" ]]; then
+  CONTROL_REF="refs/heads/control/imagenet1k-baselines-followup"
+fi
+readonly CONTROL_REF
 readonly CONTROL_PATH="h200/baselines/control.json"
 readonly PYTHON_VERSION="3.13.11"
 readonly UV_VERSION="0.9.26"
