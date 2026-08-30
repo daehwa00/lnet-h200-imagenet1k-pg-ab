@@ -85,9 +85,17 @@ run_variant() {
     --output "${OUTPUT_ROOT}/${label}/context.json"
 }
 
-run_variant mamba-outer-post-fromscratch-100m alphabet2_mamba_outer_post_p32j4r32 false false
-run_variant mamba-outer-direct-fromscratch-100m alphabet2_mamba_outer_direct_p32j4r32 true false
-run_variant mamba-outer-gate-fromscratch-100m alphabet2_mamba_outer_gate_p32j4r32 false true
-run_variant mamba-outer-both-fromscratch-100m alphabet2_mamba_outer_both_p32j4r32 true true
+if [[ "${MAMBA_OUTER_SKIP_POST:-0}" != 1 ]]; then
+  run_variant mamba-outer-post-fromscratch-100m alphabet2_mamba_outer_post_p32j4r32 false false
+fi
+if [[ "${MAMBA_OUTER_SKIP_DIRECT:-0}" != 1 ]]; then
+  run_variant mamba-outer-direct-fromscratch-100m alphabet2_mamba_outer_direct_p32j4r32 true false
+fi
+if [[ "${MAMBA_OUTER_SKIP_GATE:-0}" != 1 ]]; then
+  run_variant mamba-outer-gate-fromscratch-100m alphabet2_mamba_outer_gate_p32j4r32 false true
+fi
+if [[ "${MAMBA_OUTER_SKIP_BOTH:-0}" != 1 ]]; then
+  run_variant mamba-outer-both-fromscratch-100m alphabet2_mamba_outer_both_p32j4r32 true true
+fi
 
 echo "KAU_ALPHABET_LM_MAMBA_OUTER_FACTORIAL_COMPLETE=${OUTPUT_ROOT}"

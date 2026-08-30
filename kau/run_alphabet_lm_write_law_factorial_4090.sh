@@ -78,8 +78,14 @@ run_variant() {
     --output "${OUTPUT_ROOT}/${label}/context.json"
 }
 
-run_variant write-row-specific-p32j4r32-fromscratch-100m row_specific alphabet2_write_row_specific_p32j4r32
-run_variant write-shared-outer-p32j4r32-fromscratch-100m shared_outer alphabet2_write_shared_outer_p32j4r32
-run_variant write-pole-outer-p32j4r32-fromscratch-100m pole_outer alphabet2_write_pole_outer_p32j4r32
+if [[ "${WRITE_LAW_SKIP_ROW_SPECIFIC:-0}" != 1 ]]; then
+  run_variant write-row-specific-p32j4r32-fromscratch-100m row_specific alphabet2_write_row_specific_p32j4r32
+fi
+if [[ "${WRITE_LAW_SKIP_SHARED_OUTER:-0}" != 1 ]]; then
+  run_variant write-shared-outer-p32j4r32-fromscratch-100m shared_outer alphabet2_write_shared_outer_p32j4r32
+fi
+if [[ "${WRITE_LAW_SKIP_POLE_OUTER:-0}" != 1 ]]; then
+  run_variant write-pole-outer-p32j4r32-fromscratch-100m pole_outer alphabet2_write_pole_outer_p32j4r32
+fi
 
 echo "KAU_ALPHABET_LM_WRITE_LAW_FACTORIAL_COMPLETE=${OUTPUT_ROOT}"
