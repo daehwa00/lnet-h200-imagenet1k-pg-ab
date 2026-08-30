@@ -2652,26 +2652,28 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
             2 * pole_modes * synthesis_rank, 2 * modes, bias=False
         )
         if self.learned_factor_read:
-            self.factor_read_norm = nn.RMSNorm(2 * modes, eps=epsilon)
-            self.factor_read_real = nn.Linear(
-                2 * modes, pole_modes * write_rank, bias=False
-            )
-            self.factor_read_imag = nn.Linear(
-                2 * modes, pole_modes * write_rank, bias=False
-            )
+            with torch.random.fork_rng(devices=[]):
+                self.factor_read_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+                self.factor_read_real = nn.Linear(
+                    2 * modes, pole_modes * write_rank, bias=False
+                )
+                self.factor_read_imag = nn.Linear(
+                    2 * modes, pole_modes * write_rank, bias=False
+                )
         else:
             self.factor_read_norm = None
             self.factor_read_real = None
             self.factor_read_imag = None
         extra_width = vector_width - self.baseline_width
         if self.factor_write_law == "pole_outer" and extra_width > 0:
-            self.pole_value_norm = nn.RMSNorm(2 * modes, eps=epsilon)
-            self.pole_value_real = nn.Linear(
-                2 * modes, pole_modes * extra_width, bias=False
-            )
-            self.pole_value_imag = nn.Linear(
-                2 * modes, pole_modes * extra_width, bias=False
-            )
+            with torch.random.fork_rng(devices=[]):
+                self.pole_value_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+                self.pole_value_real = nn.Linear(
+                    2 * modes, pole_modes * extra_width, bias=False
+                )
+                self.pole_value_imag = nn.Linear(
+                    2 * modes, pole_modes * extra_width, bias=False
+                )
         else:
             self.pole_value_norm = None
             self.pole_value_real = None
@@ -2690,20 +2692,21 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
             self.outer_output = None
             return
         packed_modes = 2 * modes
-        self.outer_input_norm = nn.RMSNorm(packed_modes, eps=epsilon)
-        self.outer_input_projection = nn.Linear(
-            packed_modes, 2 * packed_modes, bias=False
-        )
-        self.outer_conv = nn.Conv1d(
-            packed_modes,
-            packed_modes,
-            kernel_size=self.outer_kernel,
-            groups=packed_modes,
-            bias=True,
-        )
-        self.outer_direct_scale = nn.Parameter(torch.ones(packed_modes))
-        self.outer_post_norm = nn.RMSNorm(packed_modes, eps=epsilon)
-        self.outer_output = nn.Linear(packed_modes, packed_modes, bias=False)
+        with torch.random.fork_rng(devices=[]):
+            self.outer_input_norm = nn.RMSNorm(packed_modes, eps=epsilon)
+            self.outer_input_projection = nn.Linear(
+                packed_modes, 2 * packed_modes, bias=False
+            )
+            self.outer_conv = nn.Conv1d(
+                packed_modes,
+                packed_modes,
+                kernel_size=self.outer_kernel,
+                groups=packed_modes,
+                bias=True,
+            )
+            self.outer_direct_scale = nn.Parameter(torch.ones(packed_modes))
+            self.outer_post_norm = nn.RMSNorm(packed_modes, eps=epsilon)
+            self.outer_output = nn.Linear(packed_modes, packed_modes, bias=False)
 
     def _initialize_factorized_expansion(self) -> None:
         baseline_width = self.baseline_width

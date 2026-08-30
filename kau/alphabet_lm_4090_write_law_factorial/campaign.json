@@ -1,7 +1,7 @@
 {
   "schema": "lnet.kau.alphabet_lm.write_law_factorial.v1",
-  "campaign_id": "kau-alphabet-lm-write-law-factorial-p32j4r32-s501-v1",
-  "output_namespace": "alphabet-lm-4090-write-law-factorial-v1",
+  "campaign_id": "kau-alphabet-lm-write-law-fromscratch-p32j4r32-s501-v2",
+  "output_namespace": "alphabet-lm-4090-write-law-fromscratch-v2",
   "architecture": {
     "K": 256,
     "layers": 12,
@@ -26,25 +26,25 @@
       "repeated_vector_pole_activation_checkpoint": true
     },
     "variants": {
-      "write-row-specific-p32j4r32-4m": {
+      "write-row-specific-p32j4r32-fromscratch-30m": {
         "repeated_vector_pole_factor_write_law": "row_specific"
       },
-      "write-shared-outer-p32j4r32-4m": {
+      "write-shared-outer-p32j4r32-fromscratch-30m": {
         "repeated_vector_pole_factor_write_law": "shared_outer"
       },
-      "write-pole-outer-p32j4r32-4m": {
+      "write-pole-outer-p32j4r32-fromscratch-30m": {
         "repeated_vector_pole_factor_write_law": "pole_outer"
       }
     }
   },
   "source": {
-    "repeated_p32r4_30m_checkpoint": "/home/daehwa/alphabet-lm-4090-repeated-vector-pole-30m-runs/29d0c393a1f22e2e/repeated-vector-pole-30m/checkpoint.pt",
-    "repeated_p32r4_30m_sha256": "b0802a7e3036ad49c036d35b4aab79771e28fd3624381457d44096f982b8ea6e",
-    "repeated_p32r4_30m_validation_loss": 5.275131382000801
+    "initialization": "seed501_from_scratch",
+    "checkpoint_initialization": false
   },
   "training": {
     "seed": 501,
-    "target_tokens": 4000000,
+    "target_tokens": 30000000,
+    "validation_milestone_tokens": [10000000],
     "horizon_tokens": 300000000,
     "global_sequences": 32,
     "microbatch": 8,
@@ -57,23 +57,23 @@
     "warmup_updates": 20,
     "checkpoint_updates": 25,
     "execution": [
-      "write-row-specific-p32j4r32-4m",
-      "write-shared-outer-p32j4r32-4m",
-      "write-pole-outer-p32j4r32-4m"
+      "write-row-specific-p32j4r32-fromscratch-30m",
+      "write-shared-outer-p32j4r32-fromscratch-30m",
+      "write-pole-outer-p32j4r32-fromscratch-30m"
     ]
   },
   "parameter_counts": {
-    "write-row-specific-p32j4r32-4m": 6359040,
-    "write-shared-outer-p32j4r32-4m": 6359040,
-    "write-pole-outer-p32j4r32-4m": 17375232
+    "write-row-specific-p32j4r32-fromscratch-30m": 48587020,
+    "write-shared-outer-p32j4r32-fromscratch-30m": 48587020,
+    "write-pole-outer-p32j4r32-fromscratch-30m": 59603212
   },
   "total_parameter_counts": {
-    "write-row-specific-p32j4r32-4m": 48587020,
-    "write-shared-outer-p32j4r32-4m": 48587020,
-    "write-pole-outer-p32j4r32-4m": 59603212
+    "write-row-specific-p32j4r32-fromscratch-30m": 48587020,
+    "write-shared-outer-p32j4r32-fromscratch-30m": 48587020,
+    "write-pole-outer-p32j4r32-fromscratch-30m": 59603212
   },
   "diagnostics": {
-    "same_source_function": true,
+    "same_seed_from_scratch": true,
     "same_state_shape": [32, 4, 32],
     "shared_outer_is_strict_restriction": true,
     "pole_outer_has_pole_specific_value": true,
@@ -82,6 +82,6 @@
   "wandb": {
     "entity": "daehwa",
     "project": "alphabet-lm-viability",
-    "group": "ALPHABET-LM-RTX4090-WriteLawFactorial-S501-v1"
+    "group": "ALPHABET-LM-RTX4090-WriteLawFromScratch-S501-v2"
   }
 }

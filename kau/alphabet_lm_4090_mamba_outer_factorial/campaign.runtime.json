@@ -1,0 +1,203 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "mamba-outer-both-fromscratch-30m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_activation_checkpoint": true,
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_factor_read_rho": 0.5,
+        "repeated_vector_pole_factor_write_law": "row_specific",
+        "repeated_vector_pole_factorized": true,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_learned_factor_read": true,
+        "repeated_vector_pole_mamba_outer": true,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_outer_direct": true,
+        "repeated_vector_pole_outer_gate": true,
+        "repeated_vector_pole_outer_kernel": 4,
+        "repeated_vector_pole_query_rank": 4,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_retain_factor_state": true,
+        "repeated_vector_pole_synthesis_rank": 4,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_write_rank": 4
+      },
+      "mamba-outer-direct-fromscratch-30m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_activation_checkpoint": true,
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_factor_read_rho": 0.5,
+        "repeated_vector_pole_factor_write_law": "row_specific",
+        "repeated_vector_pole_factorized": true,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_learned_factor_read": true,
+        "repeated_vector_pole_mamba_outer": true,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_outer_direct": true,
+        "repeated_vector_pole_outer_gate": false,
+        "repeated_vector_pole_outer_kernel": 4,
+        "repeated_vector_pole_query_rank": 4,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_retain_factor_state": true,
+        "repeated_vector_pole_synthesis_rank": 4,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_write_rank": 4
+      },
+      "mamba-outer-gate-fromscratch-30m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_activation_checkpoint": true,
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_factor_read_rho": 0.5,
+        "repeated_vector_pole_factor_write_law": "row_specific",
+        "repeated_vector_pole_factorized": true,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_learned_factor_read": true,
+        "repeated_vector_pole_mamba_outer": true,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_outer_direct": false,
+        "repeated_vector_pole_outer_gate": true,
+        "repeated_vector_pole_outer_kernel": 4,
+        "repeated_vector_pole_query_rank": 4,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_retain_factor_state": true,
+        "repeated_vector_pole_synthesis_rank": 4,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_write_rank": 4
+      },
+      "mamba-outer-post-fromscratch-30m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_activation_checkpoint": true,
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_factor_read_rho": 0.5,
+        "repeated_vector_pole_factor_write_law": "row_specific",
+        "repeated_vector_pole_factorized": true,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_learned_factor_read": true,
+        "repeated_vector_pole_mamba_outer": true,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_outer_direct": false,
+        "repeated_vector_pole_outer_gate": false,
+        "repeated_vector_pole_outer_kernel": 4,
+        "repeated_vector_pole_query_rank": 4,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_retain_factor_state": true,
+        "repeated_vector_pole_synthesis_rank": 4,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_write_rank": 4
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-mamba-outer-fromscratch-s501-v1",
+  "campaign_manifest_sha256": "2d22d79b4d300f77caca62018ed11956c4d5858c4ac623a8e4f7f229b3f9b282",
+  "diagnostics": {
+    "direct_gate_factorial": true,
+    "paired_from_scratch": true,
+    "reader_specialization_preserved": true,
+    "source_preserving_delta_initialization": true
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-MambaOuterFromScratch-S501-v1",
+  "output_namespace": "alphabet-lm-4090-mamba-outer-fromscratch-v1",
+  "parameter_counts": {
+    "mamba-outer-both-fromscratch-30m": 58073356,
+    "mamba-outer-direct-fromscratch-30m": 58073356,
+    "mamba-outer-gate-fromscratch-30m": 58073356,
+    "mamba-outer-post-fromscratch-30m": 58073356
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "mamba-outer-both-fromscratch-30m": {
+      "display_name": "RTX4090-S501-ALPHABET2-mamba-outer-both-fromscratch-30m",
+      "id": "c543b51cf48cc14f",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "MambaOuter",
+        "FromScratch"
+      ]
+    },
+    "mamba-outer-direct-fromscratch-30m": {
+      "display_name": "RTX4090-S501-ALPHABET2-mamba-outer-direct-fromscratch-30m",
+      "id": "36a82af115340426",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "MambaOuter",
+        "FromScratch"
+      ]
+    },
+    "mamba-outer-gate-fromscratch-30m": {
+      "display_name": "RTX4090-S501-ALPHABET2-mamba-outer-gate-fromscratch-30m",
+      "id": "eb5819b74dccc43c",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "MambaOuter",
+        "FromScratch"
+      ]
+    },
+    "mamba-outer-post-fromscratch-30m": {
+      "display_name": "RTX4090-S501-ALPHABET2-mamba-outer-post-fromscratch-30m",
+      "id": "ea88a0d550f96d8c",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "MambaOuter",
+        "FromScratch"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "checkpoint_initialization": false,
+    "initialization": "seed501_from_scratch"
+  },
+  "total_parameter_counts": {
+    "mamba-outer-both-fromscratch-30m": 58073356,
+    "mamba-outer-direct-fromscratch-30m": 58073356,
+    "mamba-outer-gate-fromscratch-30m": 58073356,
+    "mamba-outer-post-fromscratch-30m": 58073356
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "mamba-outer-post-fromscratch-30m",
+      "mamba-outer-direct-fromscratch-30m",
+      "mamba-outer-gate-fromscratch-30m",
+      "mamba-outer-both-fromscratch-30m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 30000000,
+    "validation_milestone_tokens": [
+      10000000
+    ],
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

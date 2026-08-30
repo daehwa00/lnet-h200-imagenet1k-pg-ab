@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the three-arm retained-factor write-law runtime."""
+"""Generate the from-scratch direct/gate outer-scaffold factorial runtime."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MANIFEST = ROOT / "kau/alphabet_lm_4090_write_law_factorial/campaign.json"
-RUNTIME = ROOT / "kau/alphabet_lm_4090_write_law_factorial/campaign.runtime.json"
+MANIFEST = ROOT / "kau/alphabet_lm_4090_mamba_outer_factorial/campaign.json"
+RUNTIME = ROOT / "kau/alphabet_lm_4090_mamba_outer_factorial/campaign.runtime.json"
 
 
 def _render() -> str:
@@ -25,25 +25,25 @@ def _render() -> str:
         for label in execution
     }
     expected = {
-        "write-row-specific-p32j4r32-fromscratch-30m": "row_specific",
-        "write-shared-outer-p32j4r32-fromscratch-30m": "shared_outer",
-        "write-pole-outer-p32j4r32-fromscratch-30m": "pole_outer",
+        "mamba-outer-post-fromscratch-30m": (False, False),
+        "mamba-outer-direct-fromscratch-30m": (True, False),
+        "mamba-outer-gate-fromscratch-30m": (False, True),
+        "mamba-outer-both-fromscratch-30m": (True, True),
     }
     if (
         execution != list(expected)
         or manifest["training"]["target_tokens"] != 30_000_000
         or manifest["training"]["validation_milestone_tokens"] != [10_000_000]
     ):
-        raise RuntimeError("invalid write-law factorial execution")
-    for label, law in expected.items():
+        raise RuntimeError("invalid Mamba outer factorial execution")
+    for label, (direct, gate) in expected.items():
         variant = variants[label]
         if (
-            variant["repeated_vector_pole_factor_write_law"] != law
-            or not variant["repeated_vector_pole_retain_factor_state"]
-            or not variant["repeated_vector_pole_learned_factor_read"]
-            or variant["repeated_vector_pole_synthesis_rank"] != 4
+            not variant["repeated_vector_pole_mamba_outer"]
+            or variant["repeated_vector_pole_outer_direct"] is not direct
+            or variant["repeated_vector_pole_outer_gate"] is not gate
         ):
-            raise RuntimeError(f"invalid write-law variant: {label}")
+            raise RuntimeError(f"invalid Mamba outer variant: {label}")
     campaign_id = manifest["campaign_id"]
     runtime = {
         "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
@@ -67,7 +67,7 @@ def _render() -> str:
             label: {
                 "id": hashlib.sha256(f"{campaign_id}\0{label}:seed501".encode()).hexdigest()[:16],
                 "display_name": f"RTX4090-S501-ALPHABET2-{label}",
-                "tags": ["RTX4090", "ALPHABET2", "WriteLawFactorial"],
+                "tags": ["RTX4090", "ALPHABET2", "MambaOuter", "FromScratch"],
             }
             for label in execution
         },
@@ -82,7 +82,7 @@ def main() -> int:
     rendered = _render()
     if args.check:
         if not RUNTIME.is_file() or RUNTIME.read_text(encoding="utf-8") != rendered:
-            print("stale write-law factorial runtime", file=sys.stderr)
+            print("stale Mamba outer factorial runtime", file=sys.stderr)
             return 1
         return 0
     RUNTIME.write_text(rendered, encoding="utf-8")

@@ -2376,6 +2376,52 @@ def test_outer_product_write_laws_are_rank_one_per_pole(write_law: str) -> None:
     assert int((singular > 1.0e-4).sum(dim=-1).max()) <= 1
 
 
+def test_from_scratch_variants_share_every_common_initial_tensor() -> None:
+    base = replace(
+        _factorized_repeated_vector_pole_config(),
+        repeated_vector_pole_retain_factor_state=True,
+    )
+    configs = (
+        base,
+        replace(base, repeated_vector_pole_learned_factor_read=True),
+        replace(
+            base,
+            repeated_vector_pole_learned_factor_read=True,
+            repeated_vector_pole_factor_write_law="shared_outer",
+        ),
+        replace(
+            base,
+            repeated_vector_pole_learned_factor_read=True,
+            repeated_vector_pole_factor_write_law="pole_outer",
+        ),
+    )
+    states: list[dict[str, torch.Tensor]] = []
+    for config in configs:
+        torch.manual_seed(501)
+        states.append(AlphabetLM(config).state_dict())
+    common = set.intersection(*(set(state) for state in states))
+    assert common
+    for name in common:
+        torch.testing.assert_close(
+            states[0][name],
+            states[1][name],
+            atol=0.0,
+            rtol=0.0,
+        )
+        torch.testing.assert_close(
+            states[0][name],
+            states[2][name],
+            atol=0.0,
+            rtol=0.0,
+        )
+        torch.testing.assert_close(
+            states[0][name],
+            states[3][name],
+            atol=0.0,
+            rtol=0.0,
+        )
+
+
 def test_learned_factor_read_is_identity_initialized_and_trainable() -> None:
     fixed_config = replace(
         _factorized_repeated_vector_pole_config(),

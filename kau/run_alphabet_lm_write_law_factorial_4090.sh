@@ -9,8 +9,6 @@ readonly OUTPUT_ROOT="${KAU_OUTPUT_ROOT:-/home/daehwa/alphabet-lm-4090-write-law
 readonly DATA_ROOT="/home/daehwa/alphabet-lm-data-fineweb-edu-v1"
 readonly TRAIN_MANIFEST="${DATA_ROOT}/tokens/train.manifest.json"
 readonly VALIDATION_MANIFEST="${DATA_ROOT}/tokens/validation.manifest.json"
-readonly SOURCE="/home/daehwa/alphabet-lm-4090-repeated-vector-pole-30m-runs/29d0c393a1f22e2e/repeated-vector-pole-30m/checkpoint.pt"
-readonly EXPECTED_SHA="b0802a7e3036ad49c036d35b4aab79771e28fd3624381457d44096f982b8ea6e"
 
 cd "${PROJECT_ROOT}"
 if [[ ! "${KAU_EXPECTED_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] \
@@ -19,7 +17,6 @@ if [[ ! "${KAU_EXPECTED_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] \
   exit 2
 fi
 python3 kau/alphabet_lm_4090_write_law_factorial/generate_contract.py --check
-[[ "$(sha256sum "${SOURCE}" | cut -d' ' -f1)" == "${EXPECTED_SHA}" ]]
 mkdir -p "${OUTPUT_ROOT}"
 exec 9>"${OUTPUT_ROOT}/queue.lock"
 flock -n 9 || { echo "ERROR: write-law factorial already running" >&2; exit 2; }
@@ -36,7 +33,7 @@ export MKL_NUM_THREADS=8
 export WANDB_BASE_URL="https://api.wandb.ai"
 export WANDB_ENTITY="daehwa"
 export WANDB_PROJECT="alphabet-lm-viability"
-export WANDB_GROUP="ALPHABET-LM-RTX4090-WriteLawFactorial-S501-v1"
+export WANDB_GROUP="ALPHABET-LM-RTX4090-WriteLawFromScratch-S501-v2"
 export WANDB_CONSOLE=off
 
 run_variant() {
@@ -66,8 +63,7 @@ run_variant() {
     --repeated-vector-pole-factor-read-rho 0.5 \
     --repeated-vector-pole-factor-write-law "${law}" \
     --repeated-vector-pole-activation-checkpoint \
-    --initialize-repeated-factorized-checkpoint "${SOURCE}" \
-    --target-tokens-override 4000000 \
+    --target-tokens-override 30000000 \
     --runtime "${RUNTIME}" \
     --train-manifest "${TRAIN_MANIFEST}" \
     --validation-manifest "${VALIDATION_MANIFEST}" \
@@ -82,8 +78,8 @@ run_variant() {
     --output "${OUTPUT_ROOT}/${label}/context.json"
 }
 
-run_variant write-row-specific-p32j4r32-4m row_specific alphabet2_write_row_specific_p32j4r32
-run_variant write-shared-outer-p32j4r32-4m shared_outer alphabet2_write_shared_outer_p32j4r32
-run_variant write-pole-outer-p32j4r32-4m pole_outer alphabet2_write_pole_outer_p32j4r32
+run_variant write-row-specific-p32j4r32-fromscratch-30m row_specific alphabet2_write_row_specific_p32j4r32
+run_variant write-shared-outer-p32j4r32-fromscratch-30m shared_outer alphabet2_write_shared_outer_p32j4r32
+run_variant write-pole-outer-p32j4r32-fromscratch-30m pole_outer alphabet2_write_pole_outer_p32j4r32
 
 echo "KAU_ALPHABET_LM_WRITE_LAW_FACTORIAL_COMPLETE=${OUTPUT_ROOT}"

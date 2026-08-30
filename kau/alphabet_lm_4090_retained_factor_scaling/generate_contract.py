@@ -25,8 +25,8 @@ def _render() -> str:
         for label in execution
     }
     expected = {
-        "retained-factor-fixed-c-p32j4r32-30m": False,
-        "retained-factor-learned-c-p32j4r32-30m": True,
+        "retained-factor-fixed-c-p32j4r32-fromscratch-30m": False,
+        "retained-factor-learned-c-p32j4r32-fromscratch-30m": True,
     }
     if (
         execution != list(expected)

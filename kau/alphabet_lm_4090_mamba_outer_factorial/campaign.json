@@ -1,0 +1,99 @@
+{
+  "schema": "lnet.kau.alphabet_lm.mamba_outer_factorial.v1",
+  "campaign_id": "kau-alphabet-lm-mamba-outer-fromscratch-s501-v1",
+  "output_namespace": "alphabet-lm-4090-mamba-outer-fromscratch-v1",
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "common": {
+      "reader_type": "dense_k3",
+      "memory_layout": "local_only",
+      "repeated_vector_pole_memory": true,
+      "repeated_vector_pole_interval": 1,
+      "repeated_vector_pole_modes": 32,
+      "repeated_vector_pole_width": 32,
+      "repeated_vector_pole_reader_kernel": 3,
+      "repeated_vector_pole_beta_initial": 0.01,
+      "repeated_vector_pole_minimum_half_life": 16.0,
+      "repeated_vector_pole_maximum_half_life": 4096.0,
+      "repeated_vector_pole_factorized": true,
+      "repeated_vector_pole_write_rank": 4,
+      "repeated_vector_pole_query_rank": 4,
+      "repeated_vector_pole_synthesis_rank": 4,
+      "repeated_vector_pole_retain_factor_state": true,
+      "repeated_vector_pole_learned_factor_read": true,
+      "repeated_vector_pole_factor_read_rho": 0.5,
+      "repeated_vector_pole_factor_write_law": "row_specific",
+      "repeated_vector_pole_mamba_outer": true,
+      "repeated_vector_pole_outer_kernel": 4,
+      "repeated_vector_pole_activation_checkpoint": true
+    },
+    "variants": {
+      "mamba-outer-post-fromscratch-30m": {
+        "repeated_vector_pole_outer_direct": false,
+        "repeated_vector_pole_outer_gate": false
+      },
+      "mamba-outer-direct-fromscratch-30m": {
+        "repeated_vector_pole_outer_direct": true,
+        "repeated_vector_pole_outer_gate": false
+      },
+      "mamba-outer-gate-fromscratch-30m": {
+        "repeated_vector_pole_outer_direct": false,
+        "repeated_vector_pole_outer_gate": true
+      },
+      "mamba-outer-both-fromscratch-30m": {
+        "repeated_vector_pole_outer_direct": true,
+        "repeated_vector_pole_outer_gate": true
+      }
+    }
+  },
+  "source": {
+    "initialization": "seed501_from_scratch",
+    "checkpoint_initialization": false
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 30000000,
+    "validation_milestone_tokens": [10000000],
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "mamba-outer-post-fromscratch-30m",
+      "mamba-outer-direct-fromscratch-30m",
+      "mamba-outer-gate-fromscratch-30m",
+      "mamba-outer-both-fromscratch-30m"
+    ]
+  },
+  "parameter_counts": {
+    "mamba-outer-post-fromscratch-30m": 58073356,
+    "mamba-outer-direct-fromscratch-30m": 58073356,
+    "mamba-outer-gate-fromscratch-30m": 58073356,
+    "mamba-outer-both-fromscratch-30m": 58073356
+  },
+  "total_parameter_counts": {
+    "mamba-outer-post-fromscratch-30m": 58073356,
+    "mamba-outer-direct-fromscratch-30m": 58073356,
+    "mamba-outer-gate-fromscratch-30m": 58073356,
+    "mamba-outer-both-fromscratch-30m": 58073356
+  },
+  "diagnostics": {
+    "paired_from_scratch": true,
+    "direct_gate_factorial": true,
+    "source_preserving_delta_initialization": true,
+    "reader_specialization_preserved": true
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-MambaOuterFromScratch-S501-v1"
+  }
+}

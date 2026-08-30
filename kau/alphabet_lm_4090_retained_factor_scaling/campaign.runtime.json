@@ -3,7 +3,7 @@
     "K": 256,
     "layers": 12,
     "variants": {
-      "retained-factor-fixed-c-p32j4r32-30m": {
+      "retained-factor-fixed-c-p32j4r32-fromscratch-30m": {
         "memory_layout": "local_only",
         "reader_type": "dense_k3",
         "repeated_vector_pole_activation_checkpoint": true,
@@ -23,7 +23,7 @@
         "repeated_vector_pole_width": 32,
         "repeated_vector_pole_write_rank": 4
       },
-      "retained-factor-learned-c-p32j4r32-30m": {
+      "retained-factor-learned-c-p32j4r32-fromscratch-30m": {
         "memory_layout": "local_only",
         "reader_type": "dense_k3",
         "repeated_vector_pole_activation_checkpoint": true,
@@ -45,29 +45,28 @@
       }
     }
   },
-  "campaign_id": "kau-alphabet-lm-retained-factor-scaling-30m-s501-v1",
-  "campaign_manifest_sha256": "1a812a9aa0366bbffa7a50978d4a49ea89eab8b7de7e05455947c027b00d1add",
+  "campaign_id": "kau-alphabet-lm-retained-factor-fromscratch-30m-s501-v2",
+  "campaign_manifest_sha256": "3240288a2256eb69a37a6dc4e2651cb47be8bc4cd9f719458b9538e3e9f1068a",
   "diagnostics": {
     "final_factor_read_interventions": true,
     "milestones": [
-      4000000,
       10000000,
       30000000
     ],
-    "paired_scaling": true
+    "paired_from_scratch": true
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-RetainedFactorScaling-S501-v1",
-  "output_namespace": "alphabet-lm-4090-retained-factor-scaling-v1",
+  "group": "ALPHABET-LM-RTX4090-RetainedFactorFromScratch-S501-v2",
+  "output_namespace": "alphabet-lm-4090-retained-factor-fromscratch-v2",
   "parameter_counts": {
-    "retained-factor-fixed-c-p32j4r32-30m": 4780032,
-    "retained-factor-learned-c-p32j4r32-30m": 6359040
+    "retained-factor-fixed-c-p32j4r32-fromscratch-30m": 47008012,
+    "retained-factor-learned-c-p32j4r32-fromscratch-30m": 48587020
   },
   "project": "alphabet-lm-viability",
   "runs": {
-    "retained-factor-fixed-c-p32j4r32-30m": {
-      "display_name": "RTX4090-S501-ALPHABET2-retained-factor-fixed-c-p32j4r32-30m",
-      "id": "d6123e210cb695a2",
+    "retained-factor-fixed-c-p32j4r32-fromscratch-30m": {
+      "display_name": "RTX4090-S501-ALPHABET2-retained-factor-fixed-c-p32j4r32-fromscratch-30m",
+      "id": "50bb08a8ad573fd6",
       "tags": [
         "RTX4090",
         "ALPHABET2",
@@ -75,9 +74,9 @@
         "30M"
       ]
     },
-    "retained-factor-learned-c-p32j4r32-30m": {
-      "display_name": "RTX4090-S501-ALPHABET2-retained-factor-learned-c-p32j4r32-30m",
-      "id": "686bd8232f1f29d2",
+    "retained-factor-learned-c-p32j4r32-fromscratch-30m": {
+      "display_name": "RTX4090-S501-ALPHABET2-retained-factor-learned-c-p32j4r32-fromscratch-30m",
+      "id": "3012a363cf1ef8a9",
       "tags": [
         "RTX4090",
         "ALPHABET2",
@@ -88,22 +87,19 @@
   },
   "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
   "source": {
-    "fixed_4m_checkpoint": "/home/daehwa/alphabet-lm-4090-retained-factor-state-runs/90044dafadab2e50/retained-factor-fixed-c-p32j4r32-4m/checkpoint.pt",
-    "fixed_4m_sha256": "35175fba24775bd025163fe22e7cd84cd10e1d4fc7042284a94afa4e6e56a56a",
-    "fixed_4m_validation_loss": 5.238573853779847,
-    "learned_4m_checkpoint": "/home/daehwa/alphabet-lm-4090-retained-factor-state-runs/90044dafadab2e50/retained-factor-learned-c-p32j4r32-4m/checkpoint.pt",
-    "learned_4m_sha256": "1813c48ac255a83d3a42454f63a04cb83f351ac7698692d8ca4dea3ca3e2a0a0",
-    "learned_4m_validation_loss": 5.237513786331776
+    "checkpoint_initialization": false,
+    "initialization": "seed501_from_scratch",
+    "prior_extension_results_are_diagnostic_only": true
   },
   "total_parameter_counts": {
-    "retained-factor-fixed-c-p32j4r32-30m": 47008012,
-    "retained-factor-learned-c-p32j4r32-30m": 48587020
+    "retained-factor-fixed-c-p32j4r32-fromscratch-30m": 47008012,
+    "retained-factor-learned-c-p32j4r32-fromscratch-30m": 48587020
   },
   "training": {
     "checkpoint_updates": 25,
     "execution": [
-      "retained-factor-fixed-c-p32j4r32-30m",
-      "retained-factor-learned-c-p32j4r32-30m"
+      "retained-factor-fixed-c-p32j4r32-fromscratch-30m",
+      "retained-factor-learned-c-p32j4r32-fromscratch-30m"
     ],
     "global_sequences": 32,
     "gradient_clip": 1.0,
