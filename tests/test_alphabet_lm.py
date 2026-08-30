@@ -5,7 +5,7 @@ import json
 import math
 from dataclasses import replace
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -2313,6 +2313,67 @@ def test_retained_factor_state_fixed_read_matches_collapsed_factorization() -> N
         expected = collapsed(tokens)
         actual = retained(tokens)
     torch.testing.assert_close(actual, expected, atol=2.0e-5, rtol=2.0e-5)
+
+
+@pytest.mark.parametrize(
+    "write_law",
+    ["row_specific", "shared_outer", "pole_outer"],
+)
+def test_retained_factor_write_laws_preserve_the_p32r4_source(
+    tmp_path: Path,
+    write_law: str,
+) -> None:
+    dense_config = replace(_repeated_vector_pole_config(), repeated_vector_pole_width=4)
+    torch.manual_seed(501)
+    dense = AlphabetLM(dense_config).eval()
+    checkpoint = tmp_path / f"dense-{write_law}.pt"
+    torch.save({"model": dense.state_dict()}, checkpoint)
+    target_config = replace(
+        _factorized_repeated_vector_pole_config(),
+        repeated_vector_pole_retain_factor_state=True,
+        repeated_vector_pole_learned_factor_read=True,
+        repeated_vector_pole_factor_write_law=cast("Any", write_law),
+    )
+    torch.manual_seed(501)
+    target = AlphabetLM(target_config).eval()
+    _initialize_repeated_factorized_expansion(target, checkpoint)
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        expected = dense(tokens)
+        actual = target(tokens)
+    torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+
+@pytest.mark.parametrize("write_law", ["shared_outer", "pole_outer"])
+def test_outer_product_write_laws_are_rank_one_per_pole(write_law: str) -> None:
+    config = replace(
+        _factorized_repeated_vector_pole_config(),
+        repeated_vector_pole_retain_factor_state=True,
+        repeated_vector_pole_learned_factor_read=True,
+        repeated_vector_pole_factor_write_law=cast("Any", write_law),
+    )
+    model = AlphabetLM(config).eval()
+    banks = model.repeated_vector_pole_memories
+    assert banks is not None
+    bank = cast("FactorizedTokenRateVectorPoleBlock", banks[0])
+    real = torch.randn(1, 9, config.modes)
+    imag = torch.randn_like(real)
+    packed = torch.cat((real, imag), dim=-1)
+    coefficient = bank.reader(real, imag)
+    basis = bank.content_basis(packed)
+    drive = bank.factor_state_drive(
+        packed,
+        coefficient[0],
+        coefficient[1],
+        basis[0],
+        basis[1],
+    )
+    extra = torch.complex(
+        drive[0][..., bank.baseline_width :],
+        drive[1][..., bank.baseline_width :],
+    )
+    singular = torch.linalg.svdvals(extra)
+    assert int((singular > 1.0e-4).sum(dim=-1).max()) <= 1
 
 
 def test_learned_factor_read_is_identity_initialized_and_trainable() -> None:

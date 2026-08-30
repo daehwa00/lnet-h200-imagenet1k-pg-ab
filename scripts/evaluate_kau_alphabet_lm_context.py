@@ -179,8 +179,19 @@ def _build(kind: str) -> nn.Module:
         "alphabet2_mamba_outer_direct_p32j4r32",
         "alphabet2_mamba_outer_gate_p32j4r32",
         "alphabet2_mamba_outer_both_p32j4r32",
+        "alphabet2_write_row_specific_p32j4r32",
+        "alphabet2_write_shared_outer_p32j4r32",
+        "alphabet2_write_pole_outer_p32j4r32",
     }:
         outer = kind.startswith("alphabet2_mamba_outer_")
+        write_law = (
+            "shared_outer"
+            if kind.startswith("alphabet2_write_shared_outer")
+            else "pole_outer"
+            if kind.startswith("alphabet2_write_pole_outer")
+            else "row_specific"
+        )
+        write_law_campaign = kind.startswith("alphabet2_write_")
         config = AlphabetLMConfig(
             reader_type="dense_k3",
             memory_layout="local_only",
@@ -198,9 +209,10 @@ def _build(kind: str) -> nn.Module:
             repeated_vector_pole_synthesis_rank=4,
             repeated_vector_pole_retain_factor_state=True,
             repeated_vector_pole_learned_factor_read=(
-                kind.endswith("learned_p32r32_js4") or outer
+                kind.endswith("learned_p32r32_js4") or outer or write_law_campaign
             ),
             repeated_vector_pole_factor_read_rho=0.5,
+            repeated_vector_pole_factor_write_law=write_law,
             repeated_vector_pole_mamba_outer=outer,
             repeated_vector_pole_outer_direct=(
                 kind.endswith(("direct_p32j4r32", "both_p32j4r32"))
@@ -1813,6 +1825,7 @@ def _repeated_vector_pole_metrics(
                 )
                 if bank.retain_factor_state:
                     factor_excitation = bank.factor_state_drive(
+                        packed_source,
                         coefficient[0],
                         coefficient[1],
                         content_basis[0],
@@ -2352,6 +2365,9 @@ def main() -> None:
             "alphabet2_mamba_outer_direct_p32j4r32",
             "alphabet2_mamba_outer_gate_p32j4r32",
             "alphabet2_mamba_outer_both_p32j4r32",
+            "alphabet2_write_row_specific_p32j4r32",
+            "alphabet2_write_shared_outer_p32j4r32",
+            "alphabet2_write_pole_outer_p32j4r32",
             "mamba",
             "mamba2",
         ),

@@ -129,6 +129,9 @@ class AlphabetLMConfig:
     repeated_vector_pole_retain_factor_state: bool = False
     repeated_vector_pole_learned_factor_read: bool = False
     repeated_vector_pole_factor_read_rho: float = 0.5
+    repeated_vector_pole_factor_write_law: Literal[
+        "row_specific", "shared_outer", "pole_outer"
+    ] = "row_specific"
     repeated_vector_pole_mamba_outer: bool = False
     repeated_vector_pole_outer_direct: bool = False
     repeated_vector_pole_outer_gate: bool = False
@@ -436,6 +439,12 @@ class AlphabetLMConfig:
             )
             or (
                 self.repeated_vector_pole_mamba_outer
+                and not self.repeated_vector_pole_retain_factor_state
+            )
+            or self.repeated_vector_pole_factor_write_law
+            not in {"row_specific", "shared_outer", "pole_outer"}
+            or (
+                self.repeated_vector_pole_factor_write_law != "row_specific"
                 and not self.repeated_vector_pole_retain_factor_state
             )
             or not 0.0 < self.repeated_vector_pole_factor_read_rho <= 1.0
@@ -2542,6 +2551,7 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         retain_factor_state: bool,
         learned_factor_read: bool,
         factor_read_rho: float,
+        factor_write_law: Literal["row_specific", "shared_outer", "pole_outer"],
         mamba_outer: bool,
         outer_direct: bool,
         outer_gate: bool,
@@ -2565,6 +2575,7 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         self.retain_factor_state = bool(retain_factor_state)
         self.learned_factor_read = bool(learned_factor_read)
         self.factor_read_rho = float(factor_read_rho)
+        self.factor_write_law = factor_write_law
         self.mamba_outer = bool(mamba_outer)
         self.outer_direct = bool(outer_direct)
         self.outer_gate = bool(outer_gate)
@@ -2652,6 +2663,19 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
             self.factor_read_norm = None
             self.factor_read_real = None
             self.factor_read_imag = None
+        extra_width = vector_width - self.baseline_width
+        if self.factor_write_law == "pole_outer" and extra_width > 0:
+            self.pole_value_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+            self.pole_value_real = nn.Linear(
+                2 * modes, pole_modes * extra_width, bias=False
+            )
+            self.pole_value_imag = nn.Linear(
+                2 * modes, pole_modes * extra_width, bias=False
+            )
+        else:
+            self.pole_value_norm = None
+            self.pole_value_real = None
+            self.pole_value_imag = None
         self._configure_outer(modes, epsilon)
         self.beta = nn.Parameter(torch.tensor(float(beta_initial)))
         self._initialize_factorized_expansion()
@@ -2718,6 +2742,9 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         if self.factor_read_real is not None and self.factor_read_imag is not None:
             nn.init.zeros_(self.factor_read_real.weight)
             nn.init.zeros_(self.factor_read_imag.weight)
+        if self.pole_value_real is not None and self.pole_value_imag is not None:
+            nn.init.xavier_uniform_(self.pole_value_real.weight)
+            nn.init.xavier_uniform_(self.pole_value_imag.weight)
         if self.outer_output is not None:
             nn.init.zeros_(self.outer_output.weight)
 
@@ -2805,16 +2832,53 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
 
     def factor_state_drive(
         self,
+        packed: Tensor,
         coefficient_real: Tensor,
         coefficient_imag: Tensor,
         basis_real: Tensor,
         basis_imag: Tensor,
     ) -> ComplexField:
-        return (
+        row_specific = (
             coefficient_real.unsqueeze(-1) * basis_real.unsqueeze(-3)
             - coefficient_imag.unsqueeze(-1) * basis_imag.unsqueeze(-3),
             coefficient_real.unsqueeze(-1) * basis_imag.unsqueeze(-3)
             + coefficient_imag.unsqueeze(-1) * basis_real.unsqueeze(-3),
+        )
+        if self.factor_write_law == "row_specific" or self.vector_width == self.baseline_width:
+            return row_specific
+        baseline = (
+            row_specific[0][..., : self.baseline_width],
+            row_specific[1][..., : self.baseline_width],
+        )
+        if self.factor_write_law == "shared_outer":
+            value_real = basis_real[..., self.baseline_width :].mean(dim=-2)
+            value_imag = basis_imag[..., self.baseline_width :].mean(dim=-2)
+            value_real = value_real.unsqueeze(-2).unsqueeze(-3)
+            value_imag = value_imag.unsqueeze(-2).unsqueeze(-3)
+        else:
+            if (
+                self.pole_value_norm is None
+                or self.pole_value_real is None
+                or self.pole_value_imag is None
+            ):
+                raise RuntimeError("pole-specific outer value projection disappeared")
+            active = self.pole_value_norm(packed)
+            shape = (
+                *packed.shape[:-1],
+                self.pole_modes,
+                self.vector_width - self.baseline_width,
+            )
+            value_real = self.pole_value_real(active).reshape(shape).unsqueeze(-2)
+            value_imag = self.pole_value_imag(active).reshape(shape).unsqueeze(-2)
+        coefficient_real = coefficient_real.unsqueeze(-1)
+        coefficient_imag = coefficient_imag.unsqueeze(-1)
+        extra = (
+            coefficient_real * value_real - coefficient_imag * value_imag,
+            coefficient_real * value_imag + coefficient_imag * value_real,
+        )
+        return (
+            torch.cat((baseline[0], extra[0]), dim=-1),
+            torch.cat((baseline[1], extra[1]), dim=-1),
         )
 
     def factor_read(self, packed: Tensor) -> ComplexField | None:
@@ -2928,6 +2992,7 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         content_basis = self.content_basis(packed)
         if self.retain_factor_state:
             excitation = self.factor_state_drive(
+                packed,
                 coefficient_real,
                 coefficient_imag,
                 *content_basis,
@@ -2980,6 +3045,7 @@ def _make_repeated_vector_pole_block(
             retain_factor_state=config.repeated_vector_pole_retain_factor_state,
             learned_factor_read=config.repeated_vector_pole_learned_factor_read,
             factor_read_rho=config.repeated_vector_pole_factor_read_rho,
+            factor_write_law=config.repeated_vector_pole_factor_write_law,
             mamba_outer=config.repeated_vector_pole_mamba_outer,
             outer_direct=config.repeated_vector_pole_outer_direct,
             outer_gate=config.repeated_vector_pole_outer_gate,

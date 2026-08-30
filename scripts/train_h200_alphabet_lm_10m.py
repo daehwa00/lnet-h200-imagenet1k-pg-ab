@@ -922,6 +922,12 @@ def _initialize_repeated_factorized_expansion(
         ".query_basis_delta.",
         ".extra_projection_basis",
         ".extra_synthesis.",
+        ".factor_read_norm.",
+        ".factor_read_real.",
+        ".factor_read_imag.",
+        ".pole_value_norm.",
+        ".pole_value_real.",
+        ".pole_value_imag.",
     )
     trainable_parts = (
         ".extra_reader.",
@@ -934,6 +940,12 @@ def _initialize_repeated_factorized_expansion(
         ".query_basis_delta.",
         ".extra_projection_basis",
         ".extra_synthesis.",
+        ".factor_read_norm.",
+        ".factor_read_real.",
+        ".factor_read_imag.",
+        ".pole_value_norm.",
+        ".pole_value_real.",
+        ".pole_value_imag.",
     )
     expected_missing = {
         name
@@ -1259,6 +1271,7 @@ def _build(
     repeated_vector_pole_retain_factor_state: bool = False,
     repeated_vector_pole_learned_factor_read: bool = False,
     repeated_vector_pole_factor_read_rho: float = 0.5,
+    repeated_vector_pole_factor_write_law: str = "row_specific",
     repeated_vector_pole_mamba_outer: bool = False,
     repeated_vector_pole_outer_direct: bool = False,
     repeated_vector_pole_outer_gate: bool = False,
@@ -1378,6 +1391,9 @@ def _build(
             repeated_vector_pole_learned_factor_read
         ),
         repeated_vector_pole_factor_read_rho=repeated_vector_pole_factor_read_rho,
+        repeated_vector_pole_factor_write_law=cast(
+            "Any", repeated_vector_pole_factor_write_law
+        ),
         repeated_vector_pole_mamba_outer=repeated_vector_pole_mamba_outer,
         repeated_vector_pole_outer_direct=repeated_vector_pole_outer_direct,
         repeated_vector_pole_outer_gate=repeated_vector_pole_outer_gate,
@@ -1687,6 +1703,11 @@ def main() -> None:
     parser.add_argument(
         "--repeated-vector-pole-factor-read-rho", type=float, default=0.5
     )
+    parser.add_argument(
+        "--repeated-vector-pole-factor-write-law",
+        choices=("row_specific", "shared_outer", "pole_outer"),
+        default="row_specific",
+    )
     parser.add_argument("--repeated-vector-pole-mamba-outer", action="store_true")
     parser.add_argument("--repeated-vector-pole-outer-direct", action="store_true")
     parser.add_argument("--repeated-vector-pole-outer-gate", action="store_true")
@@ -1896,6 +1917,9 @@ def main() -> None:
         ),
         repeated_vector_pole_factor_read_rho=(
             args.repeated_vector_pole_factor_read_rho
+        ),
+        repeated_vector_pole_factor_write_law=(
+            args.repeated_vector_pole_factor_write_law
         ),
         repeated_vector_pole_mamba_outer=args.repeated_vector_pole_mamba_outer,
         repeated_vector_pole_outer_direct=args.repeated_vector_pole_outer_direct,
@@ -2226,6 +2250,9 @@ def main() -> None:
             "repeated_vector_pole_factor_read_rho": (
                 args.repeated_vector_pole_factor_read_rho
             ),
+            "repeated_vector_pole_factor_write_law": (
+                args.repeated_vector_pole_factor_write_law
+            ),
             "repeated_vector_pole_mamba_outer": (
                 args.repeated_vector_pole_mamba_outer
             ),
@@ -2473,6 +2500,9 @@ def main() -> None:
         ),
         "repeated_vector_pole_factor_read_rho": (
             args.repeated_vector_pole_factor_read_rho
+        ),
+        "repeated_vector_pole_factor_write_law": (
+            args.repeated_vector_pole_factor_write_law
         ),
         "repeated_vector_pole_mamba_outer": args.repeated_vector_pole_mamba_outer,
         "repeated_vector_pole_outer_direct": args.repeated_vector_pole_outer_direct,

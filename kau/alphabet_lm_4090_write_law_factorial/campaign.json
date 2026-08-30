@@ -1,0 +1,87 @@
+{
+  "schema": "lnet.kau.alphabet_lm.write_law_factorial.v1",
+  "campaign_id": "kau-alphabet-lm-write-law-factorial-p32j4r32-s501-v1",
+  "output_namespace": "alphabet-lm-4090-write-law-factorial-v1",
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "common": {
+      "reader_type": "dense_k3",
+      "memory_layout": "local_only",
+      "repeated_vector_pole_memory": true,
+      "repeated_vector_pole_interval": 1,
+      "repeated_vector_pole_modes": 32,
+      "repeated_vector_pole_width": 32,
+      "repeated_vector_pole_reader_kernel": 3,
+      "repeated_vector_pole_beta_initial": 0.01,
+      "repeated_vector_pole_minimum_half_life": 16.0,
+      "repeated_vector_pole_maximum_half_life": 4096.0,
+      "repeated_vector_pole_factorized": true,
+      "repeated_vector_pole_write_rank": 4,
+      "repeated_vector_pole_query_rank": 4,
+      "repeated_vector_pole_synthesis_rank": 4,
+      "repeated_vector_pole_retain_factor_state": true,
+      "repeated_vector_pole_learned_factor_read": true,
+      "repeated_vector_pole_factor_read_rho": 0.5,
+      "repeated_vector_pole_activation_checkpoint": true
+    },
+    "variants": {
+      "write-row-specific-p32j4r32-4m": {
+        "repeated_vector_pole_factor_write_law": "row_specific"
+      },
+      "write-shared-outer-p32j4r32-4m": {
+        "repeated_vector_pole_factor_write_law": "shared_outer"
+      },
+      "write-pole-outer-p32j4r32-4m": {
+        "repeated_vector_pole_factor_write_law": "pole_outer"
+      }
+    }
+  },
+  "source": {
+    "repeated_p32r4_30m_checkpoint": "/home/daehwa/alphabet-lm-4090-repeated-vector-pole-30m-runs/29d0c393a1f22e2e/repeated-vector-pole-30m/checkpoint.pt",
+    "repeated_p32r4_30m_sha256": "b0802a7e3036ad49c036d35b4aab79771e28fd3624381457d44096f982b8ea6e",
+    "repeated_p32r4_30m_validation_loss": 5.275131382000801
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 4000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "write-row-specific-p32j4r32-4m",
+      "write-shared-outer-p32j4r32-4m",
+      "write-pole-outer-p32j4r32-4m"
+    ]
+  },
+  "parameter_counts": {
+    "write-row-specific-p32j4r32-4m": 6359040,
+    "write-shared-outer-p32j4r32-4m": 6359040,
+    "write-pole-outer-p32j4r32-4m": 17375232
+  },
+  "total_parameter_counts": {
+    "write-row-specific-p32j4r32-4m": 48587020,
+    "write-shared-outer-p32j4r32-4m": 48587020,
+    "write-pole-outer-p32j4r32-4m": 59603212
+  },
+  "diagnostics": {
+    "same_source_function": true,
+    "same_state_shape": [32, 4, 32],
+    "shared_outer_is_strict_restriction": true,
+    "pole_outer_has_pole_specific_value": true,
+    "factor_read_interventions": true
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-WriteLawFactorial-S501-v1"
+  }
+}
