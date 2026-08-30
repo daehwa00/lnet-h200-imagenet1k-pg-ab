@@ -45,6 +45,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_chunk_memory_from_trunk,
     _initialize_cnn_pole_from_trunk,
     _initialize_repeated_factorized_expansion,
+    _initialize_repeated_retained_factor_state,
     _initialize_semantic_edge_from_trunk,
     _initialize_sidecar_from_trunk,
     _initialize_slow_cnn_pole_from_trunk,
@@ -61,6 +62,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_slow_vector_pole_from_trunk,
     _initialize_slow_write_scheduler_from_trunk,
     _validate_repeated_factorized_source,
+    _validate_repeated_retained_source,
     _validate_slow_complex_vector_source,
     _validate_slow_dynamic_transport_source,
     _validate_slow_full_complex_vector_source,
@@ -2291,6 +2293,85 @@ def test_factorized_state_functional_overrides_act_on_memory_coordinates() -> No
     assert torch.count_nonzero(projected_imag[..., :-4]) == 0
     torch.testing.assert_close(projected_real[..., -4:], expected_real[..., -4:])
     torch.testing.assert_close(projected_imag[..., -4:], expected_imag[..., -4:])
+
+
+def test_retained_factor_state_fixed_read_matches_collapsed_factorization() -> None:
+    collapsed_config = _factorized_repeated_vector_pole_config()
+    torch.manual_seed(501)
+    collapsed = AlphabetLM(collapsed_config).eval()
+    retained = AlphabetLM(
+        replace(
+            collapsed_config,
+            repeated_vector_pole_retain_factor_state=True,
+        )
+    ).eval()
+    retained.load_state_dict(collapsed.state_dict())
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        expected = collapsed(tokens)
+        actual = retained(tokens)
+    torch.testing.assert_close(actual, expected, atol=2.0e-5, rtol=2.0e-5)
+
+
+def test_learned_factor_read_is_identity_initialized_and_trainable() -> None:
+    fixed_config = replace(
+        _factorized_repeated_vector_pole_config(),
+        repeated_vector_pole_retain_factor_state=True,
+    )
+    torch.manual_seed(501)
+    fixed = AlphabetLM(fixed_config).eval()
+    learned = AlphabetLM(
+        replace(
+            fixed_config,
+            repeated_vector_pole_learned_factor_read=True,
+        )
+    ).eval()
+    incompatible = learned.load_state_dict(fixed.state_dict(), strict=False)
+    assert not incompatible.unexpected_keys
+    assert incompatible.missing_keys
+    assert all("factor_read" in name for name in incompatible.missing_keys)
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        expected = fixed(tokens)
+        actual = learned(tokens)
+    torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+    learned.train()(tokens).square().mean().backward()
+    banks = learned.repeated_vector_pole_memories
+    assert banks is not None
+    bank = cast("FactorizedTokenRateVectorPoleBlock", banks[0])
+    assert bank.factor_read_real is not None
+    assert bank.factor_read_real.weight.grad is not None
+    assert bank.factor_read_real.weight.grad.abs().sum() > 0
+
+
+def test_retained_factor_checkpoint_contract_freezes_the_source_trunk(
+    tmp_path: Path,
+) -> None:
+    source_config = _factorized_repeated_vector_pole_config()
+    source = AlphabetLM(source_config)
+    checkpoint = tmp_path / "factorized.pt"
+    torch.save({"model": source.state_dict()}, checkpoint)
+    retained = AlphabetLM(
+        replace(
+            source_config,
+            repeated_vector_pole_retain_factor_state=True,
+            repeated_vector_pole_learned_factor_read=True,
+        )
+    )
+    contract = _initialize_repeated_retained_factor_state(retained, checkpoint)
+    assert contract["enabled"] is True
+    trainable = [
+        name for name, parameter in retained.named_parameters() if parameter.requires_grad
+    ]
+    assert trainable
+    assert all(name.startswith("repeated_vector_pole_memories.") for name in trainable)
+    assert any("factor_read" in name for name in trainable)
+    digest = cast("str", contract["checkpoint_sha256"])
+    _validate_repeated_retained_source(
+        contract,
+        {"source": {"factorized_p32r32_js4_4m_sha256": digest}},
+        enabled=True,
+    )
 
 
 def test_factorized_expansion_source_digest_is_enforced() -> None:

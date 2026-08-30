@@ -1,0 +1,120 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "retained-factor-fixed-c-p32j4r32-4m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_activation_checkpoint": true,
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_factor_read_rho": 0.5,
+        "repeated_vector_pole_factorized": true,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_learned_factor_read": false,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_query_rank": 4,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_retain_factor_state": true,
+        "repeated_vector_pole_synthesis_rank": 4,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_write_rank": 4
+      },
+      "retained-factor-learned-c-p32j4r32-4m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_activation_checkpoint": true,
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_factor_read_rho": 0.5,
+        "repeated_vector_pole_factorized": true,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_learned_factor_read": true,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_query_rank": 4,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_retain_factor_state": true,
+        "repeated_vector_pole_synthesis_rank": 4,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_write_rank": 4
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-retained-factor-state-p32j4r32-s501-v1",
+  "campaign_manifest_sha256": "e7561f01fc00962df7493481e1c41f704bf4e2c0dce3d18f5208f7b92ce8dc2f",
+  "diagnostics": {
+    "factor_read_neutral": true,
+    "factor_read_shift": true,
+    "factor_state_effective_rank": true,
+    "fixed_c_equivalence": true,
+    "per_bank_ablation": true,
+    "reset_segments": [
+      1,
+      32,
+      128,
+      512
+    ]
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-RetainedFactorState-S501-v1",
+  "output_namespace": "alphabet-lm-4090-retained-factor-state-v1",
+  "parameter_counts": {
+    "retained-factor-fixed-c-p32j4r32-4m": 4780032,
+    "retained-factor-learned-c-p32j4r32-4m": 6359040
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "retained-factor-fixed-c-p32j4r32-4m": {
+      "display_name": "RTX4090-S501-ALPHABET2-retained-factor-fixed-c-p32j4r32-4m",
+      "id": "7bb61cb87118d77c",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "RetainedFactorState"
+      ]
+    },
+    "retained-factor-learned-c-p32j4r32-4m": {
+      "display_name": "RTX4090-S501-ALPHABET2-retained-factor-learned-c-p32j4r32-4m",
+      "id": "7949165d0f6b10bb",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "RetainedFactorState"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "factorized_p32r32_js4_4m_checkpoint": "/home/daehwa/alphabet-lm-4090-factorized-gain-decomposition-runs/536ab7eca1559014/factorized-p32r32-js4-4m/checkpoint.pt",
+    "factorized_p32r32_js4_4m_sha256": "3c26e4fec77146511b72b93bf8303de8316486e263cceb9cc299f508bb300f25",
+    "factorized_p32r32_js4_4m_validation_loss": 5.239241499856383
+  },
+  "total_parameter_counts": {
+    "retained-factor-fixed-c-p32j4r32-4m": 47008012,
+    "retained-factor-learned-c-p32j4r32-4m": 48587020
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "retained-factor-fixed-c-p32j4r32-4m",
+      "retained-factor-learned-c-p32j4r32-4m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 4000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

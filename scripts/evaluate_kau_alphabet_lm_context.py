@@ -164,6 +164,31 @@ def _build(kind: str) -> nn.Module:
             slow_cnn_pole_minimum_half_life=1.0,
             slow_cnn_pole_maximum_half_life=256.0,
         )
+    elif kind in {
+        "alphabet2_retained_factor_fixed_p32r32_js4",
+        "alphabet2_retained_factor_learned_p32r32_js4",
+    }:
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            repeated_vector_pole_memory=True,
+            repeated_vector_pole_interval=1,
+            repeated_vector_pole_modes=32,
+            repeated_vector_pole_width=32,
+            repeated_vector_pole_reader_kernel=3,
+            repeated_vector_pole_beta_initial=0.01,
+            repeated_vector_pole_minimum_half_life=16.0,
+            repeated_vector_pole_maximum_half_life=4_096.0,
+            repeated_vector_pole_factorized=True,
+            repeated_vector_pole_write_rank=4,
+            repeated_vector_pole_query_rank=4,
+            repeated_vector_pole_synthesis_rank=4,
+            repeated_vector_pole_retain_factor_state=True,
+            repeated_vector_pole_learned_factor_read=kind.endswith(
+                "learned_p32r32_js4"
+            ),
+            repeated_vector_pole_factor_read_rho=0.5,
+        )
     elif kind == "alphabet2_repeated_vector_pole_p32r4":
         config = AlphabetLMConfig(
             reader_type="dense_k3",
@@ -742,6 +767,28 @@ def _factorized_pca_override(
         )
         for memory, basis in zip(memories, bases, strict=True)
     ]
+
+
+def _factorized_factor_read_override(
+    model: nn.Module,
+    *,
+    shift: bool,
+) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM) or model.repeated_vector_pole_memories is None:
+        return []
+    modules: list[nn.Linear] = []
+    for bank in model.repeated_vector_pole_memories:
+        if not isinstance(bank, FactorizedTokenRateVectorPoleBlock):
+            return []
+        if bank.factor_read_real is None or bank.factor_read_imag is None:
+            return []
+        modules.extend((bank.factor_read_real, bank.factor_read_imag))
+
+    def override(_module: nn.Module, _inputs: tuple[object, ...], output: object) -> Tensor:
+        logits = cast("Tensor", output)
+        return torch.roll(logits, shifts=1, dims=1) if shift else torch.zeros_like(logits)
+
+    return [module.register_forward_hook(override) for module in modules]
 
 
 def _slow_query_override(
@@ -1688,6 +1735,8 @@ def _repeated_vector_pole_metrics(
     beta: list[float] = []
     branch_ratios: list[float] = []
     state_ranks: list[float] = []
+    factor_state_ranks: list[float] = []
+    factor_read_delta_rms: list[float] = []
     reader_temporal_delta: list[float] = []
     query_extra_rms: list[float] = []
     half_life_medians: list[float] = []
@@ -1716,12 +1765,59 @@ def _repeated_vector_pole_metrics(
                         torch.cat((coefficient[1], extra_coefficient[1]), dim=-1),
                     )
                 content_basis = bank.content_basis(packed_source)
-                excitation_real, excitation_imag = bank.complex_factor_product(
+                collapsed_excitation = bank.complex_factor_product(
                     coefficient[0],
                     coefficient[1],
                     content_basis[0],
                     content_basis[1],
                 )
+                if bank.retain_factor_state:
+                    factor_excitation = bank.factor_state_drive(
+                        coefficient[0],
+                        coefficient[1],
+                        content_basis[0],
+                        content_basis[1],
+                    )
+                    factor_state = bank.pole_memory(*factor_excitation)
+                    factor_rows = torch.complex(
+                        factor_state[0].float(), factor_state[1].float()
+                    ).permute(0, 1, 2, 4, 3).reshape(-1, bank.write_rank)
+                    factor_gram = factor_rows.mH @ factor_rows / max(
+                        1, factor_rows.shape[0]
+                    )
+                    factor_eigenvalues = torch.linalg.eigvalsh(
+                        factor_gram
+                    ).real.clamp_min(0.0)
+                    factor_state_ranks.append(
+                        float(
+                            factor_eigenvalues.sum().square()
+                            / factor_eigenvalues.square().sum().clamp_min(1.0e-12)
+                        )
+                    )
+                    factor_read = bank.factor_read(packed_source)
+                    if factor_read is None:
+                        factor_read_delta_rms.append(0.0)
+                    else:
+                        factor_read_delta_rms.append(
+                            float(
+                                (factor_read[0] - 1.0)
+                                .float()
+                                .square()
+                                .add(factor_read[1].float().square())
+                                .mean()
+                                .sqrt()
+                            )
+                        )
+                    excitation_real, excitation_imag = collapsed_excitation
+                    state_real, state_imag = bank.contract_factor_state(
+                        packed_source,
+                        *factor_state,
+                    )
+                else:
+                    excitation_real, excitation_imag = collapsed_excitation
+                    state_real, state_imag = bank.pole_memory(
+                        excitation_real, excitation_imag
+                    )
                 query_factors = bank.query_factors(packed_source)
                 query_basis = bank.query_basis(packed_source)
                 query_real, query_imag = bank.complex_factor_product(
@@ -1765,9 +1861,9 @@ def _repeated_vector_pole_metrics(
                 dense_bank = cast("TokenRateVectorPoleBlock", bank)
                 excitation_real, excitation_imag = dense_bank.reader(real, imag)
                 query_real, query_imag = dense_bank.query_components(packed_source)
-            state_real, state_imag = typed_bank.pole_memory(
-                excitation_real, excitation_imag
-            )
+                state_real, state_imag = typed_bank.pole_memory(
+                    excitation_real, excitation_imag
+                )
             rows = torch.complex(state_real.float(), state_imag.float()).flatten(0, 2)
             gram = rows.mH @ rows / max(1, rows.shape[0])
             eigenvalues = torch.linalg.eigvalsh(gram).real.clamp_min(0.0)
@@ -1814,6 +1910,8 @@ def _repeated_vector_pole_metrics(
         "beta_by_bank": beta,
         "branch_to_trunk_rms_by_bank": branch_ratios,
         "state_effective_rank_by_bank": state_ranks,
+        "factor_state_effective_rank_by_bank": factor_state_ranks,
+        "factor_read_delta_rms_by_bank": factor_read_delta_rms,
         "reader_temporal_delta_by_bank": reader_temporal_delta,
         "query_extra_rms_by_bank": query_extra_rms,
         "half_life_median_by_bank": half_life_medians,
@@ -2208,6 +2306,8 @@ def main() -> None:
             "alphabet2_factorized_vector_pole_p32r32_j8q4",
             "alphabet2_factorized_vector_pole_p32r32_j4q8",
             "alphabet2_factorized_vector_pole_p32r32_j8q8",
+            "alphabet2_retained_factor_fixed_p32r32_js4",
+            "alphabet2_retained_factor_learned_p32r32_js4",
             "mamba",
         ),
         required=True,
@@ -2234,7 +2334,12 @@ def main() -> None:
             device=device,
         )
     }
-    factorized_pca_bases = _calibrate_factorized_pca_bases(model, dataset, device)
+    factorized_pca_bases = (
+        []
+        if isinstance(model, AlphabetLM)
+        and model.config.repeated_vector_pole_retain_factor_state
+        else _calibrate_factorized_pca_bases(model, dataset, device)
+    )
     if factorized_pca_bases:
         extra_coordinate_handles = _factorized_extra_coordinate_override(model)
         results["factorized_extra_coordinates_off"] = _evaluate(
@@ -2263,6 +2368,29 @@ def main() -> None:
             )
             for handle in pca_handles:
                 handle.remove()
+    neutral_factor_handles = _factorized_factor_read_override(model, shift=False)
+    if neutral_factor_handles:
+        results["factor_read_neutral"] = _evaluate(
+            model,
+            dataset,
+            segment=2_048,
+            token_limit=args.token_limit,
+            sequence_limit=args.sequence_limit,
+            device=device,
+        )
+        for handle in neutral_factor_handles:
+            handle.remove()
+        shifted_factor_handles = _factorized_factor_read_override(model, shift=True)
+        results["factor_read_shifted"] = _evaluate(
+            model,
+            dataset,
+            segment=2_048,
+            token_limit=args.token_limit,
+            sequence_limit=args.sequence_limit,
+            device=device,
+        )
+        for handle in shifted_factor_handles:
+            handle.remove()
     if args.kind != "mamba":
         handles = _zero_memory(model)
         results["memory_zero"] = _evaluate(

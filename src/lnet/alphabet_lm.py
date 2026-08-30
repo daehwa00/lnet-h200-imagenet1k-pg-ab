@@ -126,6 +126,9 @@ class AlphabetLMConfig:
     repeated_vector_pole_write_rank: int = 4
     repeated_vector_pole_query_rank: int = 4
     repeated_vector_pole_synthesis_rank: int = 16
+    repeated_vector_pole_retain_factor_state: bool = False
+    repeated_vector_pole_learned_factor_read: bool = False
+    repeated_vector_pole_factor_read_rho: float = 0.5
     repeated_vector_pole_activation_checkpoint: bool = False
     tensor_half_lives: tuple[float, ...] = (
         4.0,
@@ -377,6 +380,8 @@ class AlphabetLMConfig:
         if not self.repeated_vector_pole_memory:
             if (
                 self.repeated_vector_pole_factorized
+                or self.repeated_vector_pole_retain_factor_state
+                or self.repeated_vector_pole_learned_factor_read
                 or self.repeated_vector_pole_activation_checkpoint
             ):
                 raise ValueError("factorized VectorPole requires repeated memory")
@@ -406,6 +411,15 @@ class AlphabetLMConfig:
                     > self.repeated_vector_pole_width
                 )
             )
+            or (
+                self.repeated_vector_pole_retain_factor_state
+                and not self.repeated_vector_pole_factorized
+            )
+            or (
+                self.repeated_vector_pole_learned_factor_read
+                and not self.repeated_vector_pole_retain_factor_state
+            )
+            or not 0.0 < self.repeated_vector_pole_factor_read_rho <= 1.0
             or not 0.0 < self.repeated_vector_pole_beta_initial < 1.0
             or self.repeated_vector_pole_minimum_half_life
             >= self.repeated_vector_pole_maximum_half_life
@@ -2506,6 +2520,9 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         write_rank: int,
         query_rank: int,
         synthesis_rank: int,
+        retain_factor_state: bool,
+        learned_factor_read: bool,
+        factor_read_rho: float,
         reader_kernel: int,
         beta_initial: float,
         context_length: int,
@@ -2522,6 +2539,9 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         self.write_rank = int(write_rank)
         self.query_rank = int(query_rank)
         self.synthesis_rank = int(synthesis_rank)
+        self.retain_factor_state = bool(retain_factor_state)
+        self.learned_factor_read = bool(learned_factor_read)
+        self.factor_read_rho = float(factor_read_rho)
         self.baseline_width = min(4, vector_width)
         self.query_rho = float(query_rho)
         self.epsilon = float(epsilon)
@@ -2593,6 +2613,18 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         self.extra_synthesis = nn.Linear(
             2 * pole_modes * synthesis_rank, 2 * modes, bias=False
         )
+        if self.learned_factor_read:
+            self.factor_read_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+            self.factor_read_real = nn.Linear(
+                2 * modes, pole_modes * write_rank, bias=False
+            )
+            self.factor_read_imag = nn.Linear(
+                2 * modes, pole_modes * write_rank, bias=False
+            )
+        else:
+            self.factor_read_norm = None
+            self.factor_read_real = None
+            self.factor_read_imag = None
         self.beta = nn.Parameter(torch.tensor(float(beta_initial)))
         self._initialize_factorized_expansion()
 
@@ -2630,6 +2662,9 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
             query_mask[:, :, :baseline_width] = 0.0
             self.query_basis_delta.weight.mul_(query_mask.flatten(0, 2))
         nn.init.zeros_(self.extra_synthesis.weight)
+        if self.factor_read_real is not None and self.factor_read_imag is not None:
+            nn.init.zeros_(self.factor_read_real.weight)
+            nn.init.zeros_(self.factor_read_imag.weight)
 
     @staticmethod
     def complex_factor_product(
@@ -2713,6 +2748,53 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
             self.query_basis_imag + delta_imag.reshape(shape),
         )
 
+    def factor_state_drive(
+        self,
+        coefficient_real: Tensor,
+        coefficient_imag: Tensor,
+        basis_real: Tensor,
+        basis_imag: Tensor,
+    ) -> ComplexField:
+        return (
+            coefficient_real.unsqueeze(-1) * basis_real.unsqueeze(-3)
+            - coefficient_imag.unsqueeze(-1) * basis_imag.unsqueeze(-3),
+            coefficient_real.unsqueeze(-1) * basis_imag.unsqueeze(-3)
+            + coefficient_imag.unsqueeze(-1) * basis_real.unsqueeze(-3),
+        )
+
+    def factor_read(self, packed: Tensor) -> ComplexField | None:
+        if self.factor_read_real is None or self.factor_read_imag is None:
+            return None
+        normalized = self.factor_read_norm
+        if normalized is None:
+            raise RuntimeError("learned factor read normalization disappeared")
+        shape = (*packed.shape[:-1], self.pole_modes, self.write_rank)
+        active = normalized(packed)
+        return (
+            1.0
+            + self.factor_read_rho
+            * torch.tanh(self.factor_read_real(active)).reshape(shape),
+            self.factor_read_rho
+            * torch.tanh(self.factor_read_imag(active)).reshape(shape),
+        )
+
+    def contract_factor_state(
+        self,
+        packed: Tensor,
+        state_real: Tensor,
+        state_imag: Tensor,
+    ) -> ComplexField:
+        factor_read = self.factor_read(packed)
+        if factor_read is None:
+            return state_real.sum(dim=-2), state_imag.sum(dim=-2)
+        read_real, read_imag = factor_read
+        return (
+            (state_real * read_real.unsqueeze(-1)).sum(dim=-2)
+            + (state_imag * read_imag.unsqueeze(-1)).sum(dim=-2),
+            (state_imag * read_real.unsqueeze(-1)).sum(dim=-2)
+            - (state_real * read_imag.unsqueeze(-1)).sum(dim=-2),
+        )
+
     def _synthesize(self, selected_real: Tensor, selected_imag: Tensor) -> ComplexField:
         baseline_width = self.synthesis.in_features // (2 * self.pole_modes)
         baseline = self.synthesis(
@@ -2747,12 +2829,25 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
             extra_real, extra_imag = self.extra_reader(real, imag)
             coefficient_real = torch.cat((coefficient_real, extra_real), dim=-1)
             coefficient_imag = torch.cat((coefficient_imag, extra_imag), dim=-1)
-        excitation = self.complex_factor_product(
-            coefficient_real,
-            coefficient_imag,
-            *self.content_basis(packed),
-        )
-        state_real, state_imag = self.pole_memory(*excitation)
+        content_basis = self.content_basis(packed)
+        if self.retain_factor_state:
+            excitation = self.factor_state_drive(
+                coefficient_real,
+                coefficient_imag,
+                *content_basis,
+            )
+            factor_state = self.pole_memory(*excitation)
+            state_real, state_imag = self.contract_factor_state(
+                packed,
+                *factor_state,
+            )
+        else:
+            excitation = self.complex_factor_product(
+                coefficient_real,
+                coefficient_imag,
+                *content_basis,
+            )
+            state_real, state_imag = self.pole_memory(*excitation)
         query = self.complex_factor_product(
             *self.query_factors(packed),
             *self.query_basis(packed),
@@ -2782,6 +2877,9 @@ def _make_repeated_vector_pole_block(
             write_rank=config.repeated_vector_pole_write_rank,
             query_rank=config.repeated_vector_pole_query_rank,
             synthesis_rank=config.repeated_vector_pole_synthesis_rank,
+            retain_factor_state=config.repeated_vector_pole_retain_factor_state,
+            learned_factor_read=config.repeated_vector_pole_learned_factor_read,
+            factor_read_rho=config.repeated_vector_pole_factor_read_rho,
             reader_kernel=config.repeated_vector_pole_reader_kernel,
             beta_initial=config.repeated_vector_pole_beta_initial,
             context_length=config.context_length,

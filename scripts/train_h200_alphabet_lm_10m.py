@@ -973,6 +973,82 @@ def _validate_repeated_factorized_source(
         raise RuntimeError("factorized expansion source checkpoint digest changed")
 
 
+def _initialize_repeated_retained_factor_state(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.repeated_vector_pole_memories is None:
+        raise RuntimeError("retained-factor initialization requires repeated memory")
+    modules = list(model.repeated_vector_pole_memories)
+    if not all(
+        isinstance(bank, FactorizedTokenRateVectorPoleBlock)
+        and bank.retain_factor_state
+        for bank in modules
+    ):
+        raise RuntimeError("retained-factor initialization requires retained factor banks")
+    checkpoint_bytes = checkpoint_path.read_bytes()
+    checkpoint_sha = hashlib.sha256(checkpoint_bytes).hexdigest()
+    payload = cast(
+        "dict[str, Any]",
+        torch.load(io.BytesIO(checkpoint_bytes), map_location="cpu", weights_only=True),
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    factor_read_parts = (
+        ".factor_read_norm.",
+        ".factor_read_real.",
+        ".factor_read_imag.",
+    )
+    expected_missing = {
+        name
+        for name in model.state_dict()
+        if name.startswith("repeated_vector_pole_memories.")
+        and any(part in name for part in factor_read_parts)
+    }
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("factorized checkpoint does not match retained-factor model")
+    trainable_parts = (
+        ".extra_reader.",
+        ".extra_query_norm.",
+        ".extra_query_real.",
+        ".extra_query_imag.",
+        ".content_delta_norm.",
+        ".content_delta.",
+        ".query_basis_delta_norm.",
+        ".query_basis_delta.",
+        ".extra_projection_basis",
+        ".extra_synthesis.",
+        *factor_read_parts,
+    )
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(
+            name.startswith("repeated_vector_pole_memories.")
+            and any(part in name for part in trainable_parts)
+        )
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": checkpoint_sha,
+        "missing_factor_read_tensors": len(expected_missing),
+        "factorized_p32r32_js4_frozen": True,
+    }
+
+
+def _validate_repeated_retained_source(
+    initialization: dict[str, object],
+    runtime: dict[str, Any],
+    *,
+    enabled: bool,
+) -> None:
+    if not enabled:
+        return
+    expected = runtime.get("source", {}).get("factorized_p32r32_js4_4m_sha256")
+    if not isinstance(expected, str) or initialization.get("checkpoint_sha256") != expected:
+        raise RuntimeError("retained-factor source checkpoint digest changed")
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -1077,6 +1153,9 @@ def _build(
     repeated_vector_pole_write_rank: int = 4,
     repeated_vector_pole_query_rank: int = 4,
     repeated_vector_pole_synthesis_rank: int = 16,
+    repeated_vector_pole_retain_factor_state: bool = False,
+    repeated_vector_pole_learned_factor_read: bool = False,
+    repeated_vector_pole_factor_read_rho: float = 0.5,
     repeated_vector_pole_activation_checkpoint: bool = False,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
@@ -1185,6 +1264,13 @@ def _build(
         repeated_vector_pole_write_rank=repeated_vector_pole_write_rank,
         repeated_vector_pole_query_rank=repeated_vector_pole_query_rank,
         repeated_vector_pole_synthesis_rank=repeated_vector_pole_synthesis_rank,
+        repeated_vector_pole_retain_factor_state=(
+            repeated_vector_pole_retain_factor_state
+        ),
+        repeated_vector_pole_learned_factor_read=(
+            repeated_vector_pole_learned_factor_read
+        ),
+        repeated_vector_pole_factor_read_rho=repeated_vector_pole_factor_read_rho,
         repeated_vector_pole_activation_checkpoint=(
             repeated_vector_pole_activation_checkpoint
         ),
@@ -1477,6 +1563,15 @@ def main() -> None:
     parser.add_argument("--repeated-vector-pole-query-rank", type=int, default=4)
     parser.add_argument("--repeated-vector-pole-synthesis-rank", type=int, default=16)
     parser.add_argument(
+        "--repeated-vector-pole-retain-factor-state", action="store_true"
+    )
+    parser.add_argument(
+        "--repeated-vector-pole-learned-factor-read", action="store_true"
+    )
+    parser.add_argument(
+        "--repeated-vector-pole-factor-read-rho", type=float, default=0.5
+    )
+    parser.add_argument(
         "--repeated-vector-pole-activation-checkpoint", action="store_true"
     )
     parser.add_argument("--initialize-slow-cnn-pole-trunk-checkpoint", type=Path)
@@ -1493,6 +1588,7 @@ def main() -> None:
     parser.add_argument("--initialize-slow-innovation-checkpoint", type=Path)
     parser.add_argument("--initialize-slow-semantic-clock-checkpoint", type=Path)
     parser.add_argument("--initialize-repeated-factorized-checkpoint", type=Path)
+    parser.add_argument("--initialize-repeated-retained-checkpoint", type=Path)
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -1503,6 +1599,11 @@ def main() -> None:
     parser.add_argument("--target-tokens-override", type=int)
     parser.add_argument("--resume-extension-checkpoint", type=Path)
     args = parser.parse_args()
+    if (
+        args.initialize_repeated_factorized_checkpoint is not None
+        and args.initialize_repeated_retained_checkpoint is not None
+    ):
+        raise RuntimeError("repeated VectorPole initialization source is ambiguous")
     runtime = cast("dict[str, Any]", json.loads(args.runtime.read_text(encoding="utf-8")))
     if runtime.get("schema") not in {
         RUNTIME_SCHEMA,
@@ -1661,6 +1762,15 @@ def main() -> None:
         repeated_vector_pole_synthesis_rank=(
             args.repeated_vector_pole_synthesis_rank
         ),
+        repeated_vector_pole_retain_factor_state=(
+            args.repeated_vector_pole_retain_factor_state
+        ),
+        repeated_vector_pole_learned_factor_read=(
+            args.repeated_vector_pole_learned_factor_read
+        ),
+        repeated_vector_pole_factor_read_rho=(
+            args.repeated_vector_pole_factor_read_rho
+        ),
         repeated_vector_pole_activation_checkpoint=(
             args.repeated_vector_pole_activation_checkpoint
         ),
@@ -1691,6 +1801,7 @@ def main() -> None:
             or args.initialize_slow_innovation_checkpoint is not None
             or args.initialize_slow_semantic_clock_checkpoint is not None
             or args.initialize_repeated_factorized_checkpoint is not None
+            or args.initialize_repeated_retained_checkpoint is not None
         ):
             raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
@@ -1840,6 +1951,15 @@ def main() -> None:
         runtime,
         enabled=args.initialize_repeated_factorized_checkpoint is not None,
     )
+    retained_factor_initialization = _initialize_repeated_retained_factor_state(
+        model,
+        args.initialize_repeated_retained_checkpoint,
+    )
+    _validate_repeated_retained_source(
+        retained_factor_initialization,
+        runtime,
+        enabled=args.initialize_repeated_retained_checkpoint is not None,
+    )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
         active_arguments = {
@@ -1952,6 +2072,15 @@ def main() -> None:
             ),
             "repeated_vector_pole_synthesis_rank": (
                 args.repeated_vector_pole_synthesis_rank
+            ),
+            "repeated_vector_pole_retain_factor_state": (
+                args.repeated_vector_pole_retain_factor_state
+            ),
+            "repeated_vector_pole_learned_factor_read": (
+                args.repeated_vector_pole_learned_factor_read
+            ),
+            "repeated_vector_pole_factor_read_rho": (
+                args.repeated_vector_pole_factor_read_rho
             ),
             "repeated_vector_pole_activation_checkpoint": (
                 args.repeated_vector_pole_activation_checkpoint
@@ -2180,10 +2309,20 @@ def main() -> None:
         "repeated_vector_pole_synthesis_rank": (
             args.repeated_vector_pole_synthesis_rank
         ),
+        "repeated_vector_pole_retain_factor_state": (
+            args.repeated_vector_pole_retain_factor_state
+        ),
+        "repeated_vector_pole_learned_factor_read": (
+            args.repeated_vector_pole_learned_factor_read
+        ),
+        "repeated_vector_pole_factor_read_rho": (
+            args.repeated_vector_pole_factor_read_rho
+        ),
         "repeated_vector_pole_activation_checkpoint": (
             args.repeated_vector_pole_activation_checkpoint
         ),
         "repeated_factorized_initialization": repeated_factorized_initialization,
+        "retained_factor_initialization": retained_factor_initialization,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
