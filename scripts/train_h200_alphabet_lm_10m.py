@@ -1286,11 +1286,16 @@ def _build(
     target = _parameter_count(AlphabetLM(alphabet_config))
     model, parameters, relative_error = build_parameter_matched_mamba(
         target,
-        MambaLMConfig(vocab_size=vocab_size, model_width=512),
+        MambaLMConfig(
+            vocab_size=vocab_size,
+            model_width=512,
+            architecture="Mamba2" if model_name == "mamba2" else "Mamba1",
+            state_size=128 if model_name == "mamba2" else 16,
+        ),
         tolerance=0.03,
     )
     return model, {
-        "model": "mamba",
+        "model": model_name,
         "config": asdict(model.config),
         "official_mamba_lm": True,
         "alphabet_target_parameters": target,
@@ -1419,7 +1424,7 @@ def _save_checkpoint(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", choices=("alphabet", "mamba"), required=True)
+    parser.add_argument("--model", choices=("alphabet", "mamba", "mamba2"), required=True)
     parser.add_argument("--run-label")
     parser.add_argument(
         "--pole-initialization",

@@ -2595,6 +2595,21 @@ def test_parameter_matched_mamba_uses_official_lm_initialization() -> None:
         assert 0.0052 < std < 0.0057
 
 
+def test_parameter_matched_mamba2_uses_matrix_state_geometry() -> None:
+    model, parameters, relative_error = build_parameter_matched_mamba(
+        48_587_020,
+        MambaLMConfig(
+            architecture="Mamba2",
+            state_size=128,
+        ),
+    )
+    assert parameters == 47_739_744
+    assert relative_error < 0.03
+    assert model.config.layers == 18
+    assert model.config.state_size == 128
+    assert model.config.architecture == "Mamba2"
+
+
 def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:
     batch, steps, modes = 2, 7, 5
 

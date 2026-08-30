@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass, replace
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from torch import Tensor, nn
 
@@ -20,6 +20,9 @@ class MambaLMConfig:
     state_size: int = 16
     conv_width: int = 4
     expand: int = 2
+    architecture: Literal["Mamba1", "Mamba2"] = "Mamba1"
+    head_dim: int = 64
+    groups: int = 1
 
 
 def _mamba_lm_components() -> tuple[type[Any], type[nn.Module]]:
@@ -38,17 +41,25 @@ class MambaLM(nn.Module):
         super().__init__()
         self.config = config
         config_type, model_type = _mamba_lm_components()
+        ssm_cfg: dict[str, object] = {
+            "layer": config.architecture,
+            "d_state": config.state_size,
+            "d_conv": config.conv_width,
+            "expand": config.expand,
+        }
+        if config.architecture == "Mamba2":
+            ssm_cfg.update(
+                {
+                    "headdim": config.head_dim,
+                    "ngroups": config.groups,
+                }
+            )
         official_config = config_type(
             d_model=config.model_width,
             d_intermediate=0,
             n_layer=config.layers,
             vocab_size=config.vocab_size,
-            ssm_cfg={
-                "layer": "Mamba1",
-                "d_state": config.state_size,
-                "d_conv": config.conv_width,
-                "expand": config.expand,
-            },
+            ssm_cfg=ssm_cfg,
             rms_norm=True,
             residual_in_fp32=True,
             fused_add_norm=True,
@@ -82,7 +93,7 @@ def build_parameter_matched_mamba(
     tolerance: float = 0.03,
 ) -> tuple[MambaLM, int, float]:
     best: tuple[MambaLM, int, float] | None = None
-    for layers in range(8, 17):
+    for layers in range(8, 25):
         model = MambaLM(replace(base, layers=layers))
         parameters = trainable_parameters(model)
         error = abs(parameters - target_parameters) / target_parameters

@@ -39,6 +39,14 @@ from lnet.pac_complex_layers import PackedComplexLinear
 def _build(kind: str) -> nn.Module:
     if kind == "mamba":
         return MambaLM(MambaLMConfig())
+    if kind == "mamba2":
+        return MambaLM(
+            MambaLMConfig(
+                layers=18,
+                state_size=128,
+                architecture="Mamba2",
+            )
+        )
     config = AlphabetLMConfig()
     if kind == "grouped":
         config = AlphabetLMConfig(
@@ -2309,6 +2317,7 @@ def main() -> None:
             "alphabet2_retained_factor_fixed_p32r32_js4",
             "alphabet2_retained_factor_learned_p32r32_js4",
             "mamba",
+            "mamba2",
         ),
         required=True,
     )
@@ -2391,7 +2400,7 @@ def main() -> None:
         )
         for handle in shifted_factor_handles:
             handle.remove()
-    if args.kind != "mamba":
+    if args.kind not in {"mamba", "mamba2"}:
         handles = _zero_memory(model)
         results["memory_zero"] = _evaluate(
             model,
