@@ -45,6 +45,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_chunk_memory_from_trunk,
     _initialize_cnn_pole_from_trunk,
     _initialize_repeated_factorized_expansion,
+    _initialize_repeated_mamba_outer,
     _initialize_repeated_retained_factor_state,
     _initialize_semantic_edge_from_trunk,
     _initialize_sidecar_from_trunk,
@@ -62,6 +63,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _initialize_slow_vector_pole_from_trunk,
     _initialize_slow_write_scheduler_from_trunk,
     _validate_repeated_factorized_source,
+    _validate_repeated_mamba_outer_source,
     _validate_repeated_retained_source,
     _validate_slow_complex_vector_source,
     _validate_slow_dynamic_transport_source,
@@ -2370,6 +2372,53 @@ def test_retained_factor_checkpoint_contract_freezes_the_source_trunk(
     _validate_repeated_retained_source(
         contract,
         {"source": {"factorized_p32r32_js4_4m_sha256": digest}},
+        enabled=True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("direct", "gate"),
+    [(False, False), (True, False), (False, True), (True, True)],
+)
+def test_mamba_outer_scaffold_is_source_preserving_and_live(
+    tmp_path: Path,
+    direct: bool,
+    gate: bool,
+) -> None:
+    source_config = replace(
+        _factorized_repeated_vector_pole_config(),
+        repeated_vector_pole_retain_factor_state=True,
+        repeated_vector_pole_learned_factor_read=True,
+    )
+    torch.manual_seed(501)
+    source = AlphabetLM(source_config).eval()
+    checkpoint = tmp_path / f"source-{direct}-{gate}.pt"
+    torch.save({"model": source.state_dict()}, checkpoint)
+    target = AlphabetLM(
+        replace(
+            source_config,
+            repeated_vector_pole_mamba_outer=True,
+            repeated_vector_pole_outer_direct=direct,
+            repeated_vector_pole_outer_gate=gate,
+        )
+    ).eval()
+    contract = _initialize_repeated_mamba_outer(target, checkpoint)
+    tokens = torch.randint(64, (1, 16))
+    with torch.no_grad():
+        expected = source(tokens)
+        actual = target(tokens)
+    torch.testing.assert_close(actual, expected, atol=0.0, rtol=0.0)
+    target.train()(tokens).square().mean().backward()
+    banks = target.repeated_vector_pole_memories
+    assert banks is not None
+    bank = cast("FactorizedTokenRateVectorPoleBlock", banks[0])
+    assert bank.outer_output is not None
+    assert bank.outer_output.weight.grad is not None
+    assert bank.outer_output.weight.grad.abs().sum() > 0
+    digest = cast("str", contract["checkpoint_sha256"])
+    _validate_repeated_mamba_outer_source(
+        contract,
+        {"source": {"retained_factor_learned_30m_sha256": digest}},
         enabled=True,
     )
 

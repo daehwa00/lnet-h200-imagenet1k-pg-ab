@@ -129,6 +129,10 @@ class AlphabetLMConfig:
     repeated_vector_pole_retain_factor_state: bool = False
     repeated_vector_pole_learned_factor_read: bool = False
     repeated_vector_pole_factor_read_rho: float = 0.5
+    repeated_vector_pole_mamba_outer: bool = False
+    repeated_vector_pole_outer_direct: bool = False
+    repeated_vector_pole_outer_gate: bool = False
+    repeated_vector_pole_outer_kernel: int = 4
     repeated_vector_pole_activation_checkpoint: bool = False
     tensor_half_lives: tuple[float, ...] = (
         4.0,
@@ -187,6 +191,7 @@ class AlphabetLMConfig:
             self.repeated_vector_pole_write_rank,
             self.repeated_vector_pole_query_rank,
             self.repeated_vector_pole_synthesis_rank,
+            self.repeated_vector_pole_outer_kernel,
         )
         if any(value <= 0 for value in values) or self.reader_kernel % 2 == 0:
             raise ValueError("invalid ALPHABET-LM configuration")
@@ -382,6 +387,9 @@ class AlphabetLMConfig:
                 self.repeated_vector_pole_factorized
                 or self.repeated_vector_pole_retain_factor_state
                 or self.repeated_vector_pole_learned_factor_read
+                or self.repeated_vector_pole_mamba_outer
+                or self.repeated_vector_pole_outer_direct
+                or self.repeated_vector_pole_outer_gate
                 or self.repeated_vector_pole_activation_checkpoint
             ):
                 raise ValueError("factorized VectorPole requires repeated memory")
@@ -417,6 +425,17 @@ class AlphabetLMConfig:
             )
             or (
                 self.repeated_vector_pole_learned_factor_read
+                and not self.repeated_vector_pole_retain_factor_state
+            )
+            or (
+                (
+                    self.repeated_vector_pole_outer_direct
+                    or self.repeated_vector_pole_outer_gate
+                )
+                and not self.repeated_vector_pole_mamba_outer
+            )
+            or (
+                self.repeated_vector_pole_mamba_outer
                 and not self.repeated_vector_pole_retain_factor_state
             )
             or not 0.0 < self.repeated_vector_pole_factor_read_rho <= 1.0
@@ -2511,7 +2530,7 @@ class TokenRateVectorPoleBlock(nn.Module):
 class FactorizedTokenRateVectorPoleBlock(nn.Module):
     """Expand modal state width without a dense KxPxR parameterization."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0915
         self,
         modes: int,
         *,
@@ -2523,6 +2542,10 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         retain_factor_state: bool,
         learned_factor_read: bool,
         factor_read_rho: float,
+        mamba_outer: bool,
+        outer_direct: bool,
+        outer_gate: bool,
+        outer_kernel: int,
         reader_kernel: int,
         beta_initial: float,
         context_length: int,
@@ -2542,6 +2565,10 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         self.retain_factor_state = bool(retain_factor_state)
         self.learned_factor_read = bool(learned_factor_read)
         self.factor_read_rho = float(factor_read_rho)
+        self.mamba_outer = bool(mamba_outer)
+        self.outer_direct = bool(outer_direct)
+        self.outer_gate = bool(outer_gate)
+        self.outer_kernel = int(outer_kernel)
         self.baseline_width = min(4, vector_width)
         self.query_rho = float(query_rho)
         self.epsilon = float(epsilon)
@@ -2625,8 +2652,34 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
             self.factor_read_norm = None
             self.factor_read_real = None
             self.factor_read_imag = None
+        self._configure_outer(modes, epsilon)
         self.beta = nn.Parameter(torch.tensor(float(beta_initial)))
         self._initialize_factorized_expansion()
+
+    def _configure_outer(self, modes: int, epsilon: float) -> None:
+        if not self.mamba_outer:
+            self.outer_input_norm = None
+            self.outer_input_projection = None
+            self.outer_conv = None
+            self.register_parameter("outer_direct_scale", None)
+            self.outer_post_norm = None
+            self.outer_output = None
+            return
+        packed_modes = 2 * modes
+        self.outer_input_norm = nn.RMSNorm(packed_modes, eps=epsilon)
+        self.outer_input_projection = nn.Linear(
+            packed_modes, 2 * packed_modes, bias=False
+        )
+        self.outer_conv = nn.Conv1d(
+            packed_modes,
+            packed_modes,
+            kernel_size=self.outer_kernel,
+            groups=packed_modes,
+            bias=True,
+        )
+        self.outer_direct_scale = nn.Parameter(torch.ones(packed_modes))
+        self.outer_post_norm = nn.RMSNorm(packed_modes, eps=epsilon)
+        self.outer_output = nn.Linear(packed_modes, packed_modes, bias=False)
 
     def _initialize_factorized_expansion(self) -> None:
         baseline_width = self.baseline_width
@@ -2665,6 +2718,8 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         if self.factor_read_real is not None and self.factor_read_imag is not None:
             nn.init.zeros_(self.factor_read_real.weight)
             nn.init.zeros_(self.factor_read_imag.weight)
+        if self.outer_output is not None:
+            nn.init.zeros_(self.outer_output.weight)
 
     @staticmethod
     def complex_factor_product(
@@ -2822,6 +2877,47 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
             )
         )
 
+    def _outer_refine(self, packed: Tensor, memory: ComplexField) -> ComplexField:
+        if self.outer_output is None:
+            return memory
+        if (
+            self.outer_input_norm is None
+            or self.outer_input_projection is None
+            or self.outer_conv is None
+            or self.outer_post_norm is None
+            or self.outer_direct_scale is None
+        ):
+            raise RuntimeError("Mamba-shaped outer scaffold disappeared")
+        local, gate = self.outer_input_projection(
+            self.outer_input_norm(packed)
+        ).chunk(2, dim=-1)
+        local = functional.silu(
+            self.outer_conv(
+                functional.pad(
+                    local.transpose(1, 2),
+                    (self.outer_kernel - 1, 0),
+                )
+            ).transpose(1, 2)
+        )
+        base = torch.cat(memory, dim=-1)
+        mixed = (
+            base + local * self.outer_direct_scale.to(local.dtype)
+            if self.outer_direct
+            else base
+        )
+        refined = self.outer_post_norm(mixed)
+        if self.outer_gate:
+            refined = refined * functional.silu(gate)
+        delta = self.outer_output(refined)
+        return tuple(
+            base_part + delta_part
+            for base_part, delta_part in zip(
+                base.chunk(2, dim=-1),
+                delta.chunk(2, dim=-1),
+                strict=True,
+            )
+        )
+
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         packed = torch.cat((real, imag), dim=-1)
         coefficient_real, coefficient_imag = self.reader(real, imag)
@@ -2855,6 +2951,10 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         selected_real = state_real * query[0] + state_imag * query[1]
         selected_imag = state_imag * query[0] - state_real * query[1]
         memory_real, memory_imag = self._synthesize(selected_real, selected_imag)
+        memory_real, memory_imag = self._outer_refine(
+            packed,
+            (memory_real, memory_imag),
+        )
         trunk_rms = real.float().square().add(imag.float().square()).mean(
             dim=-1, keepdim=True
         ).sqrt()
@@ -2880,6 +2980,10 @@ def _make_repeated_vector_pole_block(
             retain_factor_state=config.repeated_vector_pole_retain_factor_state,
             learned_factor_read=config.repeated_vector_pole_learned_factor_read,
             factor_read_rho=config.repeated_vector_pole_factor_read_rho,
+            mamba_outer=config.repeated_vector_pole_mamba_outer,
+            outer_direct=config.repeated_vector_pole_outer_direct,
+            outer_gate=config.repeated_vector_pole_outer_gate,
+            outer_kernel=config.repeated_vector_pole_outer_kernel,
             reader_kernel=config.repeated_vector_pole_reader_kernel,
             beta_initial=config.repeated_vector_pole_beta_initial,
             context_length=config.context_length,

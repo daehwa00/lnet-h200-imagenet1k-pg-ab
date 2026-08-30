@@ -175,7 +175,12 @@ def _build(kind: str) -> nn.Module:
     elif kind in {
         "alphabet2_retained_factor_fixed_p32r32_js4",
         "alphabet2_retained_factor_learned_p32r32_js4",
+        "alphabet2_mamba_outer_post_p32j4r32",
+        "alphabet2_mamba_outer_direct_p32j4r32",
+        "alphabet2_mamba_outer_gate_p32j4r32",
+        "alphabet2_mamba_outer_both_p32j4r32",
     }:
+        outer = kind.startswith("alphabet2_mamba_outer_")
         config = AlphabetLMConfig(
             reader_type="dense_k3",
             memory_layout="local_only",
@@ -192,10 +197,18 @@ def _build(kind: str) -> nn.Module:
             repeated_vector_pole_query_rank=4,
             repeated_vector_pole_synthesis_rank=4,
             repeated_vector_pole_retain_factor_state=True,
-            repeated_vector_pole_learned_factor_read=kind.endswith(
-                "learned_p32r32_js4"
+            repeated_vector_pole_learned_factor_read=(
+                kind.endswith("learned_p32r32_js4") or outer
             ),
             repeated_vector_pole_factor_read_rho=0.5,
+            repeated_vector_pole_mamba_outer=outer,
+            repeated_vector_pole_outer_direct=(
+                kind.endswith(("direct_p32j4r32", "both_p32j4r32"))
+            ),
+            repeated_vector_pole_outer_gate=(
+                kind.endswith(("gate_p32j4r32", "both_p32j4r32"))
+            ),
+            repeated_vector_pole_outer_kernel=4,
         )
     elif kind == "alphabet2_repeated_vector_pole_p32r4":
         config = AlphabetLMConfig(
@@ -797,6 +810,25 @@ def _factorized_factor_read_override(
         return torch.roll(logits, shifts=1, dims=1) if shift else torch.zeros_like(logits)
 
     return [module.register_forward_hook(override) for module in modules]
+
+
+def _mamba_outer_override(
+    model: nn.Module,
+) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM) or model.repeated_vector_pole_memories is None:
+        return []
+    outputs: list[nn.Linear] = []
+    for bank in model.repeated_vector_pole_memories:
+        if not isinstance(bank, FactorizedTokenRateVectorPoleBlock):
+            return []
+        if bank.outer_output is None:
+            return []
+        outputs.append(bank.outer_output)
+
+    def zero(_module: nn.Module, _inputs: tuple[object, ...], output: object) -> Tensor:
+        return torch.zeros_like(cast("Tensor", output))
+
+    return [module.register_forward_hook(zero) for module in outputs]
 
 
 def _slow_query_override(
@@ -2316,6 +2348,10 @@ def main() -> None:
             "alphabet2_factorized_vector_pole_p32r32_j8q8",
             "alphabet2_retained_factor_fixed_p32r32_js4",
             "alphabet2_retained_factor_learned_p32r32_js4",
+            "alphabet2_mamba_outer_post_p32j4r32",
+            "alphabet2_mamba_outer_direct_p32j4r32",
+            "alphabet2_mamba_outer_gate_p32j4r32",
+            "alphabet2_mamba_outer_both_p32j4r32",
             "mamba",
             "mamba2",
         ),
@@ -2399,6 +2435,18 @@ def main() -> None:
             device=device,
         )
         for handle in shifted_factor_handles:
+            handle.remove()
+    outer_handles = _mamba_outer_override(model)
+    if outer_handles:
+        results["mamba_outer_off"] = _evaluate(
+            model,
+            dataset,
+            segment=2_048,
+            token_limit=args.token_limit,
+            sequence_limit=args.sequence_limit,
+            device=device,
+        )
+        for handle in outer_handles:
             handle.remove()
     if args.kind not in {"mamba", "mamba2"}:
         handles = _zero_memory(model)

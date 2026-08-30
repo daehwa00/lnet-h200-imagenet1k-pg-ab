@@ -1082,6 +1082,76 @@ def _freeze_repeated_retained_interface(model: nn.Module, *, enabled: bool) -> N
         )
 
 
+def _initialize_repeated_mamba_outer(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+) -> dict[str, object]:
+    if checkpoint_path is None:
+        return {"enabled": False}
+    if not isinstance(model, AlphabetLM) or model.repeated_vector_pole_memories is None:
+        raise RuntimeError("Mamba outer initialization requires repeated memory")
+    banks = list(model.repeated_vector_pole_memories)
+    if not all(
+        isinstance(bank, FactorizedTokenRateVectorPoleBlock) and bank.mamba_outer
+        for bank in banks
+    ):
+        raise RuntimeError("Mamba outer initialization requires outer scaffold banks")
+    checkpoint_bytes = checkpoint_path.read_bytes()
+    checkpoint_sha = hashlib.sha256(checkpoint_bytes).hexdigest()
+    payload = cast(
+        "dict[str, Any]",
+        torch.load(io.BytesIO(checkpoint_bytes), map_location="cpu", weights_only=True),
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    outer_parts = (
+        ".outer_input_norm.",
+        ".outer_input_projection.",
+        ".outer_conv.",
+        ".outer_direct_scale",
+        ".outer_post_norm.",
+        ".outer_output.",
+    )
+    expected_missing = {
+        name
+        for name in model.state_dict()
+        if name.startswith("repeated_vector_pole_memories.")
+        and any(part in name for part in outer_parts)
+    }
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("retained-factor checkpoint does not match Mamba outer model")
+    for bank in banks:
+        typed_bank = cast("FactorizedTokenRateVectorPoleBlock", bank)
+        if typed_bank.outer_output is None:
+            raise RuntimeError("Mamba outer output disappeared")
+        nn.init.zeros_(typed_bank.outer_output.weight)
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(
+            name.startswith("repeated_vector_pole_memories.")
+            and any(part in name for part in outer_parts)
+        )
+    return {
+        "enabled": True,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_sha256": checkpoint_sha,
+        "missing_outer_tensors": len(expected_missing),
+        "retained_factor_trunk_frozen": True,
+    }
+
+
+def _validate_repeated_mamba_outer_source(
+    initialization: dict[str, object],
+    runtime: dict[str, Any],
+    *,
+    enabled: bool,
+) -> None:
+    if not enabled:
+        return
+    expected = runtime.get("source", {}).get("retained_factor_learned_30m_sha256")
+    if not isinstance(expected, str) or initialization.get("checkpoint_sha256") != expected:
+        raise RuntimeError("Mamba outer source checkpoint digest changed")
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -1189,6 +1259,10 @@ def _build(
     repeated_vector_pole_retain_factor_state: bool = False,
     repeated_vector_pole_learned_factor_read: bool = False,
     repeated_vector_pole_factor_read_rho: float = 0.5,
+    repeated_vector_pole_mamba_outer: bool = False,
+    repeated_vector_pole_outer_direct: bool = False,
+    repeated_vector_pole_outer_gate: bool = False,
+    repeated_vector_pole_outer_kernel: int = 4,
     repeated_vector_pole_activation_checkpoint: bool = False,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
@@ -1304,6 +1378,10 @@ def _build(
             repeated_vector_pole_learned_factor_read
         ),
         repeated_vector_pole_factor_read_rho=repeated_vector_pole_factor_read_rho,
+        repeated_vector_pole_mamba_outer=repeated_vector_pole_mamba_outer,
+        repeated_vector_pole_outer_direct=repeated_vector_pole_outer_direct,
+        repeated_vector_pole_outer_gate=repeated_vector_pole_outer_gate,
+        repeated_vector_pole_outer_kernel=repeated_vector_pole_outer_kernel,
         repeated_vector_pole_activation_checkpoint=(
             repeated_vector_pole_activation_checkpoint
         ),
@@ -1609,6 +1687,10 @@ def main() -> None:
     parser.add_argument(
         "--repeated-vector-pole-factor-read-rho", type=float, default=0.5
     )
+    parser.add_argument("--repeated-vector-pole-mamba-outer", action="store_true")
+    parser.add_argument("--repeated-vector-pole-outer-direct", action="store_true")
+    parser.add_argument("--repeated-vector-pole-outer-gate", action="store_true")
+    parser.add_argument("--repeated-vector-pole-outer-kernel", type=int, default=4)
     parser.add_argument(
         "--repeated-vector-pole-activation-checkpoint", action="store_true"
     )
@@ -1627,6 +1709,7 @@ def main() -> None:
     parser.add_argument("--initialize-slow-semantic-clock-checkpoint", type=Path)
     parser.add_argument("--initialize-repeated-factorized-checkpoint", type=Path)
     parser.add_argument("--initialize-repeated-retained-checkpoint", type=Path)
+    parser.add_argument("--initialize-repeated-outer-checkpoint", type=Path)
     parser.add_argument("--freeze-repeated-retained-interface", action="store_true")
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
@@ -1638,10 +1721,14 @@ def main() -> None:
     parser.add_argument("--target-tokens-override", type=int)
     parser.add_argument("--resume-extension-checkpoint", type=Path)
     args = parser.parse_args()
-    if (
-        args.initialize_repeated_factorized_checkpoint is not None
-        and args.initialize_repeated_retained_checkpoint is not None
-    ):
+    if sum(
+        source is not None
+        for source in (
+            args.initialize_repeated_factorized_checkpoint,
+            args.initialize_repeated_retained_checkpoint,
+            args.initialize_repeated_outer_checkpoint,
+        )
+    ) > 1:
         raise RuntimeError("repeated VectorPole initialization source is ambiguous")
     runtime = cast("dict[str, Any]", json.loads(args.runtime.read_text(encoding="utf-8")))
     if runtime.get("schema") not in {
@@ -1810,6 +1897,10 @@ def main() -> None:
         repeated_vector_pole_factor_read_rho=(
             args.repeated_vector_pole_factor_read_rho
         ),
+        repeated_vector_pole_mamba_outer=args.repeated_vector_pole_mamba_outer,
+        repeated_vector_pole_outer_direct=args.repeated_vector_pole_outer_direct,
+        repeated_vector_pole_outer_gate=args.repeated_vector_pole_outer_gate,
+        repeated_vector_pole_outer_kernel=args.repeated_vector_pole_outer_kernel,
         repeated_vector_pole_activation_checkpoint=(
             args.repeated_vector_pole_activation_checkpoint
         ),
@@ -1841,6 +1932,7 @@ def main() -> None:
             or args.initialize_slow_semantic_clock_checkpoint is not None
             or args.initialize_repeated_factorized_checkpoint is not None
             or args.initialize_repeated_retained_checkpoint is not None
+            or args.initialize_repeated_outer_checkpoint is not None
         ):
             raise RuntimeError("paired and checkpoint trunk initialization are mutually exclusive")
         if not isinstance(model, AlphabetLM):
@@ -2003,6 +2095,15 @@ def main() -> None:
         model,
         enabled=args.freeze_repeated_retained_interface,
     )
+    mamba_outer_initialization = _initialize_repeated_mamba_outer(
+        model,
+        args.initialize_repeated_outer_checkpoint,
+    )
+    _validate_repeated_mamba_outer_source(
+        mamba_outer_initialization,
+        runtime,
+        enabled=args.initialize_repeated_outer_checkpoint is not None,
+    )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
         active_arguments = {
@@ -2124,6 +2225,18 @@ def main() -> None:
             ),
             "repeated_vector_pole_factor_read_rho": (
                 args.repeated_vector_pole_factor_read_rho
+            ),
+            "repeated_vector_pole_mamba_outer": (
+                args.repeated_vector_pole_mamba_outer
+            ),
+            "repeated_vector_pole_outer_direct": (
+                args.repeated_vector_pole_outer_direct
+            ),
+            "repeated_vector_pole_outer_gate": (
+                args.repeated_vector_pole_outer_gate
+            ),
+            "repeated_vector_pole_outer_kernel": (
+                args.repeated_vector_pole_outer_kernel
             ),
             "repeated_vector_pole_activation_checkpoint": (
                 args.repeated_vector_pole_activation_checkpoint
@@ -2361,11 +2474,16 @@ def main() -> None:
         "repeated_vector_pole_factor_read_rho": (
             args.repeated_vector_pole_factor_read_rho
         ),
+        "repeated_vector_pole_mamba_outer": args.repeated_vector_pole_mamba_outer,
+        "repeated_vector_pole_outer_direct": args.repeated_vector_pole_outer_direct,
+        "repeated_vector_pole_outer_gate": args.repeated_vector_pole_outer_gate,
+        "repeated_vector_pole_outer_kernel": args.repeated_vector_pole_outer_kernel,
         "repeated_vector_pole_activation_checkpoint": (
             args.repeated_vector_pole_activation_checkpoint
         ),
         "repeated_factorized_initialization": repeated_factorized_initialization,
         "retained_factor_initialization": retained_factor_initialization,
+        "mamba_outer_initialization": mamba_outer_initialization,
         "freeze_repeated_retained_interface": (
             args.freeze_repeated_retained_interface
         ),
