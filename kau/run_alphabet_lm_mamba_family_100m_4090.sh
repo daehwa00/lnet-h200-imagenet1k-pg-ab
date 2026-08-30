@@ -37,6 +37,8 @@ export WANDB_GROUP="ALPHABET-LM-RTX4090-MambaFamily-100M-S501-v1"
 export WANDB_CONSOLE=off
 
 common=(
+  --reader-type dense_k3
+  --memory-layout local_only
   --repeated-vector-pole-memory
   --repeated-vector-pole-interval 1
   --repeated-vector-pole-modes 32
