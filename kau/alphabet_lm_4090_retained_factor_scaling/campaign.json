@@ -1,0 +1,82 @@
+{
+  "schema": "lnet.kau.alphabet_lm.retained_factor_scaling.v1",
+  "campaign_id": "kau-alphabet-lm-retained-factor-scaling-30m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-retained-factor-scaling-v1",
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "common": {
+      "reader_type": "dense_k3",
+      "memory_layout": "local_only",
+      "repeated_vector_pole_memory": true,
+      "repeated_vector_pole_interval": 1,
+      "repeated_vector_pole_modes": 32,
+      "repeated_vector_pole_width": 32,
+      "repeated_vector_pole_reader_kernel": 3,
+      "repeated_vector_pole_beta_initial": 0.01,
+      "repeated_vector_pole_minimum_half_life": 16.0,
+      "repeated_vector_pole_maximum_half_life": 4096.0,
+      "repeated_vector_pole_factorized": true,
+      "repeated_vector_pole_write_rank": 4,
+      "repeated_vector_pole_query_rank": 4,
+      "repeated_vector_pole_synthesis_rank": 4,
+      "repeated_vector_pole_retain_factor_state": true,
+      "repeated_vector_pole_factor_read_rho": 0.5,
+      "repeated_vector_pole_activation_checkpoint": true
+    },
+    "variants": {
+      "retained-factor-fixed-c-p32j4r32-30m": {
+        "repeated_vector_pole_learned_factor_read": false
+      },
+      "retained-factor-learned-c-p32j4r32-30m": {
+        "repeated_vector_pole_learned_factor_read": true
+      }
+    }
+  },
+  "source": {
+    "fixed_4m_checkpoint": "/home/daehwa/alphabet-lm-4090-retained-factor-state-runs/90044dafadab2e50/retained-factor-fixed-c-p32j4r32-4m/checkpoint.pt",
+    "fixed_4m_sha256": "35175fba24775bd025163fe22e7cd84cd10e1d4fc7042284a94afa4e6e56a56a",
+    "fixed_4m_validation_loss": 5.238573853779847,
+    "learned_4m_checkpoint": "/home/daehwa/alphabet-lm-4090-retained-factor-state-runs/90044dafadab2e50/retained-factor-learned-c-p32j4r32-4m/checkpoint.pt",
+    "learned_4m_sha256": "1813c48ac255a83d3a42454f63a04cb83f351ac7698692d8ca4dea3ca3e2a0a0",
+    "learned_4m_validation_loss": 5.237513786331776
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 30000000,
+    "validation_milestone_tokens": [10000000],
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "retained-factor-fixed-c-p32j4r32-30m",
+      "retained-factor-learned-c-p32j4r32-30m"
+    ]
+  },
+  "parameter_counts": {
+    "retained-factor-fixed-c-p32j4r32-30m": 4780032,
+    "retained-factor-learned-c-p32j4r32-30m": 6359040
+  },
+  "total_parameter_counts": {
+    "retained-factor-fixed-c-p32j4r32-30m": 47008012,
+    "retained-factor-learned-c-p32j4r32-30m": 48587020
+  },
+  "diagnostics": {
+    "paired_scaling": true,
+    "milestones": [4000000, 10000000, 30000000],
+    "final_factor_read_interventions": true
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-RetainedFactorScaling-S501-v1"
+  }
+}

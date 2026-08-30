@@ -1049,6 +1049,39 @@ def _validate_repeated_retained_source(
         raise RuntimeError("retained-factor source checkpoint digest changed")
 
 
+def _freeze_repeated_retained_interface(model: nn.Module, *, enabled: bool) -> None:
+    if not enabled:
+        return
+    if not isinstance(model, AlphabetLM) or model.repeated_vector_pole_memories is None:
+        raise RuntimeError("retained-factor freezing requires repeated memory")
+    if not all(
+        isinstance(bank, FactorizedTokenRateVectorPoleBlock)
+        and bank.retain_factor_state
+        for bank in model.repeated_vector_pole_memories
+    ):
+        raise RuntimeError("retained-factor freezing requires retained factor banks")
+    trainable_parts = (
+        ".extra_reader.",
+        ".extra_query_norm.",
+        ".extra_query_real.",
+        ".extra_query_imag.",
+        ".content_delta_norm.",
+        ".content_delta.",
+        ".query_basis_delta_norm.",
+        ".query_basis_delta.",
+        ".extra_projection_basis",
+        ".extra_synthesis.",
+        ".factor_read_norm.",
+        ".factor_read_real.",
+        ".factor_read_imag.",
+    )
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad_(
+            name.startswith("repeated_vector_pole_memories.")
+            and any(part in name for part in trainable_parts)
+        )
+
+
 def _loss_sum(model: nn.Module, tokens: Tensor, pad_id: int) -> tuple[Tensor, int]:
     labels = tokens[:, 1:]
     logits = model(tokens[:, :-1])
@@ -1594,6 +1627,7 @@ def main() -> None:
     parser.add_argument("--initialize-slow-semantic-clock-checkpoint", type=Path)
     parser.add_argument("--initialize-repeated-factorized-checkpoint", type=Path)
     parser.add_argument("--initialize-repeated-retained-checkpoint", type=Path)
+    parser.add_argument("--freeze-repeated-retained-interface", action="store_true")
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
     parser.add_argument("--dynamic-write-initial-scale", type=float, default=0.06)
@@ -1965,6 +1999,10 @@ def main() -> None:
         runtime,
         enabled=args.initialize_repeated_retained_checkpoint is not None,
     )
+    _freeze_repeated_retained_interface(
+        model,
+        enabled=args.freeze_repeated_retained_interface,
+    )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
         active_arguments = {
@@ -2328,6 +2366,9 @@ def main() -> None:
         ),
         "repeated_factorized_initialization": repeated_factorized_initialization,
         "retained_factor_initialization": retained_factor_initialization,
+        "freeze_repeated_retained_interface": (
+            args.freeze_repeated_retained_interface
+        ),
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,

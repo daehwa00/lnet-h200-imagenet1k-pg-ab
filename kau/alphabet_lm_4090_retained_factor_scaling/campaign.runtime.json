@@ -1,0 +1,124 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "retained-factor-fixed-c-p32j4r32-30m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_activation_checkpoint": true,
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_factor_read_rho": 0.5,
+        "repeated_vector_pole_factorized": true,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_learned_factor_read": false,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_query_rank": 4,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_retain_factor_state": true,
+        "repeated_vector_pole_synthesis_rank": 4,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_write_rank": 4
+      },
+      "retained-factor-learned-c-p32j4r32-30m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_activation_checkpoint": true,
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_factor_read_rho": 0.5,
+        "repeated_vector_pole_factorized": true,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_learned_factor_read": true,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_query_rank": 4,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_retain_factor_state": true,
+        "repeated_vector_pole_synthesis_rank": 4,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_write_rank": 4
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-retained-factor-scaling-30m-s501-v1",
+  "campaign_manifest_sha256": "1a812a9aa0366bbffa7a50978d4a49ea89eab8b7de7e05455947c027b00d1add",
+  "diagnostics": {
+    "final_factor_read_interventions": true,
+    "milestones": [
+      4000000,
+      10000000,
+      30000000
+    ],
+    "paired_scaling": true
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-RetainedFactorScaling-S501-v1",
+  "output_namespace": "alphabet-lm-4090-retained-factor-scaling-v1",
+  "parameter_counts": {
+    "retained-factor-fixed-c-p32j4r32-30m": 4780032,
+    "retained-factor-learned-c-p32j4r32-30m": 6359040
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "retained-factor-fixed-c-p32j4r32-30m": {
+      "display_name": "RTX4090-S501-ALPHABET2-retained-factor-fixed-c-p32j4r32-30m",
+      "id": "d6123e210cb695a2",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "RetainedFactorState",
+        "30M"
+      ]
+    },
+    "retained-factor-learned-c-p32j4r32-30m": {
+      "display_name": "RTX4090-S501-ALPHABET2-retained-factor-learned-c-p32j4r32-30m",
+      "id": "686bd8232f1f29d2",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "RetainedFactorState",
+        "30M"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "fixed_4m_checkpoint": "/home/daehwa/alphabet-lm-4090-retained-factor-state-runs/90044dafadab2e50/retained-factor-fixed-c-p32j4r32-4m/checkpoint.pt",
+    "fixed_4m_sha256": "35175fba24775bd025163fe22e7cd84cd10e1d4fc7042284a94afa4e6e56a56a",
+    "fixed_4m_validation_loss": 5.238573853779847,
+    "learned_4m_checkpoint": "/home/daehwa/alphabet-lm-4090-retained-factor-state-runs/90044dafadab2e50/retained-factor-learned-c-p32j4r32-4m/checkpoint.pt",
+    "learned_4m_sha256": "1813c48ac255a83d3a42454f63a04cb83f351ac7698692d8ca4dea3ca3e2a0a0",
+    "learned_4m_validation_loss": 5.237513786331776
+  },
+  "total_parameter_counts": {
+    "retained-factor-fixed-c-p32j4r32-30m": 47008012,
+    "retained-factor-learned-c-p32j4r32-30m": 48587020
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "retained-factor-fixed-c-p32j4r32-30m",
+      "retained-factor-learned-c-p32j4r32-30m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 30000000,
+    "validation_milestone_tokens": [
+      10000000
+    ],
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}
