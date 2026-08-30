@@ -7,8 +7,8 @@
       "mamba2-parameter-matched-fromscratch-100m": {}
     }
   },
-  "campaign_id": "kau-alphabet-lm-mamba-family-parameter-matched-100m-s501-v1",
-  "campaign_manifest_sha256": "a44030f7d0926c9a3ff8da8bd63dcb0a825818dfce5076f06b44a6748668c4a3",
+  "campaign_id": "kau-alphabet-lm-mamba-family-parameter-matched-100m-s501-v2",
+  "campaign_manifest_sha256": "3b4f19d1991d6adc859fed6d65b112292e3afff7bcfddb97a9c17bc85c9b13f8",
   "diagnostics": {
     "final_context_resets": [
       1,
@@ -20,8 +20,8 @@
     "same_recipe": true
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-MambaFamily-100M-S501-v1",
-  "output_namespace": "alphabet-lm-4090-mamba-family-100m-v1",
+  "group": "ALPHABET-LM-RTX4090-MambaFamily-100M-S501-v2",
+  "output_namespace": "alphabet-lm-4090-mamba-family-100m-v2",
   "parameter_counts": {
     "mamba1-parameter-matched-fromscratch-100m": 48987136,
     "mamba2-parameter-matched-fromscratch-100m": 47739744
@@ -30,7 +30,7 @@
   "runs": {
     "mamba1-parameter-matched-fromscratch-100m": {
       "display_name": "RTX4090-S501-mamba1-parameter-matched-fromscratch-100m",
-      "id": "ddac44d98fa6bc8f",
+      "id": "bae57950c3aa2890",
       "tags": [
         "RTX4090",
         "Mamba",
@@ -40,7 +40,7 @@
     },
     "mamba2-parameter-matched-fromscratch-100m": {
       "display_name": "RTX4090-S501-mamba2-parameter-matched-fromscratch-100m",
-      "id": "85090d024b973fbf",
+      "id": "791bc3c6a1eb7da6",
       "tags": [
         "RTX4090",
         "Mamba",

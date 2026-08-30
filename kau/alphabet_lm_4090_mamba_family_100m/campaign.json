@@ -1,7 +1,7 @@
 {
   "schema": "lnet.kau.alphabet_lm.mamba_family_100m.v1",
-  "campaign_id": "kau-alphabet-lm-mamba-family-parameter-matched-100m-s501-v1",
-  "output_namespace": "alphabet-lm-4090-mamba-family-100m-v1",
+  "campaign_id": "kau-alphabet-lm-mamba-family-parameter-matched-100m-s501-v2",
+  "output_namespace": "alphabet-lm-4090-mamba-family-100m-v2",
   "architecture": {
     "K": 512,
     "target_parameters": 48587020,
@@ -60,6 +60,6 @@
   "wandb": {
     "entity": "daehwa",
     "project": "alphabet-lm-viability",
-    "group": "ALPHABET-LM-RTX4090-MambaFamily-100M-S501-v1"
+    "group": "ALPHABET-LM-RTX4090-MambaFamily-100M-S501-v2"
   }
 }
