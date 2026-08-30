@@ -478,6 +478,11 @@ def _make_mixup() -> _Mixup:
     )
 
 
+def _validation_uses_bfloat16(model_key: str) -> bool:
+    """Keep MogaNet validation finite while preserving its BF16 training recipe."""
+    return model_key != "moganet_xt" and registry.model_spec(model_key).precision == "bfloat16"
+
+
 def _extract_logits(output: object) -> Tensor:
     """Normalize common public-repository classifier output conventions."""
     if isinstance(output, Tensor):
@@ -1130,7 +1135,7 @@ def run_task(
             model,
             loaders.validation,
             resolved_device,
-            use_bfloat16=registry.model_spec(task.model_key).precision == "bfloat16",
+            use_bfloat16=_validation_uses_bfloat16(task.model_key),
         )
         if resolved_device.type == "cuda":
             torch.cuda.synchronize(resolved_device)

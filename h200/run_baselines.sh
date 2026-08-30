@@ -349,7 +349,7 @@ fi
 
 # UniConvNet-A is the only native-extension lane. Build from a disposable MIT
 # source copy so the pinned official checkout remains clean and verifiable.
-if [[ "${H200_BASELINE_BACKLOG_ONLY:-0}" == "1" ]]; then
+if [[ "${H200_BASELINE_BACKLOG_ONLY:-0}" == "1" || "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" ]]; then
 echo "H200_BASELINE_UNICONV_DISABLED=not_requested_by_backlog"
 elif [[ -d "${SOURCE_ROOT}/uniconvnet/ops_dcnv3" ]]; then
 UNICONV_COMMIT="$(
@@ -452,6 +452,8 @@ fi
 QUEUE_SCRIPT="scripts/run_h200_baseline_queue.py"
 if [[ "${H200_BASELINE_BACKLOG_ONLY:-0}" == "1" ]]; then
   QUEUE_SCRIPT="scripts/run_h200_baseline_backlog.py"
+elif [[ "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" ]]; then
+  QUEUE_SCRIPT="scripts/run_imagenet1k_baseline_followup_queue.py"
 fi
 readonly QUEUE_SCRIPT
 QUEUE=(
@@ -465,7 +467,10 @@ QUEUE=(
 )
 
 QUEUE_EXIT_CODE=0
-if [[ "${H200_BASELINE_BACKLOG_ONLY:-0}" == "1" ]]; then
+if [[ "${H200_BASELINE_BACKLOG_ONLY:-0}" == "1" || "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" ]]; then
+  if [[ "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" ]]; then
+    QUEUE+=(--lane h200)
+  fi
   "${QUEUE[@]}" || QUEUE_EXIT_CODE=$?
 else
   "${QUEUE[@]}" --mps auto --mode auto-run || QUEUE_EXIT_CODE=$?
