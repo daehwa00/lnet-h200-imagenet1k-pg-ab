@@ -3,7 +3,7 @@
     "K": 256,
     "layers": 12,
     "variants": {
-      "mamba-outer-both-fromscratch-30m": {
+      "mamba-outer-both-fromscratch-100m": {
         "memory_layout": "local_only",
         "reader_type": "dense_k3",
         "repeated_vector_pole_activation_checkpoint": true,
@@ -28,7 +28,7 @@
         "repeated_vector_pole_width": 32,
         "repeated_vector_pole_write_rank": 4
       },
-      "mamba-outer-direct-fromscratch-30m": {
+      "mamba-outer-direct-fromscratch-100m": {
         "memory_layout": "local_only",
         "reader_type": "dense_k3",
         "repeated_vector_pole_activation_checkpoint": true,
@@ -53,7 +53,7 @@
         "repeated_vector_pole_width": 32,
         "repeated_vector_pole_write_rank": 4
       },
-      "mamba-outer-gate-fromscratch-30m": {
+      "mamba-outer-gate-fromscratch-100m": {
         "memory_layout": "local_only",
         "reader_type": "dense_k3",
         "repeated_vector_pole_activation_checkpoint": true,
@@ -78,7 +78,7 @@
         "repeated_vector_pole_width": 32,
         "repeated_vector_pole_write_rank": 4
       },
-      "mamba-outer-post-fromscratch-30m": {
+      "mamba-outer-post-fromscratch-100m": {
         "memory_layout": "local_only",
         "reader_type": "dense_k3",
         "repeated_vector_pole_activation_checkpoint": true,
@@ -105,8 +105,8 @@
       }
     }
   },
-  "campaign_id": "kau-alphabet-lm-mamba-outer-fromscratch-s501-v1",
-  "campaign_manifest_sha256": "2d22d79b4d300f77caca62018ed11956c4d5858c4ac623a8e4f7f229b3f9b282",
+  "campaign_id": "kau-alphabet-lm-mamba-outer-fromscratch-100m-s501-v2",
+  "campaign_manifest_sha256": "3531c4542a0a3710ffc68ce72b6278a9e9d93dabde90779da5e9b73c1c1c5cc6",
   "diagnostics": {
     "direct_gate_factorial": true,
     "paired_from_scratch": true,
@@ -114,19 +114,19 @@
     "source_preserving_delta_initialization": true
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-MambaOuterFromScratch-S501-v1",
-  "output_namespace": "alphabet-lm-4090-mamba-outer-fromscratch-v1",
+  "group": "ALPHABET-LM-RTX4090-MambaOuterFromScratch-100M-S501-v2",
+  "output_namespace": "alphabet-lm-4090-mamba-outer-fromscratch-100m-v2",
   "parameter_counts": {
-    "mamba-outer-both-fromscratch-30m": 58073356,
-    "mamba-outer-direct-fromscratch-30m": 58073356,
-    "mamba-outer-gate-fromscratch-30m": 58073356,
-    "mamba-outer-post-fromscratch-30m": 58073356
+    "mamba-outer-both-fromscratch-100m": 58073356,
+    "mamba-outer-direct-fromscratch-100m": 58073356,
+    "mamba-outer-gate-fromscratch-100m": 58073356,
+    "mamba-outer-post-fromscratch-100m": 58073356
   },
   "project": "alphabet-lm-viability",
   "runs": {
-    "mamba-outer-both-fromscratch-30m": {
-      "display_name": "RTX4090-S501-ALPHABET2-mamba-outer-both-fromscratch-30m",
-      "id": "c543b51cf48cc14f",
+    "mamba-outer-both-fromscratch-100m": {
+      "display_name": "RTX4090-S501-ALPHABET2-mamba-outer-both-fromscratch-100m",
+      "id": "9b32bcad671a7a6f",
       "tags": [
         "RTX4090",
         "ALPHABET2",
@@ -134,9 +134,9 @@
         "FromScratch"
       ]
     },
-    "mamba-outer-direct-fromscratch-30m": {
-      "display_name": "RTX4090-S501-ALPHABET2-mamba-outer-direct-fromscratch-30m",
-      "id": "36a82af115340426",
+    "mamba-outer-direct-fromscratch-100m": {
+      "display_name": "RTX4090-S501-ALPHABET2-mamba-outer-direct-fromscratch-100m",
+      "id": "af2f3b7d85fe9202",
       "tags": [
         "RTX4090",
         "ALPHABET2",
@@ -144,9 +144,9 @@
         "FromScratch"
       ]
     },
-    "mamba-outer-gate-fromscratch-30m": {
-      "display_name": "RTX4090-S501-ALPHABET2-mamba-outer-gate-fromscratch-30m",
-      "id": "eb5819b74dccc43c",
+    "mamba-outer-gate-fromscratch-100m": {
+      "display_name": "RTX4090-S501-ALPHABET2-mamba-outer-gate-fromscratch-100m",
+      "id": "52077f32b6aee24c",
       "tags": [
         "RTX4090",
         "ALPHABET2",
@@ -154,9 +154,9 @@
         "FromScratch"
       ]
     },
-    "mamba-outer-post-fromscratch-30m": {
-      "display_name": "RTX4090-S501-ALPHABET2-mamba-outer-post-fromscratch-30m",
-      "id": "ea88a0d550f96d8c",
+    "mamba-outer-post-fromscratch-100m": {
+      "display_name": "RTX4090-S501-ALPHABET2-mamba-outer-post-fromscratch-100m",
+      "id": "b9fa95af7a3d6443",
       "tags": [
         "RTX4090",
         "ALPHABET2",
@@ -171,18 +171,18 @@
     "initialization": "seed501_from_scratch"
   },
   "total_parameter_counts": {
-    "mamba-outer-both-fromscratch-30m": 58073356,
-    "mamba-outer-direct-fromscratch-30m": 58073356,
-    "mamba-outer-gate-fromscratch-30m": 58073356,
-    "mamba-outer-post-fromscratch-30m": 58073356
+    "mamba-outer-both-fromscratch-100m": 58073356,
+    "mamba-outer-direct-fromscratch-100m": 58073356,
+    "mamba-outer-gate-fromscratch-100m": 58073356,
+    "mamba-outer-post-fromscratch-100m": 58073356
   },
   "training": {
     "checkpoint_updates": 25,
     "execution": [
-      "mamba-outer-post-fromscratch-30m",
-      "mamba-outer-direct-fromscratch-30m",
-      "mamba-outer-gate-fromscratch-30m",
-      "mamba-outer-both-fromscratch-30m"
+      "mamba-outer-post-fromscratch-100m",
+      "mamba-outer-direct-fromscratch-100m",
+      "mamba-outer-gate-fromscratch-100m",
+      "mamba-outer-both-fromscratch-100m"
     ],
     "global_sequences": 32,
     "gradient_clip": 1.0,
@@ -193,9 +193,10 @@
     "precision": "bfloat16",
     "scan_fp32": true,
     "seed": 501,
-    "target_tokens": 30000000,
+    "target_tokens": 100000000,
     "validation_milestone_tokens": [
-      10000000
+      10000000,
+      30000000
     ],
     "warmup_updates": 20,
     "weight_decay": 0.1

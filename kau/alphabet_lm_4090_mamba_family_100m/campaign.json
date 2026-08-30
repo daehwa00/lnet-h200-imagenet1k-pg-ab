@@ -1,0 +1,65 @@
+{
+  "schema": "lnet.kau.alphabet_lm.mamba_family_100m.v1",
+  "campaign_id": "kau-alphabet-lm-mamba-family-parameter-matched-100m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-mamba-family-100m-v1",
+  "architecture": {
+    "K": 512,
+    "target_parameters": 48587020,
+    "variants": {
+      "mamba1-parameter-matched-fromscratch-100m": {
+        "architecture": "Mamba1",
+        "layers": 19,
+        "state_size": 16
+      },
+      "mamba2-parameter-matched-fromscratch-100m": {
+        "architecture": "Mamba2",
+        "layers": 18,
+        "state_size": 128,
+        "head_dim": 64,
+        "groups": 1
+      }
+    }
+  },
+  "source": {
+    "initialization": "seed501_from_scratch",
+    "checkpoint_initialization": false
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 100000000,
+    "validation_milestone_tokens": [10000000, 30000000],
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "mamba1-parameter-matched-fromscratch-100m",
+      "mamba2-parameter-matched-fromscratch-100m"
+    ]
+  },
+  "parameter_counts": {
+    "mamba1-parameter-matched-fromscratch-100m": 48987136,
+    "mamba2-parameter-matched-fromscratch-100m": 47739744
+  },
+  "total_parameter_counts": {
+    "mamba1-parameter-matched-fromscratch-100m": 48987136,
+    "mamba2-parameter-matched-fromscratch-100m": 47739744
+  },
+  "diagnostics": {
+    "same_recipe": true,
+    "parameter_target": 48587020,
+    "final_context_resets": [1, 32, 128, 512]
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-MambaFamily-100M-S501-v1"
+  }
+}

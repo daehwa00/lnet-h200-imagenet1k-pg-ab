@@ -25,14 +25,15 @@ def _render() -> str:
         for label in execution
     }
     expected = {
-        "write-row-specific-p32j4r32-fromscratch-30m": "row_specific",
-        "write-shared-outer-p32j4r32-fromscratch-30m": "shared_outer",
-        "write-pole-outer-p32j4r32-fromscratch-30m": "pole_outer",
+        "write-row-specific-p32j4r32-fromscratch-100m": "row_specific",
+        "write-shared-outer-p32j4r32-fromscratch-100m": "shared_outer",
+        "write-pole-outer-p32j4r32-fromscratch-100m": "pole_outer",
     }
     if (
         execution != list(expected)
-        or manifest["training"]["target_tokens"] != 30_000_000
-        or manifest["training"]["validation_milestone_tokens"] != [10_000_000]
+        or manifest["training"]["target_tokens"] != 100_000_000
+        or manifest["training"]["validation_milestone_tokens"]
+        != [10_000_000, 30_000_000]
     ):
         raise RuntimeError("invalid write-law factorial execution")
     for label, law in expected.items():

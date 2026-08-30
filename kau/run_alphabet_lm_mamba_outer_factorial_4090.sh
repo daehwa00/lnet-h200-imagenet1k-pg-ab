@@ -33,7 +33,7 @@ export MKL_NUM_THREADS=8
 export WANDB_BASE_URL="https://api.wandb.ai"
 export WANDB_ENTITY="daehwa"
 export WANDB_PROJECT="alphabet-lm-viability"
-export WANDB_GROUP="ALPHABET-LM-RTX4090-MambaOuterFromScratch-S501-v1"
+export WANDB_GROUP="ALPHABET-LM-RTX4090-MambaOuterFromScratch-100M-S501-v2"
 export WANDB_CONSOLE=off
 
 run_variant() {
@@ -44,7 +44,7 @@ run_variant() {
   local feature_args=()
   [[ "${direct}" == true ]] && feature_args+=(--repeated-vector-pole-outer-direct)
   [[ "${gate}" == true ]] && feature_args+=(--repeated-vector-pole-outer-gate)
-  timeout --signal=TERM --kill-after=5m 3h \
+  timeout --signal=TERM --kill-after=5m 6h \
     "${PYTHON}" scripts/train_h200_alphabet_lm_10m.py \
     --model alphabet \
     --run-label "${label}" \
@@ -70,7 +70,7 @@ run_variant() {
     --repeated-vector-pole-outer-kernel 4 \
     --repeated-vector-pole-activation-checkpoint \
     "${feature_args[@]}" \
-    --target-tokens-override 30000000 \
+    --target-tokens-override 100000000 \
     --runtime "${RUNTIME}" \
     --train-manifest "${TRAIN_MANIFEST}" \
     --validation-manifest "${VALIDATION_MANIFEST}" \
@@ -85,9 +85,9 @@ run_variant() {
     --output "${OUTPUT_ROOT}/${label}/context.json"
 }
 
-run_variant mamba-outer-post-fromscratch-30m alphabet2_mamba_outer_post_p32j4r32 false false
-run_variant mamba-outer-direct-fromscratch-30m alphabet2_mamba_outer_direct_p32j4r32 true false
-run_variant mamba-outer-gate-fromscratch-30m alphabet2_mamba_outer_gate_p32j4r32 false true
-run_variant mamba-outer-both-fromscratch-30m alphabet2_mamba_outer_both_p32j4r32 true true
+run_variant mamba-outer-post-fromscratch-100m alphabet2_mamba_outer_post_p32j4r32 false false
+run_variant mamba-outer-direct-fromscratch-100m alphabet2_mamba_outer_direct_p32j4r32 true false
+run_variant mamba-outer-gate-fromscratch-100m alphabet2_mamba_outer_gate_p32j4r32 false true
+run_variant mamba-outer-both-fromscratch-100m alphabet2_mamba_outer_both_p32j4r32 true true
 
 echo "KAU_ALPHABET_LM_MAMBA_OUTER_FACTORIAL_COMPLETE=${OUTPUT_ROOT}"

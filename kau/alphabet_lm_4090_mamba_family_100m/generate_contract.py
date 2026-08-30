@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the parameter-matched Mamba-2 30M runtime."""
+"""Generate the parameter-matched Mamba-1/Mamba-2 100M runtime."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MANIFEST = ROOT / "kau/alphabet_lm_4090_mamba2_30m/campaign.json"
-RUNTIME = ROOT / "kau/alphabet_lm_4090_mamba2_30m/campaign.runtime.json"
+MANIFEST = ROOT / "kau/alphabet_lm_4090_mamba_family_100m/campaign.json"
+RUNTIME = ROOT / "kau/alphabet_lm_4090_mamba_family_100m/campaign.runtime.json"
 
 
 def _render() -> str:
@@ -20,14 +20,18 @@ def _render() -> str:
     manifest = json.loads(raw)
     architecture = manifest["architecture"]
     execution = manifest["training"]["execution"]
-    label = "mamba2-parameter-matched-e2e-30m"
+    expected = [
+        "mamba1-parameter-matched-fromscratch-100m",
+        "mamba2-parameter-matched-fromscratch-100m",
+    ]
     if (
-        execution != [label]
-        or architecture["layers"] != 18
-        or manifest["training"]["target_tokens"] != 30_000_000
-        or manifest["parameter_counts"][label] != 47_739_744
+        execution != expected
+        or manifest["training"]["target_tokens"] != 100_000_000
+        or manifest["training"]["validation_milestone_tokens"]
+        != [10_000_000, 30_000_000]
+        or architecture["target_parameters"] != 48_587_020
     ):
-        raise RuntimeError("invalid Mamba-2 30M campaign")
+        raise RuntimeError("invalid Mamba family 100M campaign")
     campaign_id = manifest["campaign_id"]
     runtime = {
         "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
@@ -36,8 +40,8 @@ def _render() -> str:
         "output_namespace": manifest["output_namespace"],
         "architecture": {
             "K": architecture["K"],
-            "layers": architecture["layers"],
-            "variants": {label: {}},
+            "layers": None,
+            "variants": {label: {} for label in execution},
         },
         "source": manifest["source"],
         "training": manifest["training"],
@@ -50,9 +54,10 @@ def _render() -> str:
         "runs": {
             label: {
                 "id": hashlib.sha256(f"{campaign_id}\0{label}:seed501".encode()).hexdigest()[:16],
-                "display_name": "RTX4090-S501-Mamba2-ParameterMatched-E2E-30M",
-                "tags": ["RTX4090", "Mamba2", "E2E", "30M", "seed501"],
+                "display_name": f"RTX4090-S501-{label}",
+                "tags": ["RTX4090", "Mamba", "FromScratch", "100M"],
             }
+            for label in execution
         },
     }
     return json.dumps(runtime, indent=2, sort_keys=True) + "\n"
@@ -65,7 +70,7 @@ def main() -> int:
     rendered = _render()
     if args.check:
         if not RUNTIME.is_file() or RUNTIME.read_text(encoding="utf-8") != rendered:
-            print("stale Mamba-2 runtime", file=sys.stderr)
+            print("stale Mamba family runtime", file=sys.stderr)
             return 1
         return 0
     RUNTIME.write_text(rendered, encoding="utf-8")

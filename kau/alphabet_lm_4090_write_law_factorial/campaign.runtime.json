@@ -3,7 +3,7 @@
     "K": 256,
     "layers": 12,
     "variants": {
-      "write-pole-outer-p32j4r32-fromscratch-30m": {
+      "write-pole-outer-p32j4r32-fromscratch-100m": {
         "memory_layout": "local_only",
         "reader_type": "dense_k3",
         "repeated_vector_pole_activation_checkpoint": true,
@@ -24,7 +24,7 @@
         "repeated_vector_pole_width": 32,
         "repeated_vector_pole_write_rank": 4
       },
-      "write-row-specific-p32j4r32-fromscratch-30m": {
+      "write-row-specific-p32j4r32-fromscratch-100m": {
         "memory_layout": "local_only",
         "reader_type": "dense_k3",
         "repeated_vector_pole_activation_checkpoint": true,
@@ -45,7 +45,7 @@
         "repeated_vector_pole_width": 32,
         "repeated_vector_pole_write_rank": 4
       },
-      "write-shared-outer-p32j4r32-fromscratch-30m": {
+      "write-shared-outer-p32j4r32-fromscratch-100m": {
         "memory_layout": "local_only",
         "reader_type": "dense_k3",
         "repeated_vector_pole_activation_checkpoint": true,
@@ -68,8 +68,8 @@
       }
     }
   },
-  "campaign_id": "kau-alphabet-lm-write-law-fromscratch-p32j4r32-s501-v2",
-  "campaign_manifest_sha256": "6136002ebf9ecdd1c93dc76c578be4d8cec7d7cd025c5e20697317c00b038acc",
+  "campaign_id": "kau-alphabet-lm-write-law-fromscratch-100m-p32j4r32-s501-v3",
+  "campaign_manifest_sha256": "2d4b287ebb86b91657d7ab17fd2f4467b14aa4a2084b83088d8522d49e61ccb6",
   "diagnostics": {
     "factor_read_interventions": true,
     "pole_outer_has_pole_specific_value": true,
@@ -82,36 +82,36 @@
     "shared_outer_is_strict_restriction": true
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-WriteLawFromScratch-S501-v2",
-  "output_namespace": "alphabet-lm-4090-write-law-fromscratch-v2",
+  "group": "ALPHABET-LM-RTX4090-WriteLawFromScratch-100M-S501-v3",
+  "output_namespace": "alphabet-lm-4090-write-law-fromscratch-100m-v3",
   "parameter_counts": {
-    "write-pole-outer-p32j4r32-fromscratch-30m": 59603212,
-    "write-row-specific-p32j4r32-fromscratch-30m": 48587020,
-    "write-shared-outer-p32j4r32-fromscratch-30m": 48587020
+    "write-pole-outer-p32j4r32-fromscratch-100m": 59603212,
+    "write-row-specific-p32j4r32-fromscratch-100m": 48587020,
+    "write-shared-outer-p32j4r32-fromscratch-100m": 48587020
   },
   "project": "alphabet-lm-viability",
   "runs": {
-    "write-pole-outer-p32j4r32-fromscratch-30m": {
-      "display_name": "RTX4090-S501-ALPHABET2-write-pole-outer-p32j4r32-fromscratch-30m",
-      "id": "a2fd987a71ec3413",
+    "write-pole-outer-p32j4r32-fromscratch-100m": {
+      "display_name": "RTX4090-S501-ALPHABET2-write-pole-outer-p32j4r32-fromscratch-100m",
+      "id": "263ef8650faebd5c",
       "tags": [
         "RTX4090",
         "ALPHABET2",
         "WriteLawFactorial"
       ]
     },
-    "write-row-specific-p32j4r32-fromscratch-30m": {
-      "display_name": "RTX4090-S501-ALPHABET2-write-row-specific-p32j4r32-fromscratch-30m",
-      "id": "1eda89a16a943b3f",
+    "write-row-specific-p32j4r32-fromscratch-100m": {
+      "display_name": "RTX4090-S501-ALPHABET2-write-row-specific-p32j4r32-fromscratch-100m",
+      "id": "fb36e425420ec762",
       "tags": [
         "RTX4090",
         "ALPHABET2",
         "WriteLawFactorial"
       ]
     },
-    "write-shared-outer-p32j4r32-fromscratch-30m": {
-      "display_name": "RTX4090-S501-ALPHABET2-write-shared-outer-p32j4r32-fromscratch-30m",
-      "id": "ea8e1a61582bfb4f",
+    "write-shared-outer-p32j4r32-fromscratch-100m": {
+      "display_name": "RTX4090-S501-ALPHABET2-write-shared-outer-p32j4r32-fromscratch-100m",
+      "id": "4f466332e4237c76",
       "tags": [
         "RTX4090",
         "ALPHABET2",
@@ -125,16 +125,16 @@
     "initialization": "seed501_from_scratch"
   },
   "total_parameter_counts": {
-    "write-pole-outer-p32j4r32-fromscratch-30m": 59603212,
-    "write-row-specific-p32j4r32-fromscratch-30m": 48587020,
-    "write-shared-outer-p32j4r32-fromscratch-30m": 48587020
+    "write-pole-outer-p32j4r32-fromscratch-100m": 59603212,
+    "write-row-specific-p32j4r32-fromscratch-100m": 48587020,
+    "write-shared-outer-p32j4r32-fromscratch-100m": 48587020
   },
   "training": {
     "checkpoint_updates": 25,
     "execution": [
-      "write-row-specific-p32j4r32-fromscratch-30m",
-      "write-shared-outer-p32j4r32-fromscratch-30m",
-      "write-pole-outer-p32j4r32-fromscratch-30m"
+      "write-row-specific-p32j4r32-fromscratch-100m",
+      "write-shared-outer-p32j4r32-fromscratch-100m",
+      "write-pole-outer-p32j4r32-fromscratch-100m"
     ],
     "global_sequences": 32,
     "gradient_clip": 1.0,
@@ -145,9 +145,10 @@
     "precision": "bfloat16",
     "scan_fp32": true,
     "seed": 501,
-    "target_tokens": 30000000,
+    "target_tokens": 100000000,
     "validation_milestone_tokens": [
-      10000000
+      10000000,
+      30000000
     ],
     "warmup_updates": 20,
     "weight_decay": 0.1

@@ -1,7 +1,7 @@
 {
   "schema": "lnet.kau.alphabet_lm.write_law_factorial.v1",
-  "campaign_id": "kau-alphabet-lm-write-law-fromscratch-p32j4r32-s501-v2",
-  "output_namespace": "alphabet-lm-4090-write-law-fromscratch-v2",
+  "campaign_id": "kau-alphabet-lm-write-law-fromscratch-100m-p32j4r32-s501-v3",
+  "output_namespace": "alphabet-lm-4090-write-law-fromscratch-100m-v3",
   "architecture": {
     "K": 256,
     "layers": 12,
@@ -26,13 +26,13 @@
       "repeated_vector_pole_activation_checkpoint": true
     },
     "variants": {
-      "write-row-specific-p32j4r32-fromscratch-30m": {
+      "write-row-specific-p32j4r32-fromscratch-100m": {
         "repeated_vector_pole_factor_write_law": "row_specific"
       },
-      "write-shared-outer-p32j4r32-fromscratch-30m": {
+      "write-shared-outer-p32j4r32-fromscratch-100m": {
         "repeated_vector_pole_factor_write_law": "shared_outer"
       },
-      "write-pole-outer-p32j4r32-fromscratch-30m": {
+      "write-pole-outer-p32j4r32-fromscratch-100m": {
         "repeated_vector_pole_factor_write_law": "pole_outer"
       }
     }
@@ -43,8 +43,8 @@
   },
   "training": {
     "seed": 501,
-    "target_tokens": 30000000,
-    "validation_milestone_tokens": [10000000],
+    "target_tokens": 100000000,
+    "validation_milestone_tokens": [10000000, 30000000],
     "horizon_tokens": 300000000,
     "global_sequences": 32,
     "microbatch": 8,
@@ -57,20 +57,20 @@
     "warmup_updates": 20,
     "checkpoint_updates": 25,
     "execution": [
-      "write-row-specific-p32j4r32-fromscratch-30m",
-      "write-shared-outer-p32j4r32-fromscratch-30m",
-      "write-pole-outer-p32j4r32-fromscratch-30m"
+      "write-row-specific-p32j4r32-fromscratch-100m",
+      "write-shared-outer-p32j4r32-fromscratch-100m",
+      "write-pole-outer-p32j4r32-fromscratch-100m"
     ]
   },
   "parameter_counts": {
-    "write-row-specific-p32j4r32-fromscratch-30m": 48587020,
-    "write-shared-outer-p32j4r32-fromscratch-30m": 48587020,
-    "write-pole-outer-p32j4r32-fromscratch-30m": 59603212
+    "write-row-specific-p32j4r32-fromscratch-100m": 48587020,
+    "write-shared-outer-p32j4r32-fromscratch-100m": 48587020,
+    "write-pole-outer-p32j4r32-fromscratch-100m": 59603212
   },
   "total_parameter_counts": {
-    "write-row-specific-p32j4r32-fromscratch-30m": 48587020,
-    "write-shared-outer-p32j4r32-fromscratch-30m": 48587020,
-    "write-pole-outer-p32j4r32-fromscratch-30m": 59603212
+    "write-row-specific-p32j4r32-fromscratch-100m": 48587020,
+    "write-shared-outer-p32j4r32-fromscratch-100m": 48587020,
+    "write-pole-outer-p32j4r32-fromscratch-100m": 59603212
   },
   "diagnostics": {
     "same_seed_from_scratch": true,
@@ -82,6 +82,6 @@
   "wandb": {
     "entity": "daehwa",
     "project": "alphabet-lm-viability",
-    "group": "ALPHABET-LM-RTX4090-WriteLawFromScratch-S501-v2"
+    "group": "ALPHABET-LM-RTX4090-WriteLawFromScratch-100M-S501-v3"
   }
 }

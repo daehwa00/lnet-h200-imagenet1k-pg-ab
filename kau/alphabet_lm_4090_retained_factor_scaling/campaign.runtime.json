@@ -3,7 +3,7 @@
     "K": 256,
     "layers": 12,
     "variants": {
-      "retained-factor-fixed-c-p32j4r32-fromscratch-30m": {
+      "retained-factor-fixed-c-p32j4r32-fromscratch-100m": {
         "memory_layout": "local_only",
         "reader_type": "dense_k3",
         "repeated_vector_pole_activation_checkpoint": true,
@@ -23,7 +23,7 @@
         "repeated_vector_pole_width": 32,
         "repeated_vector_pole_write_rank": 4
       },
-      "retained-factor-learned-c-p32j4r32-fromscratch-30m": {
+      "retained-factor-learned-c-p32j4r32-fromscratch-100m": {
         "memory_layout": "local_only",
         "reader_type": "dense_k3",
         "repeated_vector_pole_activation_checkpoint": true,
@@ -45,28 +45,29 @@
       }
     }
   },
-  "campaign_id": "kau-alphabet-lm-retained-factor-fromscratch-30m-s501-v2",
-  "campaign_manifest_sha256": "3240288a2256eb69a37a6dc4e2651cb47be8bc4cd9f719458b9538e3e9f1068a",
+  "campaign_id": "kau-alphabet-lm-retained-factor-fromscratch-100m-s501-v3",
+  "campaign_manifest_sha256": "014b8c7b1e3eacb8386be95f3b32db3cba62b4f732bcb3c966773aee266113c3",
   "diagnostics": {
     "final_factor_read_interventions": true,
     "milestones": [
       10000000,
-      30000000
+      30000000,
+      100000000
     ],
     "paired_from_scratch": true
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-RetainedFactorFromScratch-S501-v2",
-  "output_namespace": "alphabet-lm-4090-retained-factor-fromscratch-v2",
+  "group": "ALPHABET-LM-RTX4090-RetainedFactorFromScratch-100M-S501-v3",
+  "output_namespace": "alphabet-lm-4090-retained-factor-fromscratch-100m-v3",
   "parameter_counts": {
-    "retained-factor-fixed-c-p32j4r32-fromscratch-30m": 47008012,
-    "retained-factor-learned-c-p32j4r32-fromscratch-30m": 48587020
+    "retained-factor-fixed-c-p32j4r32-fromscratch-100m": 47008012,
+    "retained-factor-learned-c-p32j4r32-fromscratch-100m": 48587020
   },
   "project": "alphabet-lm-viability",
   "runs": {
-    "retained-factor-fixed-c-p32j4r32-fromscratch-30m": {
-      "display_name": "RTX4090-S501-ALPHABET2-retained-factor-fixed-c-p32j4r32-fromscratch-30m",
-      "id": "50bb08a8ad573fd6",
+    "retained-factor-fixed-c-p32j4r32-fromscratch-100m": {
+      "display_name": "RTX4090-S501-ALPHABET2-retained-factor-fixed-c-p32j4r32-fromscratch-100m",
+      "id": "ac3664b23050e6a4",
       "tags": [
         "RTX4090",
         "ALPHABET2",
@@ -74,9 +75,9 @@
         "30M"
       ]
     },
-    "retained-factor-learned-c-p32j4r32-fromscratch-30m": {
-      "display_name": "RTX4090-S501-ALPHABET2-retained-factor-learned-c-p32j4r32-fromscratch-30m",
-      "id": "3012a363cf1ef8a9",
+    "retained-factor-learned-c-p32j4r32-fromscratch-100m": {
+      "display_name": "RTX4090-S501-ALPHABET2-retained-factor-learned-c-p32j4r32-fromscratch-100m",
+      "id": "fc7c88c421eefe12",
       "tags": [
         "RTX4090",
         "ALPHABET2",
@@ -92,14 +93,14 @@
     "prior_extension_results_are_diagnostic_only": true
   },
   "total_parameter_counts": {
-    "retained-factor-fixed-c-p32j4r32-fromscratch-30m": 47008012,
-    "retained-factor-learned-c-p32j4r32-fromscratch-30m": 48587020
+    "retained-factor-fixed-c-p32j4r32-fromscratch-100m": 47008012,
+    "retained-factor-learned-c-p32j4r32-fromscratch-100m": 48587020
   },
   "training": {
     "checkpoint_updates": 25,
     "execution": [
-      "retained-factor-fixed-c-p32j4r32-fromscratch-30m",
-      "retained-factor-learned-c-p32j4r32-fromscratch-30m"
+      "retained-factor-fixed-c-p32j4r32-fromscratch-100m",
+      "retained-factor-learned-c-p32j4r32-fromscratch-100m"
     ],
     "global_sequences": 32,
     "gradient_clip": 1.0,
@@ -110,9 +111,10 @@
     "precision": "bfloat16",
     "scan_fp32": true,
     "seed": 501,
-    "target_tokens": 30000000,
+    "target_tokens": 100000000,
     "validation_milestone_tokens": [
-      10000000
+      10000000,
+      30000000
     ],
     "warmup_updates": 20,
     "weight_decay": 0.1

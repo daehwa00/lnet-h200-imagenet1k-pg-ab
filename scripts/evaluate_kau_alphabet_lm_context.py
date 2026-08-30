@@ -47,6 +47,16 @@ def _build(kind: str) -> nn.Module:
                 architecture="Mamba2",
             )
         )
+    if kind == "mamba1_49m":
+        return MambaLM(MambaLMConfig(layers=19))
+    if kind == "mamba2_48m":
+        return MambaLM(
+            MambaLMConfig(
+                layers=18,
+                state_size=128,
+                architecture="Mamba2",
+            )
+        )
     config = AlphabetLMConfig()
     if kind == "grouped":
         config = AlphabetLMConfig(
@@ -2370,6 +2380,8 @@ def main() -> None:
             "alphabet2_write_pole_outer_p32j4r32",
             "mamba",
             "mamba2",
+            "mamba1_49m",
+            "mamba2_48m",
         ),
         required=True,
     )
@@ -2464,7 +2476,7 @@ def main() -> None:
         )
         for handle in outer_handles:
             handle.remove()
-    if args.kind not in {"mamba", "mamba2"}:
+    if args.kind not in {"mamba", "mamba2", "mamba1_49m", "mamba2_48m"}:
         handles = _zero_memory(model)
         results["memory_zero"] = _evaluate(
             model,

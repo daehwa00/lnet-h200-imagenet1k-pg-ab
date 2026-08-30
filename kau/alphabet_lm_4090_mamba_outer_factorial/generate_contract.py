@@ -25,15 +25,16 @@ def _render() -> str:
         for label in execution
     }
     expected = {
-        "mamba-outer-post-fromscratch-30m": (False, False),
-        "mamba-outer-direct-fromscratch-30m": (True, False),
-        "mamba-outer-gate-fromscratch-30m": (False, True),
-        "mamba-outer-both-fromscratch-30m": (True, True),
+        "mamba-outer-post-fromscratch-100m": (False, False),
+        "mamba-outer-direct-fromscratch-100m": (True, False),
+        "mamba-outer-gate-fromscratch-100m": (False, True),
+        "mamba-outer-both-fromscratch-100m": (True, True),
     }
     if (
         execution != list(expected)
-        or manifest["training"]["target_tokens"] != 30_000_000
-        or manifest["training"]["validation_milestone_tokens"] != [10_000_000]
+        or manifest["training"]["target_tokens"] != 100_000_000
+        or manifest["training"]["validation_milestone_tokens"]
+        != [10_000_000, 30_000_000]
     ):
         raise RuntimeError("invalid Mamba outer factorial execution")
     for label, (direct, gate) in expected.items():

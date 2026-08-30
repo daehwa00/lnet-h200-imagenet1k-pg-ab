@@ -1,7 +1,7 @@
 {
   "schema": "lnet.kau.alphabet_lm.mamba_outer_factorial.v1",
-  "campaign_id": "kau-alphabet-lm-mamba-outer-fromscratch-s501-v1",
-  "output_namespace": "alphabet-lm-4090-mamba-outer-fromscratch-v1",
+  "campaign_id": "kau-alphabet-lm-mamba-outer-fromscratch-100m-s501-v2",
+  "output_namespace": "alphabet-lm-4090-mamba-outer-fromscratch-100m-v2",
   "architecture": {
     "K": 256,
     "layers": 12,
@@ -29,19 +29,19 @@
       "repeated_vector_pole_activation_checkpoint": true
     },
     "variants": {
-      "mamba-outer-post-fromscratch-30m": {
+      "mamba-outer-post-fromscratch-100m": {
         "repeated_vector_pole_outer_direct": false,
         "repeated_vector_pole_outer_gate": false
       },
-      "mamba-outer-direct-fromscratch-30m": {
+      "mamba-outer-direct-fromscratch-100m": {
         "repeated_vector_pole_outer_direct": true,
         "repeated_vector_pole_outer_gate": false
       },
-      "mamba-outer-gate-fromscratch-30m": {
+      "mamba-outer-gate-fromscratch-100m": {
         "repeated_vector_pole_outer_direct": false,
         "repeated_vector_pole_outer_gate": true
       },
-      "mamba-outer-both-fromscratch-30m": {
+      "mamba-outer-both-fromscratch-100m": {
         "repeated_vector_pole_outer_direct": true,
         "repeated_vector_pole_outer_gate": true
       }
@@ -53,8 +53,8 @@
   },
   "training": {
     "seed": 501,
-    "target_tokens": 30000000,
-    "validation_milestone_tokens": [10000000],
+    "target_tokens": 100000000,
+    "validation_milestone_tokens": [10000000, 30000000],
     "horizon_tokens": 300000000,
     "global_sequences": 32,
     "microbatch": 8,
@@ -67,23 +67,23 @@
     "warmup_updates": 20,
     "checkpoint_updates": 25,
     "execution": [
-      "mamba-outer-post-fromscratch-30m",
-      "mamba-outer-direct-fromscratch-30m",
-      "mamba-outer-gate-fromscratch-30m",
-      "mamba-outer-both-fromscratch-30m"
+      "mamba-outer-post-fromscratch-100m",
+      "mamba-outer-direct-fromscratch-100m",
+      "mamba-outer-gate-fromscratch-100m",
+      "mamba-outer-both-fromscratch-100m"
     ]
   },
   "parameter_counts": {
-    "mamba-outer-post-fromscratch-30m": 58073356,
-    "mamba-outer-direct-fromscratch-30m": 58073356,
-    "mamba-outer-gate-fromscratch-30m": 58073356,
-    "mamba-outer-both-fromscratch-30m": 58073356
+    "mamba-outer-post-fromscratch-100m": 58073356,
+    "mamba-outer-direct-fromscratch-100m": 58073356,
+    "mamba-outer-gate-fromscratch-100m": 58073356,
+    "mamba-outer-both-fromscratch-100m": 58073356
   },
   "total_parameter_counts": {
-    "mamba-outer-post-fromscratch-30m": 58073356,
-    "mamba-outer-direct-fromscratch-30m": 58073356,
-    "mamba-outer-gate-fromscratch-30m": 58073356,
-    "mamba-outer-both-fromscratch-30m": 58073356
+    "mamba-outer-post-fromscratch-100m": 58073356,
+    "mamba-outer-direct-fromscratch-100m": 58073356,
+    "mamba-outer-gate-fromscratch-100m": 58073356,
+    "mamba-outer-both-fromscratch-100m": 58073356
   },
   "diagnostics": {
     "paired_from_scratch": true,
@@ -94,6 +94,6 @@
   "wandb": {
     "entity": "daehwa",
     "project": "alphabet-lm-viability",
-    "group": "ALPHABET-LM-RTX4090-MambaOuterFromScratch-S501-v1"
+    "group": "ALPHABET-LM-RTX4090-MambaOuterFromScratch-100M-S501-v2"
   }
 }

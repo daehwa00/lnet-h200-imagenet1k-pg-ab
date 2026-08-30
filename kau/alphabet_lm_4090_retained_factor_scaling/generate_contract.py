@@ -25,13 +25,14 @@ def _render() -> str:
         for label in execution
     }
     expected = {
-        "retained-factor-fixed-c-p32j4r32-fromscratch-30m": False,
-        "retained-factor-learned-c-p32j4r32-fromscratch-30m": True,
+        "retained-factor-fixed-c-p32j4r32-fromscratch-100m": False,
+        "retained-factor-learned-c-p32j4r32-fromscratch-100m": True,
     }
     if (
         execution != list(expected)
-        or manifest["training"]["target_tokens"] != 30_000_000
-        or manifest["training"]["validation_milestone_tokens"] != [10_000_000]
+        or manifest["training"]["target_tokens"] != 100_000_000
+        or manifest["training"]["validation_milestone_tokens"]
+        != [10_000_000, 30_000_000]
     ):
         raise RuntimeError("invalid retained-factor scaling execution")
     for label, learned in expected.items():

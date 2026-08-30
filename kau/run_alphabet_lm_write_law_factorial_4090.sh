@@ -33,14 +33,14 @@ export MKL_NUM_THREADS=8
 export WANDB_BASE_URL="https://api.wandb.ai"
 export WANDB_ENTITY="daehwa"
 export WANDB_PROJECT="alphabet-lm-viability"
-export WANDB_GROUP="ALPHABET-LM-RTX4090-WriteLawFromScratch-S501-v2"
+export WANDB_GROUP="ALPHABET-LM-RTX4090-WriteLawFromScratch-100M-S501-v3"
 export WANDB_CONSOLE=off
 
 run_variant() {
   local label="$1"
   local law="$2"
   local kind="$3"
-  timeout --signal=TERM --kill-after=5m 2h \
+  timeout --signal=TERM --kill-after=5m 6h \
     "${PYTHON}" scripts/train_h200_alphabet_lm_10m.py \
     --model alphabet \
     --run-label "${label}" \
@@ -63,7 +63,7 @@ run_variant() {
     --repeated-vector-pole-factor-read-rho 0.5 \
     --repeated-vector-pole-factor-write-law "${law}" \
     --repeated-vector-pole-activation-checkpoint \
-    --target-tokens-override 30000000 \
+    --target-tokens-override 100000000 \
     --runtime "${RUNTIME}" \
     --train-manifest "${TRAIN_MANIFEST}" \
     --validation-manifest "${VALIDATION_MANIFEST}" \
@@ -78,8 +78,8 @@ run_variant() {
     --output "${OUTPUT_ROOT}/${label}/context.json"
 }
 
-run_variant write-row-specific-p32j4r32-fromscratch-30m row_specific alphabet2_write_row_specific_p32j4r32
-run_variant write-shared-outer-p32j4r32-fromscratch-30m shared_outer alphabet2_write_shared_outer_p32j4r32
-run_variant write-pole-outer-p32j4r32-fromscratch-30m pole_outer alphabet2_write_pole_outer_p32j4r32
+run_variant write-row-specific-p32j4r32-fromscratch-100m row_specific alphabet2_write_row_specific_p32j4r32
+run_variant write-shared-outer-p32j4r32-fromscratch-100m shared_outer alphabet2_write_shared_outer_p32j4r32
+run_variant write-pole-outer-p32j4r32-fromscratch-100m pole_outer alphabet2_write_pole_outer_p32j4r32
 
 echo "KAU_ALPHABET_LM_WRITE_LAW_FACTORIAL_COMPLETE=${OUTPUT_ROOT}"
