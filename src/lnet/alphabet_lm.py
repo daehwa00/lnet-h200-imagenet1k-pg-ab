@@ -2746,8 +2746,9 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
             nn.init.zeros_(self.factor_read_real.weight)
             nn.init.zeros_(self.factor_read_imag.weight)
         if self.pole_value_real is not None and self.pole_value_imag is not None:
-            nn.init.xavier_uniform_(self.pole_value_real.weight)
-            nn.init.xavier_uniform_(self.pole_value_imag.weight)
+            with torch.random.fork_rng(devices=[]):
+                nn.init.xavier_uniform_(self.pole_value_real.weight)
+                nn.init.xavier_uniform_(self.pole_value_imag.weight)
         if self.outer_output is not None:
             nn.init.zeros_(self.outer_output.weight)
 
