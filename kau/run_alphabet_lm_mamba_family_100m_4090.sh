@@ -80,7 +80,9 @@ run_variant() {
     --output "${OUTPUT_ROOT}/${label}/context.json"
 }
 
-run_variant mamba mamba1-parameter-matched-fromscratch-100m mamba1_49m
+if [[ "${MAMBA_FAMILY_SKIP_MAMBA1:-0}" != 1 ]]; then
+  run_variant mamba mamba1-parameter-matched-fromscratch-100m mamba1_49m
+fi
 run_variant mamba2 mamba2-parameter-matched-fromscratch-100m mamba2_48m
 
 echo "KAU_ALPHABET_LM_MAMBA_FAMILY_100M_COMPLETE=${OUTPUT_ROOT}"

@@ -23,6 +23,7 @@ class MambaLMConfig:
     architecture: Literal["Mamba1", "Mamba2"] = "Mamba1"
     head_dim: int = 64
     groups: int = 1
+    mamba2_use_mem_eff_path: bool = False
 
 
 def _mamba_lm_components() -> tuple[type[Any], type[nn.Module]]:
@@ -52,6 +53,7 @@ class MambaLM(nn.Module):
                 {
                     "headdim": config.head_dim,
                     "ngroups": config.groups,
+                    "use_mem_eff_path": config.mamba2_use_mem_eff_path,
                 }
             )
         official_config = config_type(
