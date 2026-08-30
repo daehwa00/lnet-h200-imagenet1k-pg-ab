@@ -24,6 +24,7 @@ from lnet.alphabet_lm import (
     FixedComplexPoleMemory1D,
     FixedPoleResidualSidecar,
     IdentityComplexMemory1D,
+    LaplaceMatrixStateBlock,
     LowRankDecaySelector,
     PoleSpecificCausalVectorReader,
     QueryConditionedLowRankReadout,
@@ -2371,6 +2372,44 @@ def test_retained_factor_checkpoint_contract_freezes_the_source_trunk(
         contract,
         {"source": {"factorized_p32r32_js4_4m_sha256": digest}},
         enabled=True,
+    )
+
+
+def test_laplace_matrix_state_is_causal_and_fully_trainable() -> None:
+    config = replace(
+        _repeated_vector_pole_config(),
+        repeated_vector_pole_modes=4,
+        repeated_vector_pole_width=4,
+        repeated_vector_pole_write_rank=2,
+        repeated_vector_pole_synthesis_rank=2,
+        repeated_vector_pole_matrix_state=True,
+    )
+    model = AlphabetLM(config)
+    banks = model.repeated_vector_pole_memories
+    assert banks is not None
+    assert all(isinstance(bank, LaplaceMatrixStateBlock) for bank in banks)
+    tokens = torch.randint(64, (2, 17))
+    changed = tokens.clone()
+    changed[:, 10:] = torch.randint(64, changed[:, 10:].shape)
+    with torch.no_grad():
+        expected = model(tokens[:, :-1])
+        actual = model(changed[:, :-1])
+    torch.testing.assert_close(actual[:, :10], expected[:, :10], atol=1.0e-6, rtol=0.0)
+    loss = torch.nn.functional.cross_entropy(
+        model(tokens[:, :-1]).flatten(0, 1),
+        tokens[:, 1:].flatten(),
+    )
+    loss.backward()
+    matrix_bank = cast("LaplaceMatrixStateBlock", banks[0])
+    state, read = matrix_bank.matrix_state(
+        torch.randn(1, 8, config.modes),
+        torch.randn(1, 8, config.modes),
+    )
+    assert state[0].shape == (1, 8, 4, 2, 4)
+    assert read[0].shape == (1, 8, 4, 2)
+    assert all(
+        parameter.grad is not None and bool(torch.isfinite(parameter.grad).all())
+        for parameter in matrix_bank.parameters()
     )
 
 

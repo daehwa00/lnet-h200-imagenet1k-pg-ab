@@ -1189,6 +1189,7 @@ def _build(
     repeated_vector_pole_retain_factor_state: bool = False,
     repeated_vector_pole_learned_factor_read: bool = False,
     repeated_vector_pole_factor_read_rho: float = 0.5,
+    repeated_vector_pole_matrix_state: bool = False,
     repeated_vector_pole_activation_checkpoint: bool = False,
     write_map: str = "static",
     dynamic_write_rank: int = 4,
@@ -1304,6 +1305,7 @@ def _build(
             repeated_vector_pole_learned_factor_read
         ),
         repeated_vector_pole_factor_read_rho=repeated_vector_pole_factor_read_rho,
+        repeated_vector_pole_matrix_state=repeated_vector_pole_matrix_state,
         repeated_vector_pole_activation_checkpoint=(
             repeated_vector_pole_activation_checkpoint
         ),
@@ -1609,6 +1611,7 @@ def main() -> None:
     parser.add_argument(
         "--repeated-vector-pole-factor-read-rho", type=float, default=0.5
     )
+    parser.add_argument("--repeated-vector-pole-matrix-state", action="store_true")
     parser.add_argument(
         "--repeated-vector-pole-activation-checkpoint", action="store_true"
     )
@@ -1810,6 +1813,7 @@ def main() -> None:
         repeated_vector_pole_factor_read_rho=(
             args.repeated_vector_pole_factor_read_rho
         ),
+        repeated_vector_pole_matrix_state=args.repeated_vector_pole_matrix_state,
         repeated_vector_pole_activation_checkpoint=(
             args.repeated_vector_pole_activation_checkpoint
         ),
@@ -2125,6 +2129,9 @@ def main() -> None:
             "repeated_vector_pole_factor_read_rho": (
                 args.repeated_vector_pole_factor_read_rho
             ),
+            "repeated_vector_pole_matrix_state": (
+                args.repeated_vector_pole_matrix_state
+            ),
             "repeated_vector_pole_activation_checkpoint": (
                 args.repeated_vector_pole_activation_checkpoint
             ),
@@ -2361,6 +2368,7 @@ def main() -> None:
         "repeated_vector_pole_factor_read_rho": (
             args.repeated_vector_pole_factor_read_rho
         ),
+        "repeated_vector_pole_matrix_state": args.repeated_vector_pole_matrix_state,
         "repeated_vector_pole_activation_checkpoint": (
             args.repeated_vector_pole_activation_checkpoint
         ),

@@ -24,6 +24,7 @@ from lnet.alphabet_lm import (
     FixedComplexPoleMemory1D,
     FixedPoleResidualSidecar,
     GroupedPackedComplexLinear,
+    LaplaceMatrixStateBlock,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
     SemanticEdgePoleMemory,
@@ -196,6 +197,23 @@ def _build(kind: str) -> nn.Module:
                 "learned_p32r32_js4"
             ),
             repeated_vector_pole_factor_read_rho=0.5,
+        )
+    elif kind == "alphabet2_laplace_matrix_p32n4r32_js4":
+        config = AlphabetLMConfig(
+            reader_type="dense_k3",
+            memory_layout="local_only",
+            repeated_vector_pole_memory=True,
+            repeated_vector_pole_interval=1,
+            repeated_vector_pole_modes=32,
+            repeated_vector_pole_width=32,
+            repeated_vector_pole_reader_kernel=3,
+            repeated_vector_pole_beta_initial=0.01,
+            repeated_vector_pole_minimum_half_life=16.0,
+            repeated_vector_pole_maximum_half_life=4_096.0,
+            repeated_vector_pole_write_rank=4,
+            repeated_vector_pole_synthesis_rank=4,
+            repeated_vector_pole_factor_read_rho=0.5,
+            repeated_vector_pole_matrix_state=True,
         )
     elif kind == "alphabet2_repeated_vector_pole_p32r4":
         config = AlphabetLMConfig(
@@ -791,6 +809,26 @@ def _factorized_factor_read_override(
         if bank.factor_read_real is None or bank.factor_read_imag is None:
             return []
         modules.extend((bank.factor_read_real, bank.factor_read_imag))
+
+    def override(_module: nn.Module, _inputs: tuple[object, ...], output: object) -> Tensor:
+        logits = cast("Tensor", output)
+        return torch.roll(logits, shifts=1, dims=1) if shift else torch.zeros_like(logits)
+
+    return [module.register_forward_hook(override) for module in modules]
+
+
+def _laplace_matrix_read_override(
+    model: nn.Module,
+    *,
+    shift: bool,
+) -> list[torch.utils.hooks.RemovableHandle]:
+    if not isinstance(model, AlphabetLM) or model.repeated_vector_pole_memories is None:
+        return []
+    modules: list[nn.Linear] = []
+    for bank in model.repeated_vector_pole_memories:
+        if not isinstance(bank, LaplaceMatrixStateBlock):
+            return []
+        modules.extend((bank.read_real, bank.read_imag))
 
     def override(_module: nn.Module, _inputs: tuple[object, ...], output: object) -> Tensor:
         logits = cast("Tensor", output)
@@ -1739,6 +1777,8 @@ def _repeated_vector_pole_metrics(
     banks = model.repeated_vector_pole_memories
     if banks is None:
         return None
+    if all(isinstance(bank, LaplaceMatrixStateBlock) for bank in banks):
+        return _repeated_laplace_matrix_metrics(model, dataset, device)
     sample = dataset[0][:-1].unsqueeze(0).to(device)
     beta: list[float] = []
     branch_ratios: list[float] = []
@@ -1925,6 +1965,81 @@ def _repeated_vector_pole_metrics(
         "half_life_median_by_bank": half_life_medians,
         "instantaneous_write_effective_rank_by_bank": instantaneous_write_ranks,
         "new_coordinate_rms_by_bank": new_coordinate_rms,
+    }
+
+
+@torch.no_grad()
+def _repeated_laplace_matrix_metrics(
+    model: AlphabetLM,
+    dataset: TokenBlockDataset,
+    device: torch.device,
+) -> dict[str, object]:
+    banks = model.repeated_vector_pole_memories
+    if banks is None:
+        raise RuntimeError("Laplace matrix banks disappeared")
+    sample = dataset[0][:-1].unsqueeze(0).to(device)
+    address_ranks: list[float] = []
+    value_ranks: list[float] = []
+    read_delta_rms: list[float] = []
+    branch_ratios: list[float] = []
+    beta: list[float] = []
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        packed = model.analysis(model.embedding(sample))
+        real, imag = packed.split(model.config.modes, dim=-1)
+        bank_index = 0
+        for index, block in enumerate(model.blocks):
+            real, imag = block(real, imag)
+            if (index + 1) % model.config.repeated_vector_pole_interval:
+                continue
+            bank = cast("LaplaceMatrixStateBlock", banks[bank_index])
+            state, read = bank.matrix_state(real, imag)
+            complex_state = torch.complex(state[0].float(), state[1].float())
+            address_rows = complex_state.permute(0, 1, 2, 4, 3).reshape(
+                -1, bank.address_width
+            )
+            value_rows = complex_state.reshape(-1, bank.value_width)
+            for rows, destination in (
+                (address_rows, address_ranks),
+                (value_rows, value_ranks),
+            ):
+                gram = rows.mH @ rows / max(1, rows.shape[0])
+                eigenvalues = torch.linalg.eigvalsh(gram).real.clamp_min(0.0)
+                destination.append(
+                    float(
+                        eigenvalues.sum().square()
+                        / eigenvalues.square().sum().clamp_min(1.0e-12)
+                    )
+                )
+            read_delta_rms.append(
+                float(
+                    (read[0] - 1.0)
+                    .float()
+                    .square()
+                    .add(read[1].float().square())
+                    .mean()
+                    .sqrt()
+                )
+            )
+            output_real, output_imag = bank(real, imag)
+            trunk = real.float().square().add(imag.float().square()).mean()
+            branch = (output_real - real).float().square().add(
+                (output_imag - imag).float().square()
+            ).mean()
+            branch_ratios.append(float(torch.sqrt(branch / trunk.clamp_min(1.0e-12))))
+            beta.append(float(bank.beta))
+            real, imag = output_real, output_imag
+            bank_index += 1
+    return {
+        "banks": len(banks),
+        "interval": model.config.repeated_vector_pole_interval,
+        "pole_modes": model.config.repeated_vector_pole_modes,
+        "address_width": model.config.repeated_vector_pole_write_rank,
+        "value_width": model.config.repeated_vector_pole_width,
+        "state_address_effective_rank_by_bank": address_ranks,
+        "state_value_effective_rank_by_bank": value_ranks,
+        "read_delta_rms_by_bank": read_delta_rms,
+        "branch_to_trunk_rms_by_bank": branch_ratios,
+        "beta_by_bank": beta,
     }
 
 
@@ -2316,6 +2431,7 @@ def main() -> None:
             "alphabet2_factorized_vector_pole_p32r32_j8q8",
             "alphabet2_retained_factor_fixed_p32r32_js4",
             "alphabet2_retained_factor_learned_p32r32_js4",
+            "alphabet2_laplace_matrix_p32n4r32_js4",
             "mamba",
             "mamba2",
         ),
@@ -2399,6 +2515,29 @@ def main() -> None:
             device=device,
         )
         for handle in shifted_factor_handles:
+            handle.remove()
+    neutral_matrix_handles = _laplace_matrix_read_override(model, shift=False)
+    if neutral_matrix_handles:
+        results["matrix_read_neutral"] = _evaluate(
+            model,
+            dataset,
+            segment=2_048,
+            token_limit=args.token_limit,
+            sequence_limit=args.sequence_limit,
+            device=device,
+        )
+        for handle in neutral_matrix_handles:
+            handle.remove()
+        shifted_matrix_handles = _laplace_matrix_read_override(model, shift=True)
+        results["matrix_read_shifted"] = _evaluate(
+            model,
+            dataset,
+            segment=2_048,
+            token_limit=args.token_limit,
+            sequence_limit=args.sequence_limit,
+            device=device,
+        )
+        for handle in shifted_matrix_handles:
             handle.remove()
     if args.kind not in {"mamba", "mamba2"}:
         handles = _zero_memory(model)

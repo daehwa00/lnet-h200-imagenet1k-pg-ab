@@ -129,6 +129,7 @@ class AlphabetLMConfig:
     repeated_vector_pole_retain_factor_state: bool = False
     repeated_vector_pole_learned_factor_read: bool = False
     repeated_vector_pole_factor_read_rho: float = 0.5
+    repeated_vector_pole_matrix_state: bool = False
     repeated_vector_pole_activation_checkpoint: bool = False
     tensor_half_lives: tuple[float, ...] = (
         4.0,
@@ -382,6 +383,7 @@ class AlphabetLMConfig:
                 self.repeated_vector_pole_factorized
                 or self.repeated_vector_pole_retain_factor_state
                 or self.repeated_vector_pole_learned_factor_read
+                or self.repeated_vector_pole_matrix_state
                 or self.repeated_vector_pole_activation_checkpoint
             ):
                 raise ValueError("factorized VectorPole requires repeated memory")
@@ -418,6 +420,14 @@ class AlphabetLMConfig:
             or (
                 self.repeated_vector_pole_learned_factor_read
                 and not self.repeated_vector_pole_retain_factor_state
+            )
+            or (
+                self.repeated_vector_pole_matrix_state
+                and (
+                    self.repeated_vector_pole_factorized
+                    or self.repeated_vector_pole_retain_factor_state
+                    or self.repeated_vector_pole_learned_factor_read
+                )
             )
             or not 0.0 < self.repeated_vector_pole_factor_read_rho <= 1.0
             or not 0.0 < self.repeated_vector_pole_beta_initial < 1.0
@@ -2866,9 +2876,185 @@ class FactorizedTokenRateVectorPoleBlock(nn.Module):
         return real + beta * memory_real * scale, imag + beta * memory_imag * scale
 
 
+class LaplaceMatrixStateBlock(nn.Module):
+    """Content-addressed matrix memory with fixed complex Laplace transport."""
+
+    def __init__(
+        self,
+        modes: int,
+        *,
+        pole_modes: int,
+        address_width: int,
+        value_width: int,
+        synthesis_rank: int,
+        reader_kernel: int,
+        beta_initial: float,
+        context_length: int,
+        scan_fp32: bool,
+        minimum_half_life: float,
+        maximum_half_life: float,
+        epsilon: float,
+        read_rho: float = 0.5,
+    ) -> None:
+        super().__init__()
+        self.modes = int(modes)
+        self.pole_modes = int(pole_modes)
+        self.address_width = int(address_width)
+        self.value_width = int(value_width)
+        self.synthesis_rank = int(synthesis_rank)
+        self.reader_kernel = int(reader_kernel)
+        self.read_rho = float(read_rho)
+        self.epsilon = float(epsilon)
+        self.address_reader = PoleSpecificCausalVectorReader(
+            modes,
+            pole_modes,
+            address_width,
+            kernel_size=reader_kernel,
+        )
+        self.value_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+        value_coordinates = pole_modes * value_width
+        self.value_projection = nn.Linear(
+            2 * modes,
+            2 * value_coordinates,
+            bias=False,
+        )
+        self.value_filter = nn.Conv1d(
+            2 * value_coordinates,
+            2 * value_coordinates,
+            kernel_size=reader_kernel,
+            groups=2 * value_coordinates,
+            bias=True,
+        )
+        self.read_norm = nn.RMSNorm(2 * modes, eps=epsilon)
+        self.read_real = nn.Linear(
+            2 * modes,
+            pole_modes * address_width,
+            bias=False,
+        )
+        self.read_imag = nn.Linear(
+            2 * modes,
+            pole_modes * address_width,
+            bias=False,
+        )
+        self.pole_memory = FixedComplexPoleMemory1D(
+            pole_modes,
+            context_length=context_length,
+            scan_fp32=scan_fp32,
+            initialization="lifetime_palette",
+            minimum_half_life=minimum_half_life,
+            maximum_half_life=maximum_half_life,
+        )
+        self.projection_basis = nn.Parameter(
+            torch.empty(pole_modes, synthesis_rank, value_width)
+        )
+        self.synthesis = nn.Linear(
+            2 * pole_modes * synthesis_rank,
+            2 * modes,
+            bias=False,
+        )
+        self.beta = nn.Parameter(torch.tensor(float(beta_initial)))
+        nn.init.xavier_uniform_(self.value_projection.weight)
+        with torch.no_grad():
+            self.value_filter.weight.zero_()
+            self.value_filter.weight[..., -1] = 1.0
+            if self.value_filter.bias is not None:
+                self.value_filter.bias.zero_()
+            nn.init.zeros_(self.read_real.weight)
+            nn.init.zeros_(self.read_imag.weight)
+            self.projection_basis.normal_(std=1.0 / math.sqrt(value_width))
+        nn.init.xavier_uniform_(self.synthesis.weight)
+
+    def value_components(self, packed: Tensor) -> ComplexField:
+        projected = self.value_projection(self.value_norm(packed))
+        filtered = self.value_filter(
+            functional.pad(
+                projected.transpose(1, 2),
+                (self.reader_kernel - 1, 0),
+            )
+        ).transpose(1, 2)
+        active = functional.silu(filtered)
+        value_real, value_imag = active.chunk(2, dim=-1)
+        shape = (*packed.shape[:-1], self.pole_modes, self.value_width)
+        return value_real.reshape(shape), value_imag.reshape(shape)
+
+    def read_components(self, packed: Tensor) -> ComplexField:
+        active = self.read_norm(packed)
+        shape = (*packed.shape[:-1], self.pole_modes, self.address_width)
+        return (
+            1.0 + self.read_rho * torch.tanh(self.read_real(active)).reshape(shape),
+            self.read_rho * torch.tanh(self.read_imag(active)).reshape(shape),
+        )
+
+    @staticmethod
+    def outer_product_drive(address: ComplexField, value: ComplexField) -> ComplexField:
+        return (
+            address[0].unsqueeze(-1) * value[0].unsqueeze(-2)
+            - address[1].unsqueeze(-1) * value[1].unsqueeze(-2),
+            address[0].unsqueeze(-1) * value[1].unsqueeze(-2)
+            + address[1].unsqueeze(-1) * value[0].unsqueeze(-2),
+        )
+
+    @staticmethod
+    def addressed_read(read: ComplexField, state: ComplexField) -> ComplexField:
+        return (
+            (state[0] * read[0].unsqueeze(-1)).sum(dim=-2)
+            + (state[1] * read[1].unsqueeze(-1)).sum(dim=-2),
+            (state[1] * read[0].unsqueeze(-1)).sum(dim=-2)
+            - (state[0] * read[1].unsqueeze(-1)).sum(dim=-2),
+        )
+
+    def synthesize(self, memory: ComplexField) -> ComplexField:
+        compressed_real = torch.einsum(
+            "btpr,pjr->btpj", memory[0], self.projection_basis
+        )
+        compressed_imag = torch.einsum(
+            "btpr,pjr->btpj", memory[1], self.projection_basis
+        )
+        packed = self.synthesis(
+            torch.cat((compressed_real.flatten(-2), compressed_imag.flatten(-2)), dim=-1)
+        )
+        return packed.chunk(2, dim=-1)
+
+    def matrix_state(self, real: Tensor, imag: Tensor) -> tuple[ComplexField, ComplexField]:
+        packed = torch.cat((real, imag), dim=-1)
+        address = self.address_reader(real, imag)
+        value = self.value_components(packed)
+        state = self.pole_memory(*self.outer_product_drive(address, value))
+        return state, self.read_components(packed)
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        state, read = self.matrix_state(real, imag)
+        memory_real, memory_imag = self.synthesize(self.addressed_read(read, state))
+        trunk_rms = real.float().square().add(imag.float().square()).mean(
+            dim=-1, keepdim=True
+        ).sqrt()
+        memory_rms = memory_real.float().square().add(memory_imag.float().square()).mean(
+            dim=-1, keepdim=True
+        ).sqrt()
+        scale = (trunk_rms / (memory_rms + self.epsilon)).detach().to(real.dtype)
+        beta = self.beta.to(real.dtype)
+        return real + beta * memory_real * scale, imag + beta * memory_imag * scale
+
+
 def _make_repeated_vector_pole_block(
     config: AlphabetLMConfig,
-) -> TokenRateVectorPoleBlock | FactorizedTokenRateVectorPoleBlock:
+) -> TokenRateVectorPoleBlock | FactorizedTokenRateVectorPoleBlock | LaplaceMatrixStateBlock:
+    if config.repeated_vector_pole_matrix_state:
+        return LaplaceMatrixStateBlock(
+            config.modes,
+            pole_modes=config.repeated_vector_pole_modes,
+            address_width=config.repeated_vector_pole_write_rank,
+            value_width=config.repeated_vector_pole_width,
+            synthesis_rank=config.repeated_vector_pole_synthesis_rank,
+            reader_kernel=config.repeated_vector_pole_reader_kernel,
+            beta_initial=config.repeated_vector_pole_beta_initial,
+            context_length=config.context_length,
+            scan_fp32=config.scan_fp32,
+            minimum_half_life=config.repeated_vector_pole_minimum_half_life,
+            maximum_half_life=config.repeated_vector_pole_maximum_half_life,
+            epsilon=config.rms_epsilon,
+            read_rho=config.repeated_vector_pole_factor_read_rho,
+        )
     if config.repeated_vector_pole_factorized:
         return FactorizedTokenRateVectorPoleBlock(
             config.modes,
@@ -3148,6 +3334,7 @@ __all__ = [
     "GroupedCausalFactorizedComplexConv1dReader",
     "GroupedPackedComplexLinear",
     "IdentityComplexMemory1D",
+    "LaplaceMatrixStateBlock",
     "LowRankDecaySelector",
     "LowRankPoleRouter",
     "QueryConditionedLowRankReadout",

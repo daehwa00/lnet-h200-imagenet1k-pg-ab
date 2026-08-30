@@ -1,0 +1,62 @@
+{
+  "schema": "lnet.kau.alphabet_lm.laplace_matrix_state.v1",
+  "campaign_id": "kau-alphabet-lm-laplace-matrix-p32n4r32-4m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-laplace-matrix-state-v1",
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "laplace-matrix-p32n4r32-js4-e2e-4m": {
+        "reader_type": "dense_k3",
+        "memory_layout": "local_only",
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_write_rank": 4,
+        "repeated_vector_pole_synthesis_rank": 4,
+        "repeated_vector_pole_factor_read_rho": 0.5,
+        "repeated_vector_pole_matrix_state": true,
+        "repeated_vector_pole_activation_checkpoint": true
+      }
+    }
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 4000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": ["laplace-matrix-p32n4r32-js4-e2e-4m"]
+  },
+  "parameter_counts": {
+    "laplace-matrix-p32n4r32-js4-e2e-4m": 54958348
+  },
+  "total_parameter_counts": {
+    "laplace-matrix-p32n4r32-js4-e2e-4m": 54958348
+  },
+  "diagnostics": {
+    "matrix_read_neutral": true,
+    "matrix_read_shift": true,
+    "state_address_rank": true,
+    "state_value_rank": true,
+    "reset_segments": [1, 32, 128, 512]
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-LaplaceMatrixState-S501-v1"
+  }
+}

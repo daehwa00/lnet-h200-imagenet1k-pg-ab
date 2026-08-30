@@ -1,0 +1,80 @@
+{
+  "architecture": {
+    "K": 256,
+    "layers": 12,
+    "variants": {
+      "laplace-matrix-p32n4r32-js4-e2e-4m": {
+        "memory_layout": "local_only",
+        "reader_type": "dense_k3",
+        "repeated_vector_pole_activation_checkpoint": true,
+        "repeated_vector_pole_beta_initial": 0.01,
+        "repeated_vector_pole_factor_read_rho": 0.5,
+        "repeated_vector_pole_interval": 1,
+        "repeated_vector_pole_matrix_state": true,
+        "repeated_vector_pole_maximum_half_life": 4096.0,
+        "repeated_vector_pole_memory": true,
+        "repeated_vector_pole_minimum_half_life": 16.0,
+        "repeated_vector_pole_modes": 32,
+        "repeated_vector_pole_reader_kernel": 3,
+        "repeated_vector_pole_synthesis_rank": 4,
+        "repeated_vector_pole_width": 32,
+        "repeated_vector_pole_write_rank": 4
+      }
+    }
+  },
+  "campaign_id": "kau-alphabet-lm-laplace-matrix-p32n4r32-4m-s501-v1",
+  "campaign_manifest_sha256": "b7711e9f2218ffe506022636ac5b0b52b7cd20f64a4f242ac705cbabf06861ef",
+  "diagnostics": {
+    "matrix_read_neutral": true,
+    "matrix_read_shift": true,
+    "reset_segments": [
+      1,
+      32,
+      128,
+      512
+    ],
+    "state_address_rank": true,
+    "state_value_rank": true
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-LaplaceMatrixState-S501-v1",
+  "output_namespace": "alphabet-lm-4090-laplace-matrix-state-v1",
+  "parameter_counts": {
+    "laplace-matrix-p32n4r32-js4-e2e-4m": 54958348
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "laplace-matrix-p32n4r32-js4-e2e-4m": {
+      "display_name": "RTX4090-S501-ALPHABET2-LaplaceMatrix-P32N4R32-4M",
+      "id": "11443cdd92e5e996",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "LaplaceMatrix",
+        "4M"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "total_parameter_counts": {
+    "laplace-matrix-p32n4r32-js4-e2e-4m": 54958348
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "laplace-matrix-p32n4r32-js4-e2e-4m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 4000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}
