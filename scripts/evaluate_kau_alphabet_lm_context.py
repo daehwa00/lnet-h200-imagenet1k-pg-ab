@@ -20,6 +20,7 @@ from lnet.alphabet_lm import (
     CausalCNNPoleMemory,
     ChunkedSemanticPoleMemory,
     ComplexHighwayLaplaceMambaLM,
+    ContentAlignedImagePostFusionAlphabet2LM,
     DynamicLowRankWrite,
     FactorizedTokenRateVectorPoleBlock,
     FixedComplexPoleMemory1D,
@@ -47,6 +48,7 @@ def _build(kind: str) -> nn.Module:
         "laplace_mamba_complex_highway",
         "alphabet2_image_postfusion",
         "alphabet2_vector_image_postfusion",
+        "alphabet2_content_aligned_image_postfusion",
     }:
         model_type: type[nn.Module]
         if kind == "laplace_mamba_complex_highway":
@@ -55,11 +57,17 @@ def _build(kind: str) -> nn.Module:
             model_type = ImagePostFusionAlphabet2LM
         elif kind == "alphabet2_vector_image_postfusion":
             model_type = VectorImagePostFusionAlphabet2LM
+        elif kind == "alphabet2_content_aligned_image_postfusion":
+            model_type = ContentAlignedImagePostFusionAlphabet2LM
         else:
             model_type = LaplaceMambaLM
         config = (
             LaplaceMambaLMConfig(conv_width=3)
-            if kind == "alphabet2_vector_image_postfusion"
+            if kind
+            in {
+                "alphabet2_vector_image_postfusion",
+                "alphabet2_content_aligned_image_postfusion",
+            }
             else LaplaceMambaLMConfig()
         )
         return model_type(config)
@@ -2412,6 +2420,7 @@ def main() -> None:
             "laplace_mamba_complex_highway",
             "alphabet2_image_postfusion",
             "alphabet2_vector_image_postfusion",
+            "alphabet2_content_aligned_image_postfusion",
         ),
         required=True,
     )
@@ -2515,6 +2524,7 @@ def main() -> None:
         "laplace_mamba_complex_highway",
         "alphabet2_image_postfusion",
         "alphabet2_vector_image_postfusion",
+        "alphabet2_content_aligned_image_postfusion",
     }:
         handles = _zero_memory(model)
         results["memory_zero"] = _evaluate(

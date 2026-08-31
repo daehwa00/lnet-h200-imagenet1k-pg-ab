@@ -743,6 +743,90 @@ class DenseComplexConv1dReader(nn.Module):
         return output_real, output_imag
 
 
+class StrictComplexCausalConv1d(nn.Module):
+    """Dense strict-complex causal convolution without an implicit normalization."""
+
+    def __init__(self, input_modes: int, output_modes: int, *, kernel_size: int = 3) -> None:
+        super().__init__()
+        if min(input_modes, output_modes, kernel_size) <= 0:
+            raise ValueError("invalid strict complex causal convolution")
+        self.input_modes = int(input_modes)
+        self.output_modes = int(output_modes)
+        self.kernel_size = int(kernel_size)
+        shape = (self.output_modes, self.input_modes, self.kernel_size)
+        self.weight_real = nn.Parameter(torch.empty(shape))
+        self.weight_imag = nn.Parameter(torch.empty(shape))
+        nn.init.xavier_uniform_(self.weight_real)
+        nn.init.xavier_uniform_(self.weight_imag)
+        with torch.no_grad():
+            self.weight_real.mul_(math.sqrt(0.5))
+            self.weight_imag.mul_(math.sqrt(0.5))
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        if real.shape != imag.shape or real.ndim != 3 or real.shape[-1] != self.input_modes:
+            raise ValueError("strict complex causal convolution inputs are incompatible")
+        packed_input = torch.cat((real, imag), dim=-1).transpose(1, 2)
+        packed_weight = torch.cat(
+            (
+                torch.cat((self.weight_real, -self.weight_imag), dim=1),
+                torch.cat((self.weight_imag, self.weight_real), dim=1),
+            ),
+            dim=0,
+        )
+        padded = functional.pad(packed_input, (self.kernel_size - 1, 0))
+        packed_output = functional.conv1d(padded, packed_weight).transpose(1, 2)
+        output_real, output_imag = packed_output.split(self.output_modes, dim=-1)
+        return output_real, output_imag
+
+
+class PoleAlignedComplexCausalConv1d(nn.Module):
+    """Give every pole a causal filter over the same semantic coordinates."""
+
+    def __init__(self, poles: int, content_modes: int, *, kernel_size: int = 3) -> None:
+        super().__init__()
+        if min(poles, content_modes, kernel_size) <= 0:
+            raise ValueError("invalid pole-aligned causal convolution")
+        self.poles = int(poles)
+        self.content_modes = int(content_modes)
+        self.kernel_size = int(kernel_size)
+        shape = (self.poles, self.content_modes, self.kernel_size)
+        self.weight_real = nn.Parameter(torch.zeros(shape))
+        self.weight_imag = nn.Parameter(torch.zeros(shape))
+        with torch.no_grad():
+            self.weight_real[..., -1].fill_(1.0)
+
+    def packed_weight(self) -> Tensor:
+        real = self.weight_real.permute(1, 0, 2)
+        imag = self.weight_imag.permute(1, 0, 2)
+        real_rows = torch.stack((real, -imag), dim=2)
+        imag_rows = torch.stack((imag, real), dim=2)
+        return torch.cat((real_rows, imag_rows), dim=1).reshape(
+            2 * self.content_modes * self.poles,
+            2,
+            self.kernel_size,
+        )
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        if real.shape != imag.shape or real.ndim != 3 or real.shape[-1] != self.content_modes:
+            raise ValueError("pole-aligned causal convolution inputs are incompatible")
+        batch, steps, _modes = real.shape
+        packed = torch.stack(
+            (real.transpose(1, 2), imag.transpose(1, 2)),
+            dim=2,
+        ).reshape(batch, 2 * self.content_modes, steps)
+        padded = functional.pad(packed, (self.kernel_size - 1, 0))
+        output = functional.conv1d(
+            padded,
+            self.packed_weight(),
+            groups=self.content_modes,
+        ).reshape(batch, self.content_modes, 2 * self.poles, steps)
+        output_real, output_imag = output.split(self.poles, dim=2)
+        return (
+            output_real.permute(0, 3, 2, 1),
+            output_imag.permute(0, 3, 2, 1),
+        )
+
+
 class GroupedPackedComplexLinear(nn.Module):
     def __init__(self, poles_per_bank: int, output_modes: int, *, banks: int) -> None:
         super().__init__()
@@ -2869,8 +2953,98 @@ class VectorImagePostFusionAlphabet2Block(nn.Module):
         return self.post_fusion(*merged)
 
 
+class ContentAlignedImagePostFusionAlphabet2Block(nn.Module):
+    """Transport one shared semantic basis through pole-specific temporal filters."""
+
+    memory_scale_initial = 0.01
+
+    def __init__(self, config: LaplaceMambaLMConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.complex_width = config.model_width // 2
+        self.content_width = config.head_width
+        self.value_width = config.inner_complex_width
+        self.input_norm = ComplexRMSNorm(
+            self.complex_width,
+            epsilon=config.rms_epsilon,
+        )
+        self.content_analysis = PackedComplexLinear(
+            self.complex_width,
+            self.content_width,
+        )
+        self.excitation_reader = PoleAlignedComplexCausalConv1d(
+            config.pole_modes,
+            self.content_width,
+            kernel_size=config.conv_width,
+        )
+        self.query_reader = StrictComplexCausalConv1d(
+            self.complex_width,
+            self.value_width,
+            kernel_size=config.conv_width,
+        )
+        self.memory = FixedComplexPoleMemory1D(
+            config.pole_modes,
+            context_length=config.context_length,
+            scan_fp32=config.scan_fp32,
+            initialization="lifetime_palette",
+            minimum_half_life=config.minimum_half_life,
+            maximum_half_life=config.maximum_half_life,
+        )
+        self.synthesis = PackedComplexLinear(
+            self.value_width,
+            self.complex_width,
+        )
+        self.memory_scale = nn.Parameter(torch.tensor(self.memory_scale_initial))
+        self.post_fusion = GatedComplexPostFusion(
+            self.complex_width,
+            self.complex_width,
+        )
+        with torch.no_grad():
+            self.input_norm.weight.fill_(math.sqrt(2.0))
+        _scale_image_postfusion_output_(self.post_fusion, config.layers)
+
+    def _analyze(
+        self,
+        real: Tensor,
+        imag: Tensor,
+    ) -> tuple[ComplexField, ComplexField]:
+        normalized = self.input_norm(real, imag)
+        content = self.content_analysis(*normalized)
+        excitation = self.excitation_reader(*content)
+        query_real, query_imag = self.query_reader(*normalized)
+        shape = (
+            query_real.shape[0],
+            query_real.shape[1],
+            self.config.pole_modes,
+            self.config.head_width,
+        )
+        query = query_real.reshape(shape), query_imag.reshape(shape)
+        return excitation, query
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        excitation, query = self._analyze(real, imag)
+        state_real, state_imag = self.memory(*excitation)
+        selected = (
+            query[0] * state_real + query[1] * state_imag,
+            query[0] * state_imag - query[1] * state_real,
+        )
+        memory = self.synthesis(
+            selected[0].flatten(-2),
+            selected[1].flatten(-2),
+        )
+        merged = _rms_matched_complex_residual(
+            (real, imag),
+            memory,
+            self.memory_scale,
+            self.config.rms_epsilon,
+        )
+        return self.post_fusion(*merged)
+
+
 class VectorImagePostFusionAlphabet2LM(nn.Module):
     """Complex LM with image-ALPHABET fusion around selective VectorPoles."""
+
+    block_type: type[nn.Module] = VectorImagePostFusionAlphabet2Block
 
     def __init__(self, config: LaplaceMambaLMConfig) -> None:
         super().__init__()
@@ -2879,7 +3053,7 @@ class VectorImagePostFusionAlphabet2LM(nn.Module):
         self.embedding_real = nn.Embedding(config.vocab_size, self.complex_width)
         self.embedding_imag = nn.Embedding(config.vocab_size, self.complex_width)
         self.blocks = nn.ModuleList(
-            VectorImagePostFusionAlphabet2Block(config) for _ in range(config.layers)
+            self.block_type(config) for _ in range(config.layers)
         )
         self.final_norm = ComplexRMSNorm(
             self.complex_width,
@@ -2919,6 +3093,12 @@ class VectorImagePostFusionAlphabet2LM(nn.Module):
             imag,
             self.embedding_imag.weight,
         )
+
+
+class ContentAlignedImagePostFusionAlphabet2LM(VectorImagePostFusionAlphabet2LM):
+    """Vector ALPHABET with a shared content basis across fixed temporal modes."""
+
+    block_type = ContentAlignedImagePostFusionAlphabet2Block
 
 
 class LaplaceMambaLM(nn.Module):
@@ -4169,6 +4349,8 @@ __all__ = [
     "ComplexDepthwiseCausalConv1d",
     "ComplexHighwayLaplaceMambaBlock",
     "ComplexHighwayLaplaceMambaLM",
+    "ContentAlignedImagePostFusionAlphabet2Block",
+    "ContentAlignedImagePostFusionAlphabet2LM",
     "DenseComplexConv1dReader",
     "DynamicLowRankWrite",
     "FactorizedTokenRateVectorPoleBlock",
@@ -4184,9 +4366,11 @@ __all__ = [
     "LaplaceMambaLMConfig",
     "LowRankDecaySelector",
     "LowRankPoleRouter",
+    "PoleAlignedComplexCausalConv1d",
     "QueryConditionedLowRankReadout",
     "SemanticEdgePoleMemory",
     "SlowCausalCNNPoleMemory",
+    "StrictComplexCausalConv1d",
     "TensorProductPoleMemory1D",
     "TokenRateVectorPoleBlock",
     "VectorImagePostFusionAlphabet2Block",

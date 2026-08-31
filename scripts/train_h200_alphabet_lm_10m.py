@@ -27,6 +27,7 @@ from lnet.alphabet_lm import (
     AlphabetLMConfig,
     CausalCNNPoleMemory,
     ComplexHighwayLaplaceMambaLM,
+    ContentAlignedImagePostFusionAlphabet2LM,
     DynamicLowRankWrite,
     FactorizedTokenRateVectorPoleBlock,
     ImagePostFusionAlphabet2LM,
@@ -1296,6 +1297,7 @@ def _build(
         "laplace_mamba_complex_highway",
         "alphabet2_image_postfusion",
         "alphabet2_vector_image_postfusion",
+        "alphabet2_content_aligned_image_postfusion",
     }:
         config = LaplaceMambaLMConfig(
             vocab_size=vocab_size,
@@ -1312,6 +1314,8 @@ def _build(
             model_type = ImagePostFusionAlphabet2LM
         elif model_name == "alphabet2_vector_image_postfusion":
             model_type = VectorImagePostFusionAlphabet2LM
+        elif model_name == "alphabet2_content_aligned_image_postfusion":
+            model_type = ContentAlignedImagePostFusionAlphabet2LM
         else:
             model_type = LaplaceMambaLM
         return model_type(config), {
@@ -1598,6 +1602,7 @@ def main() -> None:
             "laplace_mamba_complex_highway",
             "alphabet2_image_postfusion",
             "alphabet2_vector_image_postfusion",
+            "alphabet2_content_aligned_image_postfusion",
         ),
         required=True,
     )

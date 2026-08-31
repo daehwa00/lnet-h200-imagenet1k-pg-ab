@@ -22,6 +22,8 @@ from lnet.alphabet_lm import (
     ComplexDepthwiseCausalPredictor,
     ComplexHighwayLaplaceMambaBlock,
     ComplexHighwayLaplaceMambaLM,
+    ContentAlignedImagePostFusionAlphabet2Block,
+    ContentAlignedImagePostFusionAlphabet2LM,
     DynamicLowRankWrite,
     FactorizedTokenRateVectorPoleBlock,
     FixedComplexPoleMemory1D,
@@ -33,6 +35,7 @@ from lnet.alphabet_lm import (
     LaplaceMambaLM,
     LaplaceMambaLMConfig,
     LowRankDecaySelector,
+    PoleAlignedComplexCausalConv1d,
     PoleSpecificCausalVectorReader,
     QueryConditionedLowRankReadout,
     SemanticEdgePoleMemory,
@@ -3041,6 +3044,77 @@ def test_vector_image_postfusion_uses_exact_coordinate_preserving_complex_query(
     assert not hasattr(full.blocks[0], "address_width")
     assert not hasattr(full.blocks[0], "direct_scale")
     assert not hasattr(full.blocks[0], "gate_projection")
+
+
+def test_pole_aligned_complex_causal_reader_starts_from_shared_coordinates() -> None:
+    reader = PoleAlignedComplexCausalConv1d(4, 3, kernel_size=3)
+    real = torch.randn(2, 7, 3)
+    imag = torch.randn(2, 7, 3)
+    output_real, output_imag = reader(real, imag)
+    assert output_real.shape == (2, 7, 4, 3)
+    torch.testing.assert_close(output_real, real.unsqueeze(-2).expand_as(output_real))
+    torch.testing.assert_close(output_imag, imag.unsqueeze(-2).expand_as(output_imag))
+
+
+def test_content_aligned_image_postfusion_is_causal_and_has_live_paths() -> None:
+    torch.manual_seed(501)
+    config = _small_laplace_mamba()
+    model = ContentAlignedImagePostFusionAlphabet2LM(config)
+    tokens = torch.randint(config.vocab_size, (2, 17))
+    changed = tokens.clone()
+    changed[:, 10:] = torch.randint(config.vocab_size, changed[:, 10:].shape)
+    with torch.no_grad():
+        expected = model(tokens[:, :-1])
+        actual = model(changed[:, :-1])
+    torch.testing.assert_close(actual[:, :10], expected[:, :10], atol=1.0e-6, rtol=0.0)
+
+    logits = model(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(
+        logits.flatten(0, 1),
+        tokens[:, 1:].flatten(),
+    )
+    loss.backward()
+    block = cast("ContentAlignedImagePostFusionAlphabet2Block", model.blocks[0])
+    for parameter in (
+        model.embedding_real.weight,
+        model.embedding_imag.weight,
+        block.content_analysis.weight_real,
+        block.content_analysis.weight_imag,
+        block.excitation_reader.weight_real,
+        block.excitation_reader.weight_imag,
+        block.query_reader.weight_real,
+        block.query_reader.weight_imag,
+        block.memory.raw_damping,
+        block.memory.raw_frequency,
+        block.synthesis.weight_real,
+        block.synthesis.weight_imag,
+        block.memory_scale,
+        block.post_fusion.value.weight_real,
+        block.post_fusion.value.conjugate_real,
+        block.post_fusion.gate.weight,
+        block.post_fusion.out.weight_real,
+        block.post_fusion.out.conjugate_real,
+    ):
+        assert parameter.grad is not None
+        assert torch.isfinite(parameter.grad).all()
+
+
+def test_content_aligned_image_postfusion_contract_and_parameter_budget() -> None:
+    config = _small_laplace_mamba()
+    block = ContentAlignedImagePostFusionAlphabet2Block(config).eval()
+    real = torch.randn(2, 7, config.model_width // 2)
+    imag = torch.randn_like(real)
+    with torch.no_grad():
+        excitation, _query = block._analyze(real, imag)
+    for pole in range(1, config.pole_modes):
+        torch.testing.assert_close(excitation[0][:, :, pole], excitation[0][:, :, 0])
+        torch.testing.assert_close(excitation[1][:, :, pole], excitation[1][:, :, 0])
+
+    full = ContentAlignedImagePostFusionAlphabet2LM(
+        LaplaceMambaLMConfig(conv_width=3)
+    )
+    assert len(full.blocks) == 19
+    assert sum(parameter.numel() for parameter in full.parameters()) == 49_377_235
 
 
 def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:

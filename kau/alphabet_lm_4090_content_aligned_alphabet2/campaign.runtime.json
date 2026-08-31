@@ -1,0 +1,80 @@
+{
+  "architecture": {
+    "K_complex": 256,
+    "K_real_dof": 512,
+    "layers": 19,
+    "variants": {
+      "content-aligned-alphabet2-p32r16-l19-fromscratch-100m": {
+        "laplace_mamba_conv_width": 3,
+        "laplace_mamba_head_width": 16,
+        "laplace_mamba_layers": 19,
+        "laplace_mamba_poles": 32,
+        "laplace_mamba_state_size": 4
+      }
+    }
+  },
+  "campaign_id": "kau-content-aligned-alphabet2-p32r16-l19-100m-s501-v1",
+  "campaign_manifest_sha256": "29e47a9210d583f7f8ddc6c3dacb250eb71b076ce10e2e0bed923d18cf6947ef",
+  "diagnostics": {
+    "dense_vector_reference_parameters": 64105427,
+    "dense_vector_reference_validation_loss": 4.839462909301234,
+    "final_validation_only": true,
+    "mamba1_reference_parameters": 48987136,
+    "mamba1_reference_validation_loss": 4.330902905240708
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-ContentAlignedALPHABET2-100M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-content-aligned-alphabet2-v1",
+  "parameter_counts": {
+    "content-aligned-alphabet2-p32r16-l19-fromscratch-100m": 49377235
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "content-aligned-alphabet2-p32r16-l19-fromscratch-100m": {
+      "display_name": "RTX4090-S501-Content-Aligned-ALPHABET2-P32R16-L19-100M",
+      "id": "8015a82347c37eea",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "ContentAligned",
+        "VectorPole",
+        "ImagePostFusion",
+        "FromScratch",
+        "100M"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "checkpoint_initialization": false,
+    "initialization": "seed501_from_scratch",
+    "memory_merge": "detached_rms_match_scalar_beta",
+    "post_fusion": "image_gated_widely_linear",
+    "query": "full_dense_complex_pole_coordinate_q",
+    "read": "coordinate_preserving_conjugate_complex_q",
+    "state": "fixed_vector_laplace_PxR",
+    "synthesis": "baseline_strict_complex_dense",
+    "write": "shared_strict_complex_content_basis_plus_pole_coordinate_k3"
+  },
+  "total_parameter_counts": {
+    "content-aligned-alphabet2-p32r16-l19-fromscratch-100m": 49377235
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "content-aligned-alphabet2-p32r16-l19-fromscratch-100m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 100000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}
