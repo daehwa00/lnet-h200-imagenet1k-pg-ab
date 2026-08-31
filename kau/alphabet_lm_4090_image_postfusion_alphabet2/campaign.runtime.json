@@ -14,7 +14,7 @@
     }
   },
   "campaign_id": "kau-image-postfusion-alphabet2-p32n4r16-l19-100m-s501-v1",
-  "campaign_manifest_sha256": "3f040934c09a911083d3ff3ce158b0f275bf278a976ac47dc8c6860b3340214f",
+  "campaign_manifest_sha256": "1a80b1b78d28442f403f2e6e6bcf0bfd3ba80ab061107d5e954b20bd6c0f02a5",
   "diagnostics": {
     "complex_highway_reference_parameters": 46833344,
     "final_validation_only": true,
@@ -25,7 +25,7 @@
   "group": "ALPHABET-LM-RTX4090-ImagePostFusionAlphabet2-100M-S501-v1",
   "output_namespace": "alphabet-lm-4090-image-postfusion-alphabet2-v1",
   "parameter_counts": {
-    "image-postfusion-alphabet2-p32n4r16-l19-fromscratch-100m": 41838035
+    "image-postfusion-alphabet2-p32n4r16-l19-fromscratch-100m": 41808851
   },
   "project": "alphabet-lm-viability",
   "runs": {
@@ -54,7 +54,7 @@
     "write_law": "true_outer_product"
   },
   "total_parameter_counts": {
-    "image-postfusion-alphabet2-p32n4r16-l19-fromscratch-100m": 41838035
+    "image-postfusion-alphabet2-p32n4r16-l19-fromscratch-100m": 41808851
   },
   "training": {
     "checkpoint_updates": 25,

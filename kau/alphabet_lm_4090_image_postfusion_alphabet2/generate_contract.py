@@ -27,7 +27,7 @@ def _render() -> str:
         or architecture["K_complex"] != 256
         or architecture["K_real_dof"] != 512
         or architecture["layers"] != 19
-        or manifest["parameter_counts"][label] != 41_838_035
+        or manifest["parameter_counts"][label] != 41_808_851
         or not manifest["diagnostics"]["final_validation_only"]
     ):
         raise RuntimeError("invalid image-PostFusion ALPHABET-2 campaign")

@@ -45,7 +45,7 @@
     ]
   },
   "parameter_counts": {
-    "image-postfusion-alphabet2-p32n4r16-l19-fromscratch-100m": 41838035
+    "image-postfusion-alphabet2-p32n4r16-l19-fromscratch-100m": 41808851
   },
   "diagnostics": {
     "final_validation_only": true,
