@@ -1187,6 +1187,7 @@ def _build(
     laplace_mamba_state_size: int = 4,
     laplace_mamba_head_width: int = 16,
     laplace_mamba_conv_width: int = 4,
+    laplace_mamba_address_norm_bias: bool = False,
     pole_initialization: str = "legacy",
     memory_banks: int = 1,
     bank_pole_modes: int = 128,
@@ -1296,6 +1297,7 @@ def _build(
             state_size=laplace_mamba_state_size,
             head_width=laplace_mamba_head_width,
             conv_width=laplace_mamba_conv_width,
+            address_norm_bias=laplace_mamba_address_norm_bias,
         )
         return LaplaceMambaLM(config), {
             "model": "laplace_mamba",
@@ -1581,6 +1583,7 @@ def main() -> None:
     parser.add_argument("--laplace-mamba-state-size", type=int, default=4)
     parser.add_argument("--laplace-mamba-head-width", type=int, default=16)
     parser.add_argument("--laplace-mamba-conv-width", type=int, default=4)
+    parser.add_argument("--laplace-mamba-address-norm-bias", action="store_true")
     parser.add_argument("--run-label")
     parser.add_argument(
         "--pole-initialization",
@@ -1845,6 +1848,7 @@ def main() -> None:
         laplace_mamba_state_size=args.laplace_mamba_state_size,
         laplace_mamba_head_width=args.laplace_mamba_head_width,
         laplace_mamba_conv_width=args.laplace_mamba_conv_width,
+        laplace_mamba_address_norm_bias=args.laplace_mamba_address_norm_bias,
         pole_initialization=args.pole_initialization,
         memory_banks=args.memory_banks,
         bank_pole_modes=args.bank_pole_modes,
@@ -2170,6 +2174,7 @@ def main() -> None:
             "laplace_mamba_state_size": args.laplace_mamba_state_size,
             "laplace_mamba_head_width": args.laplace_mamba_head_width,
             "laplace_mamba_conv_width": args.laplace_mamba_conv_width,
+            "laplace_mamba_address_norm_bias": args.laplace_mamba_address_norm_bias,
             "post_hidden": args.post_hidden,
             "memory_readout": args.memory_readout,
             "query_read_rank": args.query_read_rank,
@@ -2410,6 +2415,7 @@ def main() -> None:
         "laplace_mamba_state_size": args.laplace_mamba_state_size,
         "laplace_mamba_head_width": args.laplace_mamba_head_width,
         "laplace_mamba_conv_width": args.laplace_mamba_conv_width,
+        "laplace_mamba_address_norm_bias": args.laplace_mamba_address_norm_bias,
         "pole_initialization": args.pole_initialization,
         "memory_banks": args.memory_banks,
         "bank_pole_modes": args.bank_pole_modes,

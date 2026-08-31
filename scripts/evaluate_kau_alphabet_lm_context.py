@@ -38,9 +38,17 @@ from lnet.alphabet_lm_mamba import MambaLM, MambaLMConfig
 from lnet.pac_complex_layers import PackedComplexLinear
 
 
-def _build(kind: str) -> nn.Module:
+def _build(
+    kind: str,
+    *,
+    laplace_mamba_address_norm_bias: bool = False,
+) -> nn.Module:
     if kind == "laplace_mamba":
-        return LaplaceMambaLM(LaplaceMambaLMConfig())
+        return LaplaceMambaLM(
+            LaplaceMambaLMConfig(
+                address_norm_bias=laplace_mamba_address_norm_bias,
+            )
+        )
     if kind == "mamba":
         return MambaLM(MambaLMConfig())
     if kind == "mamba2":
@@ -2391,13 +2399,17 @@ def main() -> None:
         required=True,
     )
     parser.add_argument("--checkpoint", type=Path, required=True)
+    parser.add_argument("--laplace-mamba-address-norm-bias", action="store_true")
     parser.add_argument("--validation-manifest", type=Path, required=True)
     parser.add_argument("--token-limit", type=int, default=1_000_000)
     parser.add_argument("--sequence-limit", type=int)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     device = torch.device("cuda")
-    model = _build(args.kind)
+    model = _build(
+        args.kind,
+        laplace_mamba_address_norm_bias=args.laplace_mamba_address_norm_bias,
+    )
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
     model.load_state_dict(checkpoint["model"])
     model = model.to(device)

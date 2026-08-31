@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import tempfile
 from pathlib import Path
 from typing import cast
@@ -15,6 +16,9 @@ from lnet.alphabet_lm import LaplaceMambaLM, LaplaceMambaLMConfig
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--address-norm-bias", action="store_true")
+    args = parser.parse_args()
     torch.manual_seed(501)
     torch.cuda.manual_seed_all(501)
     config = LaplaceMambaLMConfig(
@@ -28,6 +32,7 @@ def main() -> None:
         context_length=64,
         minimum_half_life=4.0,
         maximum_half_life=64.0,
+        address_norm_bias=args.address_norm_bias,
     )
     model = LaplaceMambaLM(config).cuda().train()
     optimizer = torch.optim.AdamW(model.parameters(), lr=3.0e-4, fused=True)
@@ -52,11 +57,11 @@ def main() -> None:
             restored_logits = restored(tokens[:, :-1])
     if not torch.isfinite(restored_logits).all():
         raise RuntimeError("restored Laplace-Mamba output is non-finite")
-    print(
-        "INTEGRATED_LAPLACE_MAMBA_SMOKE="
-        f"loss={float(loss.detach()):.6f},shape={tuple(logits.shape)}",
-        flush=True,
+    details = (
+        f"loss={float(loss.detach()):.6f},shape={tuple(logits.shape)},"
+        f"address_norm_bias={args.address_norm_bias}"
     )
+    print(f"INTEGRATED_LAPLACE_MAMBA_SMOKE={details}", flush=True)
 
 
 if __name__ == "__main__":

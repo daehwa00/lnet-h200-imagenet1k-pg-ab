@@ -1,0 +1,69 @@
+{
+  "architecture": {
+    "K": 512,
+    "layers": 19,
+    "variants": {
+      "integrated-laplace-mamba-bc-norm-bias-p32n4r16-l19-fromscratch-100m": {
+        "laplace_mamba_address_norm_bias": true,
+        "laplace_mamba_conv_width": 4,
+        "laplace_mamba_head_width": 16,
+        "laplace_mamba_layers": 19,
+        "laplace_mamba_poles": 32,
+        "laplace_mamba_state_size": 4
+      }
+    }
+  },
+  "campaign_id": "kau-integrated-laplace-mamba-bc-norm-bias-p32n4r16-l19-100m-s501-v1",
+  "campaign_manifest_sha256": "9ef6d4afb0613a3d9caa45b75ecdf6b7f0cb488c034f502a12dd903bd710f860",
+  "diagnostics": {
+    "final_validation_only": true,
+    "mamba1_reference_parameters": 48987136,
+    "mamba1_reference_validation_loss": 4.330902905240708
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-IntegratedLaplaceMamba-BCNormBias-100M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-integrated-laplace-mamba-bc-norm-bias-v1",
+  "parameter_counts": {
+    "integrated-laplace-mamba-bc-norm-bias-p32n4r16-l19-fromscratch-100m": 46853056
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "integrated-laplace-mamba-bc-norm-bias-p32n4r16-l19-fromscratch-100m": {
+      "display_name": "RTX4090-S501-Integrated-Laplace-Mamba-BCNormBias-P32N4R16-L19-100M",
+      "id": "67b09b12f1c0bc78",
+      "tags": [
+        "RTX4090",
+        "LaplaceMamba",
+        "BCNormBias",
+        "FromScratch",
+        "100M"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "checkpoint_initialization": false,
+    "initialization": "seed501_from_scratch"
+  },
+  "total_parameter_counts": {
+    "integrated-laplace-mamba-bc-norm-bias-p32n4r16-l19-fromscratch-100m": 46853056
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "integrated-laplace-mamba-bc-norm-bias-p32n4r16-l19-fromscratch-100m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 100000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

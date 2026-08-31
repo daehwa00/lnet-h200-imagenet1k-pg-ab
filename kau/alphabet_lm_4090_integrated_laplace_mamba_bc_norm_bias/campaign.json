@@ -1,0 +1,57 @@
+{
+  "schema": "lnet.kau.alphabet_lm.integrated_laplace_mamba_bc_norm_bias.v1",
+  "campaign_id": "kau-integrated-laplace-mamba-bc-norm-bias-p32n4r16-l19-100m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-integrated-laplace-mamba-bc-norm-bias-v1",
+  "architecture": {
+    "K_real": 512,
+    "layers": 19,
+    "variants": {
+      "integrated-laplace-mamba-bc-norm-bias-p32n4r16-l19-fromscratch-100m": {
+        "laplace_mamba_layers": 19,
+        "laplace_mamba_poles": 32,
+        "laplace_mamba_state_size": 4,
+        "laplace_mamba_head_width": 16,
+        "laplace_mamba_conv_width": 4,
+        "laplace_mamba_address_norm_bias": true
+      }
+    }
+  },
+  "source": {
+    "initialization": "seed501_from_scratch",
+    "checkpoint_initialization": false
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 100000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "integrated-laplace-mamba-bc-norm-bias-p32n4r16-l19-fromscratch-100m"
+    ]
+  },
+  "parameter_counts": {
+    "integrated-laplace-mamba-bc-norm-bias-p32n4r16-l19-fromscratch-100m": 46853056
+  },
+  "total_parameter_counts": {
+    "integrated-laplace-mamba-bc-norm-bias-p32n4r16-l19-fromscratch-100m": 46853056
+  },
+  "diagnostics": {
+    "final_validation_only": true,
+    "mamba1_reference_validation_loss": 4.330902905240708,
+    "mamba1_reference_parameters": 48987136
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-IntegratedLaplaceMamba-BCNormBias-100M-S501-v1"
+  }
+}

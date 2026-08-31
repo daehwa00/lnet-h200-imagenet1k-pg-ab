@@ -2814,6 +2814,37 @@ def test_laplace_mamba_is_causal_and_has_live_integrated_paths() -> None:
         assert torch.isfinite(parameter.grad).all()
 
 
+def test_laplace_mamba_address_norm_bias_is_polewise_and_live() -> None:
+    torch.manual_seed(501)
+    config = replace(_small_laplace_mamba(), address_norm_bias=True)
+    model = LaplaceMambaLM(config)
+    block = cast("LaplaceMambaBlock", model.blocks[0])
+    assert block.write_address_norm is not None
+    assert block.read_address_norm is not None
+
+    shape = (2, 5, config.pole_modes, config.state_size)
+    real = torch.randn(shape)
+    imag = torch.randn(shape)
+    pole_scale = torch.tensor((0.25, 4.0)).view(1, 1, config.pole_modes, 1)
+    normalized_real, normalized_imag = block.write_address_norm(
+        (real * pole_scale, imag * pole_scale)
+    )
+    energy = normalized_real.square().add(normalized_imag.square()).mean(dim=-1)
+    torch.testing.assert_close(energy, torch.ones_like(energy), atol=1.0e-4, rtol=0.0)
+
+    tokens = torch.randint(config.vocab_size, (2, 17))
+    logits = model(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(
+        logits.flatten(0, 1),
+        tokens[:, 1:].flatten(),
+    )
+    loss.backward()
+    for module in (block.write_address_norm, block.read_address_norm):
+        for parameter in module.parameters():
+            assert parameter.grad is not None
+            assert torch.isfinite(parameter.grad).all()
+
+
 def test_laplace_mamba_matches_mamba_depth_and_parameter_scale() -> None:
     model = LaplaceMambaLM(LaplaceMambaLMConfig())
     assert len(model.blocks) == 19
@@ -2821,6 +2852,8 @@ def test_laplace_mamba_matches_mamba_depth_and_parameter_scale() -> None:
     block = cast("LaplaceMambaBlock", model.blocks[0])
     assert sum(parameter.numel() for parameter in block.parameters()) == 1_582_144
     assert model.config.inner_real_width == 1_024
+    address_normalized = LaplaceMambaLM(LaplaceMambaLMConfig(address_norm_bias=True))
+    assert sum(parameter.numel() for parameter in address_normalized.parameters()) == 46_853_056
 
 
 def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:

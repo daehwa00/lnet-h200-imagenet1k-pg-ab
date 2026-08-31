@@ -516,6 +516,7 @@ class LaplaceMambaLMConfig:
     minimum_half_life: float = 16.0
     maximum_half_life: float = 4_096.0
     activation_checkpoint: bool = True
+    address_norm_bias: bool = False
 
     def __post_init__(self) -> None:
         integers = (
@@ -2147,6 +2148,38 @@ class FixedComplexPoleMemory1D(nn.Module):
         return state_real, state_imag
 
 
+class PolewiseComplexAddressNorm(nn.Module):
+    """Normalize each pole address over N, then apply a pole-wise affine map."""
+
+    def __init__(self, pole_modes: int, address_size: int, *, epsilon: float) -> None:
+        super().__init__()
+        if pole_modes <= 0 or address_size <= 0 or epsilon <= 0.0:
+            raise ValueError("invalid pole-wise complex address normalization")
+        self.pole_modes = int(pole_modes)
+        self.address_size = int(address_size)
+        self.epsilon = float(epsilon)
+        shape = (self.pole_modes, self.address_size)
+        self.weight = nn.Parameter(torch.ones(shape))
+        self.bias_real = nn.Parameter(torch.zeros(shape))
+        self.bias_imag = nn.Parameter(torch.zeros(shape))
+
+    def forward(self, address: ComplexField) -> ComplexField:
+        real, imag = address
+        expected = (self.pole_modes, self.address_size)
+        if real.shape != imag.shape or real.shape[-2:] != expected:
+            raise ValueError("complex address coordinates have incompatible shapes")
+        energy = real.float().square().add(imag.float().square()).mean(
+            dim=-1,
+            keepdim=True,
+        )
+        inverse_rms = torch.rsqrt(energy + self.epsilon).to(real.dtype)
+        weight = self.weight.to(real.dtype)
+        return (
+            real * inverse_rms * weight + self.bias_real.to(real.dtype),
+            imag * inverse_rms * weight + self.bias_imag.to(imag.dtype),
+        )
+
+
 class LaplaceMambaBlock(nn.Module):
     """Mamba-shaped block with fixed complex Laplace transport."""
 
@@ -2180,6 +2213,24 @@ class LaplaceMambaBlock(nn.Module):
             initialization="lifetime_palette",
             minimum_half_life=config.minimum_half_life,
             maximum_half_life=config.maximum_half_life,
+        )
+        self.write_address_norm = (
+            PolewiseComplexAddressNorm(
+                config.pole_modes,
+                config.state_size,
+                epsilon=config.rms_epsilon,
+            )
+            if config.address_norm_bias
+            else None
+        )
+        self.read_address_norm = (
+            PolewiseComplexAddressNorm(
+                config.pole_modes,
+                config.state_size,
+                epsilon=config.rms_epsilon,
+            )
+            if config.address_norm_bias
+            else None
         )
         shape = (config.pole_modes, config.head_width)
         self.direct_scale = nn.Parameter(torch.ones(shape))
@@ -2270,6 +2321,15 @@ class LaplaceMambaBlock(nn.Module):
         scale = self.direct_scale.to(output_real.dtype)
         return output_real + scale * value[0], output_imag + scale * value[1]
 
+    def _normalize_addresses(
+        self,
+        write: ComplexField,
+        read: ComplexField,
+    ) -> tuple[ComplexField, ComplexField]:
+        if self.write_address_norm is None or self.read_address_norm is None:
+            return write, read
+        return self.write_address_norm(write), self.read_address_norm(read)
+
     def _normalize_and_gate(
         self,
         output: ComplexField,
@@ -2294,6 +2354,7 @@ class LaplaceMambaBlock(nn.Module):
         projected = self.input_projection(self.input_norm(hidden))
         gate, value_packed, write_packed, read_packed = self._split_projection(projected)
         value, write, read = self._complex_axes(value_packed, write_packed, read_packed)
+        write, read = self._normalize_addresses(write, read)
         memory = self._transport_and_read(value, write, read)
         update = self.output_projection(self._normalize_and_gate(memory, gate))
         return hidden + update
