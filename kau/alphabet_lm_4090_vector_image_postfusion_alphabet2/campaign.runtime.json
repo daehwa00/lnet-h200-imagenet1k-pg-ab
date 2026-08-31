@@ -14,7 +14,7 @@
     }
   },
   "campaign_id": "kau-vector-image-postfusion-alphabet2-p32r16-l19-100m-s501-v1",
-  "campaign_manifest_sha256": "94e549270aba5718fd909372f144b63b64f416b404fe8892094615248a1ee600",
+  "campaign_manifest_sha256": "af693cb71565d8fd05e8eb100aede8ba65319a2f6e057e660f92058aab393c96",
   "diagnostics": {
     "final_validation_only": true,
     "mamba1_reference_parameters": 48987136,
@@ -25,7 +25,7 @@
   "group": "ALPHABET-LM-RTX4090-VectorImagePostFusionAlphabet2-100M-S501-v1",
   "output_namespace": "alphabet-lm-4090-vector-image-postfusion-alphabet2-v1",
   "parameter_counts": {
-    "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": 64076243
+    "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": 64105427
   },
   "project": "alphabet-lm-viability",
   "runs": {
@@ -55,7 +55,7 @@
     "synthesis": "strict_complex"
   },
   "total_parameter_counts": {
-    "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": 64076243
+    "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": 64105427
   },
   "training": {
     "checkpoint_updates": 25,

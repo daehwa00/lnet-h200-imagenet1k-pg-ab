@@ -45,7 +45,7 @@
     ]
   },
   "parameter_counts": {
-    "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": 64076243
+    "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": 64105427
   },
   "diagnostics": {
     "final_validation_only": true,
