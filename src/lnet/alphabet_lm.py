@@ -11,7 +11,7 @@ from torch import Tensor, nn
 from torch.nn import functional
 from torch.utils.checkpoint import checkpoint as activation_checkpoint
 
-from .complex_scan_transitions import ComplexRMSNorm
+from .complex_scan_transitions import ComplexRMSNorm, complex_rms_unit
 from .pac_complex_layers import PackedComplexLinear, WidelyLinear
 from .pac_gated_post_fusion import GatedComplexPostFusion
 from .pac_real2d_math import discrete_pole_real2d, pole_gamma_from_control_real2d
@@ -2551,6 +2551,209 @@ class ComplexHighwayLaplaceMambaLM(nn.Module):
         )
 
 
+class ImagePostFusionAlphabet2Block(nn.Module):
+    """Image-ALPHABET block with content-addressable fixed-Laplace memory."""
+
+    memory_scale_initial = 0.01
+
+    def __init__(self, config: LaplaceMambaLMConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.complex_width = config.model_width // 2
+        self.value_width = config.inner_complex_width
+        self.address_width = config.pole_modes * config.state_size
+        self.active_width = self.value_width + 2 * self.address_width
+        self.input_norm = ComplexRMSNorm(
+            self.complex_width,
+            epsilon=config.rms_epsilon,
+        )
+        self.analysis = PackedComplexLinear(
+            self.complex_width,
+            self.active_width,
+        )
+        self.reader = ComplexDepthwiseCausalConv1d(
+            self.active_width,
+            config.conv_width,
+        )
+        self.memory = FixedComplexPoleMemory1D(
+            config.pole_modes,
+            context_length=config.context_length,
+            scan_fp32=config.scan_fp32,
+            initialization="lifetime_palette",
+            minimum_half_life=config.minimum_half_life,
+            maximum_half_life=config.maximum_half_life,
+        )
+        self.synthesis = PackedComplexLinear(
+            self.value_width,
+            self.complex_width,
+        )
+        self.memory_scale = nn.Parameter(torch.tensor(self.memory_scale_initial))
+        self.post_fusion = GatedComplexPostFusion(
+            self.complex_width,
+            self.complex_width,
+        )
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        with torch.no_grad():
+            self.input_norm.weight.fill_(math.sqrt(2.0))
+            residual_scale = math.sqrt(self.config.layers)
+            output = cast("WidelyLinear", self.post_fusion.out)
+            output_parameters: tuple[Tensor, ...] = (
+                output.weight_real,
+                output.weight_imag,
+                output.conjugate_real,
+                output.conjugate_imag,
+            )
+            for parameter in output_parameters:
+                parameter.div_(residual_scale)
+
+    def _analyze(
+        self,
+        real: Tensor,
+        imag: Tensor,
+    ) -> tuple[ComplexField, ComplexField, ComplexField]:
+        normalized = self.input_norm(real, imag)
+        active_real, active_imag = self.analysis(*normalized)
+        active_real, active_imag = self.reader(active_real, active_imag)
+        value_real, write_real, read_real = active_real.split(
+            (self.value_width, self.address_width, self.address_width),
+            dim=-1,
+        )
+        value_imag, write_imag, read_imag = active_imag.split(
+            (self.value_width, self.address_width, self.address_width),
+            dim=-1,
+        )
+        batch, steps, _width = value_real.shape
+        value_shape = (batch, steps, self.config.pole_modes, self.config.head_width)
+        address_shape = (
+            batch,
+            steps,
+            self.config.pole_modes,
+            self.config.state_size,
+        )
+        value = value_real.reshape(value_shape), value_imag.reshape(value_shape)
+        write = complex_rms_unit(
+            write_real.reshape(address_shape),
+            write_imag.reshape(address_shape),
+            self.config.rms_epsilon,
+        )
+        read = complex_rms_unit(
+            read_real.reshape(address_shape),
+            read_imag.reshape(address_shape),
+            self.config.rms_epsilon,
+        )
+        return value, write, read
+
+    def _transport_and_read(
+        self,
+        value: ComplexField,
+        write: ComplexField,
+        read: ComplexField,
+    ) -> ComplexField:
+        drive_real = (
+            write[0].unsqueeze(-1) * value[0].unsqueeze(-2)
+            - write[1].unsqueeze(-1) * value[1].unsqueeze(-2)
+        )
+        drive_imag = (
+            write[0].unsqueeze(-1) * value[1].unsqueeze(-2)
+            + write[1].unsqueeze(-1) * value[0].unsqueeze(-2)
+        )
+        state_real, state_imag = self.memory(drive_real, drive_imag)
+        return (
+            (
+                state_real * read[0].unsqueeze(-1)
+                + state_imag * read[1].unsqueeze(-1)
+            ).sum(dim=-2),
+            (
+                state_imag * read[0].unsqueeze(-1)
+                - state_real * read[1].unsqueeze(-1)
+            ).sum(dim=-2),
+        )
+
+    def _merge_memory(
+        self,
+        hidden: ComplexField,
+        memory: ComplexField,
+    ) -> ComplexField:
+        hidden_energy = hidden[0].float().square().add(hidden[1].float().square()).mean(
+            dim=-1,
+            keepdim=True,
+        )
+        memory_energy = memory[0].float().square().add(memory[1].float().square()).mean(
+            dim=-1,
+            keepdim=True,
+        )
+        rms_ratio = torch.sqrt(hidden_energy + self.config.rms_epsilon) * torch.rsqrt(
+            memory_energy + self.config.rms_epsilon
+        )
+        rms_ratio = rms_ratio.detach().to(dtype=hidden[0].dtype)
+        scale = self.memory_scale.to(dtype=hidden[0].dtype) * rms_ratio
+        return hidden[0] + scale * memory[0], hidden[1] + scale * memory[1]
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        value, write, read = self._analyze(real, imag)
+        retrieved = self._transport_and_read(value, write, read)
+        memory = self.synthesis(
+            retrieved[0].flatten(-2),
+            retrieved[1].flatten(-2),
+        )
+        merged = self._merge_memory((real, imag), memory)
+        return self.post_fusion(*merged)
+
+
+class ImagePostFusionAlphabet2LM(nn.Module):
+    """Complex LM repeating the image-ALPHABET analysis/memory/fusion block."""
+
+    def __init__(self, config: LaplaceMambaLMConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.complex_width = config.model_width // 2
+        self.embedding_real = nn.Embedding(config.vocab_size, self.complex_width)
+        self.embedding_imag = nn.Embedding(config.vocab_size, self.complex_width)
+        self.blocks = nn.ModuleList(
+            ImagePostFusionAlphabet2Block(config) for _ in range(config.layers)
+        )
+        self.final_norm = ComplexRMSNorm(
+            self.complex_width,
+            epsilon=config.rms_epsilon,
+        )
+        nn.init.normal_(self.embedding_real.weight, mean=0.0, std=0.02)
+        nn.init.normal_(self.embedding_imag.weight, mean=0.0, std=0.02)
+        with torch.no_grad():
+            self.final_norm.weight.fill_(math.sqrt(2.0))
+
+    def complex_hidden(self, input_ids: Tensor) -> ComplexField:
+        real = self.embedding_real(input_ids)
+        imag = self.embedding_imag(input_ids)
+        for block in self.blocks:
+            if (
+                self.config.activation_checkpoint
+                and self.training
+                and torch.is_grad_enabled()
+            ):
+                result = activation_checkpoint(
+                    block,
+                    real,
+                    imag,
+                    use_reentrant=False,
+                )
+                real, imag = cast("ComplexField", result)
+            else:
+                real, imag = block(real, imag)
+        return self.final_norm(real, imag)
+
+    def hidden(self, input_ids: Tensor) -> Tensor:
+        return torch.cat(self.complex_hidden(input_ids), dim=-1)
+
+    def forward(self, input_ids: Tensor) -> Tensor:
+        real, imag = self.complex_hidden(input_ids)
+        return functional.linear(real, self.embedding_real.weight) + functional.linear(
+            imag,
+            self.embedding_imag.weight,
+        )
+
+
 class LaplaceMambaLM(nn.Module):
     """Token LM built only from integrated Laplace-Mamba blocks."""
 
@@ -3807,6 +4010,8 @@ __all__ = [
     "GroupedCausalFactorizedComplexConv1dReader",
     "GroupedPackedComplexLinear",
     "IdentityComplexMemory1D",
+    "ImagePostFusionAlphabet2Block",
+    "ImagePostFusionAlphabet2LM",
     "LaplaceMambaBlock",
     "LaplaceMambaLM",
     "LaplaceMambaLMConfig",

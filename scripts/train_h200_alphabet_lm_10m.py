@@ -29,6 +29,7 @@ from lnet.alphabet_lm import (
     ComplexHighwayLaplaceMambaLM,
     DynamicLowRankWrite,
     FactorizedTokenRateVectorPoleBlock,
+    ImagePostFusionAlphabet2LM,
     LaplaceMambaLM,
     LaplaceMambaLMConfig,
     LowRankDecaySelector,
@@ -1289,7 +1290,11 @@ def _build(
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
 ) -> tuple[nn.Module, dict[str, Any]]:
-    if model_name in {"laplace_mamba", "laplace_mamba_complex_highway"}:
+    if model_name in {
+        "laplace_mamba",
+        "laplace_mamba_complex_highway",
+        "alphabet2_image_postfusion",
+    }:
         config = LaplaceMambaLMConfig(
             vocab_size=vocab_size,
             layers=laplace_mamba_layers,
@@ -1298,11 +1303,13 @@ def _build(
             head_width=laplace_mamba_head_width,
             conv_width=laplace_mamba_conv_width,
         )
-        model_type = (
-            ComplexHighwayLaplaceMambaLM
-            if model_name == "laplace_mamba_complex_highway"
-            else LaplaceMambaLM
-        )
+        model_type: type[nn.Module]
+        if model_name == "laplace_mamba_complex_highway":
+            model_type = ComplexHighwayLaplaceMambaLM
+        elif model_name == "alphabet2_image_postfusion":
+            model_type = ImagePostFusionAlphabet2LM
+        else:
+            model_type = LaplaceMambaLM
         return model_type(config), {
             "model": model_name,
             "config": asdict(config),
@@ -1585,6 +1592,7 @@ def main() -> None:
             "mamba2",
             "laplace_mamba",
             "laplace_mamba_complex_highway",
+            "alphabet2_image_postfusion",
         ),
         required=True,
     )

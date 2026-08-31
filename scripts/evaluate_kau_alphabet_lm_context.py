@@ -25,6 +25,7 @@ from lnet.alphabet_lm import (
     FixedComplexPoleMemory1D,
     FixedPoleResidualSidecar,
     GroupedPackedComplexLinear,
+    ImagePostFusionAlphabet2LM,
     LaplaceMambaLM,
     LaplaceMambaLMConfig,
     LowRankDecaySelector,
@@ -40,12 +41,18 @@ from lnet.pac_complex_layers import PackedComplexLinear
 
 
 def _build(kind: str) -> nn.Module:
-    if kind in {"laplace_mamba", "laplace_mamba_complex_highway"}:
-        model_type = (
-            ComplexHighwayLaplaceMambaLM
-            if kind == "laplace_mamba_complex_highway"
-            else LaplaceMambaLM
-        )
+    if kind in {
+        "laplace_mamba",
+        "laplace_mamba_complex_highway",
+        "alphabet2_image_postfusion",
+    }:
+        model_type: type[nn.Module]
+        if kind == "laplace_mamba_complex_highway":
+            model_type = ComplexHighwayLaplaceMambaLM
+        elif kind == "alphabet2_image_postfusion":
+            model_type = ImagePostFusionAlphabet2LM
+        else:
+            model_type = LaplaceMambaLM
         return model_type(LaplaceMambaLMConfig())
     if kind == "mamba":
         return MambaLM(MambaLMConfig())
@@ -2394,6 +2401,7 @@ def main() -> None:
             "mamba2_48m",
             "laplace_mamba",
             "laplace_mamba_complex_highway",
+            "alphabet2_image_postfusion",
         ),
         required=True,
     )
@@ -2495,6 +2503,7 @@ def main() -> None:
         "mamba2_48m",
         "laplace_mamba",
         "laplace_mamba_complex_highway",
+        "alphabet2_image_postfusion",
     }:
         handles = _zero_memory(model)
         results["memory_zero"] = _evaluate(

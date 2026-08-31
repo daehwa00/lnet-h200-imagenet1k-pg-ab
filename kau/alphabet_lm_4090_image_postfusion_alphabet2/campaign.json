@@ -1,0 +1,61 @@
+{
+  "schema": "lnet.kau.alphabet_lm.image_postfusion_alphabet2.v1",
+  "campaign_id": "kau-image-postfusion-alphabet2-p32n4r16-l19-100m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-image-postfusion-alphabet2-v1",
+  "architecture": {
+    "K_complex": 256,
+    "K_real_dof": 512,
+    "layers": 19,
+    "variants": {
+      "image-postfusion-alphabet2-p32n4r16-l19-fromscratch-100m": {
+        "laplace_mamba_layers": 19,
+        "laplace_mamba_poles": 32,
+        "laplace_mamba_state_size": 4,
+        "laplace_mamba_head_width": 16,
+        "laplace_mamba_conv_width": 3
+      }
+    }
+  },
+  "source": {
+    "initialization": "seed501_from_scratch",
+    "checkpoint_initialization": false,
+    "reader": "strict_complex_causal_k3",
+    "write_law": "true_outer_product",
+    "address_normalization": "complex_rms_unit",
+    "synthesis": "strict_complex",
+    "memory_merge": "detached_rms_match_scalar_beta",
+    "post_fusion": "image_gated_widely_linear"
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 100000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "image-postfusion-alphabet2-p32n4r16-l19-fromscratch-100m"
+    ]
+  },
+  "parameter_counts": {
+    "image-postfusion-alphabet2-p32n4r16-l19-fromscratch-100m": 41838035
+  },
+  "diagnostics": {
+    "final_validation_only": true,
+    "complex_highway_reference_parameters": 46833344,
+    "mamba1_reference_validation_loss": 4.330902905240708,
+    "mamba1_reference_parameters": 48987136
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-ImagePostFusionAlphabet2-100M-S501-v1"
+  }
+}

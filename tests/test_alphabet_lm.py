@@ -27,6 +27,8 @@ from lnet.alphabet_lm import (
     FixedComplexPoleMemory1D,
     FixedPoleResidualSidecar,
     IdentityComplexMemory1D,
+    ImagePostFusionAlphabet2Block,
+    ImagePostFusionAlphabet2LM,
     LaplaceMambaBlock,
     LaplaceMambaLM,
     LaplaceMambaLMConfig,
@@ -2902,6 +2904,78 @@ def test_complex_highway_tied_head_and_parameter_budget() -> None:
     full = ComplexHighwayLaplaceMambaLM(LaplaceMambaLMConfig())
     assert len(full.blocks) == 19
     assert sum(parameter.numel() for parameter in full.parameters()) == 46_833_344
+
+
+def test_image_postfusion_alphabet2_is_causal_and_has_live_paths() -> None:
+    torch.manual_seed(501)
+    config = _small_laplace_mamba()
+    model = ImagePostFusionAlphabet2LM(config)
+    tokens = torch.randint(config.vocab_size, (2, 17))
+    changed = tokens.clone()
+    changed[:, 10:] = torch.randint(config.vocab_size, changed[:, 10:].shape)
+    with torch.no_grad():
+        expected = model(tokens[:, :-1])
+        actual = model(changed[:, :-1])
+    torch.testing.assert_close(actual[:, :10], expected[:, :10], atol=1.0e-6, rtol=0.0)
+
+    logits = model(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(
+        logits.flatten(0, 1),
+        tokens[:, 1:].flatten(),
+    )
+    loss.backward()
+    block = cast("ImagePostFusionAlphabet2Block", model.blocks[0])
+    for parameter in (
+        model.embedding_real.weight,
+        model.embedding_imag.weight,
+        block.analysis.weight_real,
+        block.analysis.weight_imag,
+        block.reader.weight_real,
+        block.reader.weight_imag,
+        block.memory.raw_damping,
+        block.memory.raw_frequency,
+        block.synthesis.weight_real,
+        block.synthesis.weight_imag,
+        block.memory_scale,
+        block.post_fusion.value.weight_real,
+        block.post_fusion.value.conjugate_real,
+        block.post_fusion.gate.weight,
+        block.post_fusion.out.weight_real,
+        block.post_fusion.out.conjugate_real,
+    ):
+        assert parameter.grad is not None
+        assert torch.isfinite(parameter.grad).all()
+
+
+def test_image_postfusion_alphabet2_contract_and_parameter_budget() -> None:
+    config = _small_laplace_mamba()
+    block = ImagePostFusionAlphabet2Block(config).eval()
+    hidden = torch.randn(2, 7, config.model_width // 2), torch.randn(
+        2, 7, config.model_width // 2
+    )
+    with torch.no_grad():
+        value, write, read = block._analyze(*hidden)
+        for address in (write, read):
+            energy = address[0].square().add(address[1].square()).mean(dim=-1)
+            torch.testing.assert_close(energy, torch.ones_like(energy), atol=2.0e-5, rtol=0.0)
+        memory = block.synthesis(
+            value[0].flatten(-2),
+            value[1].flatten(-2),
+        )
+        merged = block._merge_memory(hidden, memory)
+        correction_energy = (
+            (merged[0] - hidden[0]).square().add((merged[1] - hidden[1]).square())
+        ).mean(dim=-1)
+        hidden_energy = hidden[0].square().add(hidden[1].square()).mean(dim=-1)
+        ratio = torch.sqrt(correction_energy / hidden_energy)
+        expected = torch.full_like(ratio, block.memory_scale_initial)
+        torch.testing.assert_close(ratio, expected, atol=2.0e-5, rtol=2.0e-4)
+
+    full = ImagePostFusionAlphabet2LM(LaplaceMambaLMConfig())
+    assert len(full.blocks) == 19
+    assert sum(parameter.numel() for parameter in full.parameters()) == 41_838_035
+    assert not hasattr(full.blocks[0], "direct_scale")
+    assert not hasattr(full.blocks[0], "gate_projection")
 
 
 def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:
