@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-# ruff: noqa: T201
 import tempfile
 from pathlib import Path
 from typing import cast
