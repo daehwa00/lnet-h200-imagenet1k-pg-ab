@@ -24,6 +24,9 @@ from lnet.alphabet_lm import (
     FixedComplexPoleMemory1D,
     FixedPoleResidualSidecar,
     IdentityComplexMemory1D,
+    LaplaceMambaBlock,
+    LaplaceMambaLM,
+    LaplaceMambaLMConfig,
     LowRankDecaySelector,
     PoleSpecificCausalVectorReader,
     QueryConditionedLowRankReadout,
@@ -2764,6 +2767,60 @@ def test_parameter_matched_mamba2_uses_matrix_state_geometry() -> None:
     assert model.config.layers == 18
     assert model.config.state_size == 128
     assert model.config.architecture == "Mamba2"
+
+
+def _small_laplace_mamba() -> LaplaceMambaLMConfig:
+    return LaplaceMambaLMConfig(
+        vocab_size=64,
+        model_width=16,
+        layers=2,
+        pole_modes=2,
+        state_size=2,
+        head_width=8,
+        conv_width=3,
+        context_length=16,
+        minimum_half_life=4.0,
+        maximum_half_life=16.0,
+    )
+
+
+def test_laplace_mamba_is_causal_and_has_live_integrated_paths() -> None:
+    torch.manual_seed(501)
+    model = LaplaceMambaLM(_small_laplace_mamba())
+    tokens = torch.randint(64, (2, 17))
+    changed = tokens.clone()
+    changed[:, 10:] = torch.randint(64, changed[:, 10:].shape)
+    with torch.no_grad():
+        expected = model(tokens[:, :-1])
+        actual = model(changed[:, :-1])
+    torch.testing.assert_close(actual[:, :10], expected[:, :10], atol=1.0e-6, rtol=0.0)
+    logits = model(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(
+        logits.flatten(0, 1),
+        tokens[:, 1:].flatten(),
+    )
+    loss.backward()
+    block = cast("LaplaceMambaBlock", model.blocks[0])
+    for parameter in (
+        block.input_projection.weight,
+        block.conv.weight,
+        block.memory.raw_damping,
+        block.memory.raw_frequency,
+        block.direct_scale,
+        block.output_norm_weight,
+        block.output_projection.weight,
+    ):
+        assert parameter.grad is not None
+        assert torch.isfinite(parameter.grad).all()
+
+
+def test_laplace_mamba_matches_mamba_depth_and_parameter_scale() -> None:
+    model = LaplaceMambaLM(LaplaceMambaLMConfig())
+    assert len(model.blocks) == 19
+    assert sum(parameter.numel() for parameter in model.parameters()) == 46_838_464
+    block = cast("LaplaceMambaBlock", model.blocks[0])
+    assert sum(parameter.numel() for parameter in block.parameters()) == 1_582_144
+    assert model.config.inner_real_width == 1_024
 
 
 def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:

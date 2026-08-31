@@ -1,0 +1,67 @@
+{
+  "architecture": {
+    "K": 512,
+    "layers": 19,
+    "variants": {
+      "integrated-laplace-mamba-p32n4r16-l19-fromscratch-100m": {
+        "laplace_mamba_conv_width": 4,
+        "laplace_mamba_head_width": 16,
+        "laplace_mamba_layers": 19,
+        "laplace_mamba_poles": 32,
+        "laplace_mamba_state_size": 4
+      }
+    }
+  },
+  "campaign_id": "kau-integrated-laplace-mamba-p32n4r16-l19-100m-s501-v1",
+  "campaign_manifest_sha256": "d0d53613a2d6f61b24119a89949f5daa953b19338129ce28bd289f1a1c15eaa1",
+  "diagnostics": {
+    "final_validation_only": true,
+    "mamba1_reference_parameters": 48987136,
+    "mamba1_reference_validation_loss": 4.330902905240708
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-IntegratedLaplaceMamba-100M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-integrated-laplace-mamba-v1",
+  "parameter_counts": {
+    "integrated-laplace-mamba-p32n4r16-l19-fromscratch-100m": 46838464
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "integrated-laplace-mamba-p32n4r16-l19-fromscratch-100m": {
+      "display_name": "RTX4090-S501-Integrated-Laplace-Mamba-P32N4R16-L19-100M",
+      "id": "255571b5aa5a4627",
+      "tags": [
+        "RTX4090",
+        "LaplaceMamba",
+        "FromScratch",
+        "100M"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "checkpoint_initialization": false,
+    "initialization": "seed501_from_scratch"
+  },
+  "total_parameter_counts": {
+    "integrated-laplace-mamba-p32n4r16-l19-fromscratch-100m": 46838464
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "integrated-laplace-mamba-p32n4r16-l19-fromscratch-100m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 100000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

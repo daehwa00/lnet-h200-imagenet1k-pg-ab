@@ -501,6 +501,47 @@ class AlphabetLMConfig:
         return self.total_pole_modes
 
 
+@dataclass(frozen=True, slots=True)
+class LaplaceMambaLMConfig:
+    vocab_size: int = 32_768
+    model_width: int = 512
+    layers: int = 19
+    pole_modes: int = 32
+    state_size: int = 4
+    head_width: int = 16
+    conv_width: int = 4
+    context_length: int = 2_048
+    scan_fp32: bool = True
+    rms_epsilon: float = 1.0e-6
+    minimum_half_life: float = 16.0
+    maximum_half_life: float = 4_096.0
+    activation_checkpoint: bool = True
+
+    def __post_init__(self) -> None:
+        integers = (
+            self.vocab_size,
+            self.model_width,
+            self.layers,
+            self.pole_modes,
+            self.state_size,
+            self.head_width,
+            self.conv_width,
+            self.context_length,
+        )
+        if any(value <= 0 for value in integers):
+            raise ValueError("invalid Laplace-Mamba configuration")
+        if self.model_width % 2 or self.minimum_half_life >= self.maximum_half_life:
+            raise ValueError("invalid Laplace-Mamba width or pole lifetime")
+
+    @property
+    def inner_complex_width(self) -> int:
+        return self.pole_modes * self.head_width
+
+    @property
+    def inner_real_width(self) -> int:
+        return 2 * self.inner_complex_width
+
+
 class CausalFactorizedComplexConv1dReader(nn.Module):
     def __init__(
         self,
@@ -2106,6 +2147,195 @@ class FixedComplexPoleMemory1D(nn.Module):
         return state_real, state_imag
 
 
+class LaplaceMambaBlock(nn.Module):
+    """Mamba-shaped block with fixed complex Laplace transport."""
+
+    def __init__(self, config: LaplaceMambaLMConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.input_norm = nn.RMSNorm(config.model_width, eps=config.rms_epsilon)
+        self.gate_width = config.inner_complex_width
+        self.value_width = config.inner_real_width
+        self.address_width = 2 * config.pole_modes * config.state_size
+        projection_width = (
+            self.gate_width + self.value_width + 2 * self.address_width
+        )
+        self.input_projection = nn.Linear(
+            config.model_width,
+            projection_width,
+            bias=False,
+        )
+        conv_channels = self.value_width + 2 * self.address_width
+        self.conv = nn.Conv1d(
+            conv_channels,
+            conv_channels,
+            kernel_size=config.conv_width,
+            groups=conv_channels,
+            bias=True,
+        )
+        self.memory = FixedComplexPoleMemory1D(
+            config.pole_modes,
+            context_length=config.context_length,
+            scan_fp32=config.scan_fp32,
+            initialization="lifetime_palette",
+            minimum_half_life=config.minimum_half_life,
+            maximum_half_life=config.maximum_half_life,
+        )
+        shape = (config.pole_modes, config.head_width)
+        self.direct_scale = nn.Parameter(torch.ones(shape))
+        self.output_norm_weight = nn.Parameter(torch.ones(shape))
+        self.output_projection = nn.Linear(
+            config.inner_real_width,
+            config.model_width,
+            bias=False,
+        )
+        nn.init.xavier_uniform_(self.input_projection.weight)
+        nn.init.xavier_uniform_(self.output_projection.weight)
+        with torch.no_grad():
+            self.output_projection.weight.div_(math.sqrt(config.layers))
+
+    def _split_projection(
+        self,
+        projected: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        gate, active = projected.split(
+            (self.gate_width, projected.shape[-1] - self.gate_width),
+            dim=-1,
+        )
+        causal = functional.silu(
+            self.conv(
+                functional.pad(
+                    active.transpose(1, 2),
+                    (self.config.conv_width - 1, 0),
+                )
+            ).transpose(1, 2)
+        )
+        value, write, read = causal.split(
+            (self.value_width, self.address_width, self.address_width),
+            dim=-1,
+        )
+        return gate, value, write, read
+
+    def _complex_axes(
+        self,
+        value: Tensor,
+        write: Tensor,
+        read: Tensor,
+    ) -> tuple[ComplexField, ComplexField, ComplexField]:
+        batch, steps, _width = value.shape
+        value_shape = (
+            batch,
+            steps,
+            self.config.pole_modes,
+            self.config.head_width,
+        )
+        address_shape = (
+            batch,
+            steps,
+            self.config.pole_modes,
+            self.config.state_size,
+        )
+        value_real, value_imag = value.chunk(2, dim=-1)
+        write_real, write_imag = write.chunk(2, dim=-1)
+        read_real, read_imag = read.chunk(2, dim=-1)
+        return (
+            (value_real.reshape(value_shape), value_imag.reshape(value_shape)),
+            (write_real.reshape(address_shape), write_imag.reshape(address_shape)),
+            (read_real.reshape(address_shape), read_imag.reshape(address_shape)),
+        )
+
+    def _transport_and_read(
+        self,
+        value: ComplexField,
+        write: ComplexField,
+        read: ComplexField,
+    ) -> ComplexField:
+        drive_real = (
+            write[0].unsqueeze(-1) * value[0].unsqueeze(-2)
+            - write[1].unsqueeze(-1) * value[1].unsqueeze(-2)
+        )
+        drive_imag = (
+            write[0].unsqueeze(-1) * value[1].unsqueeze(-2)
+            + write[1].unsqueeze(-1) * value[0].unsqueeze(-2)
+        )
+        state_real, state_imag = self.memory(drive_real, drive_imag)
+        output_real = (
+            state_real * read[0].unsqueeze(-1)
+            + state_imag * read[1].unsqueeze(-1)
+        ).sum(dim=-2)
+        output_imag = (
+            state_imag * read[0].unsqueeze(-1)
+            - state_real * read[1].unsqueeze(-1)
+        ).sum(dim=-2)
+        scale = self.direct_scale.to(output_real.dtype)
+        return output_real + scale * value[0], output_imag + scale * value[1]
+
+    def _normalize_and_gate(
+        self,
+        output: ComplexField,
+        gate: Tensor,
+    ) -> Tensor:
+        energy = output[0].float().square().add(output[1].float().square()).mean(
+            dim=(-2, -1),
+            keepdim=True,
+        )
+        scale = torch.rsqrt(energy + self.config.rms_epsilon).to(output[0].dtype)
+        weight = self.output_norm_weight.to(output[0].dtype)
+        gate_shape = (*gate.shape[:-1], self.config.pole_modes, self.config.head_width)
+        active_gate = functional.silu(gate.reshape(gate_shape))
+        normalized_real = output[0] * scale * weight * active_gate
+        normalized_imag = output[1] * scale * weight * active_gate
+        return torch.cat(
+            (normalized_real.flatten(-2), normalized_imag.flatten(-2)),
+            dim=-1,
+        )
+
+    def forward(self, hidden: Tensor) -> Tensor:
+        projected = self.input_projection(self.input_norm(hidden))
+        gate, value_packed, write_packed, read_packed = self._split_projection(projected)
+        value, write, read = self._complex_axes(value_packed, write_packed, read_packed)
+        memory = self._transport_and_read(value, write, read)
+        update = self.output_projection(self._normalize_and_gate(memory, gate))
+        return hidden + update
+
+
+class LaplaceMambaLM(nn.Module):
+    """Token LM built only from integrated Laplace-Mamba blocks."""
+
+    def __init__(self, config: LaplaceMambaLMConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.embedding = nn.Embedding(config.vocab_size, config.model_width)
+        self.blocks = nn.ModuleList(
+            LaplaceMambaBlock(config) for _ in range(config.layers)
+        )
+        self.final_norm = nn.RMSNorm(config.model_width, eps=config.rms_epsilon)
+        nn.init.normal_(self.embedding.weight, mean=0.0, std=0.02)
+
+    def hidden(self, input_ids: Tensor) -> Tensor:
+        hidden = self.embedding(input_ids)
+        for block in self.blocks:
+            if (
+                self.config.activation_checkpoint
+                and self.training
+                and torch.is_grad_enabled()
+            ):
+                hidden = cast(
+                    "Tensor",
+                    activation_checkpoint(
+                        block,
+                        hidden,
+                        use_reentrant=False,
+                    ),
+                )
+            else:
+                hidden = block(hidden)
+        return self.final_norm(hidden)
+
+    def forward(self, input_ids: Tensor) -> Tensor:
+        return functional.linear(self.hidden(input_ids), self.embedding.weight)
+
+
 class LowRankPoleRouter(nn.Module):
     def __init__(
         self,
@@ -3322,6 +3552,9 @@ __all__ = [
     "GroupedCausalFactorizedComplexConv1dReader",
     "GroupedPackedComplexLinear",
     "IdentityComplexMemory1D",
+    "LaplaceMambaBlock",
+    "LaplaceMambaLM",
+    "LaplaceMambaLMConfig",
     "LowRankDecaySelector",
     "LowRankPoleRouter",
     "QueryConditionedLowRankReadout",

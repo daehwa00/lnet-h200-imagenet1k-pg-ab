@@ -24,6 +24,8 @@ from lnet.alphabet_lm import (
     FixedComplexPoleMemory1D,
     FixedPoleResidualSidecar,
     GroupedPackedComplexLinear,
+    LaplaceMambaLM,
+    LaplaceMambaLMConfig,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
     SemanticEdgePoleMemory,
@@ -37,6 +39,8 @@ from lnet.pac_complex_layers import PackedComplexLinear
 
 
 def _build(kind: str) -> nn.Module:
+    if kind == "laplace_mamba":
+        return LaplaceMambaLM(LaplaceMambaLMConfig())
     if kind == "mamba":
         return MambaLM(MambaLMConfig())
     if kind == "mamba2":
@@ -2382,6 +2386,7 @@ def main() -> None:
             "mamba2",
             "mamba1_49m",
             "mamba2_48m",
+            "laplace_mamba",
         ),
         required=True,
     )
@@ -2476,7 +2481,13 @@ def main() -> None:
         )
         for handle in outer_handles:
             handle.remove()
-    if args.kind not in {"mamba", "mamba2", "mamba1_49m", "mamba2_48m"}:
+    if args.kind not in {
+        "mamba",
+        "mamba2",
+        "mamba1_49m",
+        "mamba2_48m",
+        "laplace_mamba",
+    }:
         handles = _zero_memory(model)
         results["memory_zero"] = _evaluate(
             model,

@@ -28,6 +28,8 @@ from lnet.alphabet_lm import (
     CausalCNNPoleMemory,
     DynamicLowRankWrite,
     FactorizedTokenRateVectorPoleBlock,
+    LaplaceMambaLM,
+    LaplaceMambaLMConfig,
     LowRankDecaySelector,
     QueryConditionedLowRankReadout,
     SlowCausalCNNPoleMemory,
@@ -1180,6 +1182,11 @@ def _build(
     model_name: str,
     vocab_size: int,
     *,
+    laplace_mamba_layers: int = 19,
+    laplace_mamba_poles: int = 32,
+    laplace_mamba_state_size: int = 4,
+    laplace_mamba_head_width: int = 16,
+    laplace_mamba_conv_width: int = 4,
     pole_initialization: str = "legacy",
     memory_banks: int = 1,
     bank_pole_modes: int = 128,
@@ -1281,6 +1288,19 @@ def _build(
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
 ) -> tuple[nn.Module, dict[str, Any]]:
+    if model_name == "laplace_mamba":
+        config = LaplaceMambaLMConfig(
+            vocab_size=vocab_size,
+            layers=laplace_mamba_layers,
+            pole_modes=laplace_mamba_poles,
+            state_size=laplace_mamba_state_size,
+            head_width=laplace_mamba_head_width,
+            conv_width=laplace_mamba_conv_width,
+        )
+        return LaplaceMambaLM(config), {
+            "model": "laplace_mamba",
+            "config": asdict(config),
+        }
     alphabet_config = AlphabetLMConfig(
         vocab_size=vocab_size,
         modes=256,
@@ -1551,7 +1571,16 @@ def _save_checkpoint(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", choices=("alphabet", "mamba", "mamba2"), required=True)
+    parser.add_argument(
+        "--model",
+        choices=("alphabet", "mamba", "mamba2", "laplace_mamba"),
+        required=True,
+    )
+    parser.add_argument("--laplace-mamba-layers", type=int, default=19)
+    parser.add_argument("--laplace-mamba-poles", type=int, default=32)
+    parser.add_argument("--laplace-mamba-state-size", type=int, default=4)
+    parser.add_argument("--laplace-mamba-head-width", type=int, default=16)
+    parser.add_argument("--laplace-mamba-conv-width", type=int, default=4)
     parser.add_argument("--run-label")
     parser.add_argument(
         "--pole-initialization",
@@ -1811,6 +1840,11 @@ def main() -> None:
     model, model_contract = _build(
         args.model,
         train.manifest.vocab_size,
+        laplace_mamba_layers=args.laplace_mamba_layers,
+        laplace_mamba_poles=args.laplace_mamba_poles,
+        laplace_mamba_state_size=args.laplace_mamba_state_size,
+        laplace_mamba_head_width=args.laplace_mamba_head_width,
+        laplace_mamba_conv_width=args.laplace_mamba_conv_width,
         pole_initialization=args.pole_initialization,
         memory_banks=args.memory_banks,
         bank_pole_modes=args.bank_pole_modes,
@@ -2131,6 +2165,11 @@ def main() -> None:
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
         active_arguments = {
+            "laplace_mamba_layers": args.laplace_mamba_layers,
+            "laplace_mamba_poles": args.laplace_mamba_poles,
+            "laplace_mamba_state_size": args.laplace_mamba_state_size,
+            "laplace_mamba_head_width": args.laplace_mamba_head_width,
+            "laplace_mamba_conv_width": args.laplace_mamba_conv_width,
             "post_hidden": args.post_hidden,
             "memory_readout": args.memory_readout,
             "query_read_rank": args.query_read_rank,
@@ -2366,6 +2405,11 @@ def main() -> None:
         "campaign_manifest_sha256": runtime["campaign_manifest_sha256"],
         "source_commit": os.environ["H200_EXPECTED_COMMIT"],
         "model": model_contract,
+        "laplace_mamba_layers": args.laplace_mamba_layers,
+        "laplace_mamba_poles": args.laplace_mamba_poles,
+        "laplace_mamba_state_size": args.laplace_mamba_state_size,
+        "laplace_mamba_head_width": args.laplace_mamba_head_width,
+        "laplace_mamba_conv_width": args.laplace_mamba_conv_width,
         "pole_initialization": args.pole_initialization,
         "memory_banks": args.memory_banks,
         "bank_pole_modes": args.bank_pole_modes,
