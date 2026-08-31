@@ -26,6 +26,7 @@ from lnet.alphabet_lm import (
     AlphabetLM,
     AlphabetLMConfig,
     CausalCNNPoleMemory,
+    ComplexHighwayLaplaceMambaLM,
     DynamicLowRankWrite,
     FactorizedTokenRateVectorPoleBlock,
     LaplaceMambaLM,
@@ -1288,7 +1289,7 @@ def _build(
     dynamic_write_rank: int = 4,
     dynamic_write_initial_scale: float = 0.06,
 ) -> tuple[nn.Module, dict[str, Any]]:
-    if model_name == "laplace_mamba":
+    if model_name in {"laplace_mamba", "laplace_mamba_complex_highway"}:
         config = LaplaceMambaLMConfig(
             vocab_size=vocab_size,
             layers=laplace_mamba_layers,
@@ -1297,8 +1298,13 @@ def _build(
             head_width=laplace_mamba_head_width,
             conv_width=laplace_mamba_conv_width,
         )
-        return LaplaceMambaLM(config), {
-            "model": "laplace_mamba",
+        model_type = (
+            ComplexHighwayLaplaceMambaLM
+            if model_name == "laplace_mamba_complex_highway"
+            else LaplaceMambaLM
+        )
+        return model_type(config), {
+            "model": model_name,
             "config": asdict(config),
         }
     alphabet_config = AlphabetLMConfig(
@@ -1573,7 +1579,13 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
-        choices=("alphabet", "mamba", "mamba2", "laplace_mamba"),
+        choices=(
+            "alphabet",
+            "mamba",
+            "mamba2",
+            "laplace_mamba",
+            "laplace_mamba_complex_highway",
+        ),
         required=True,
     )
     parser.add_argument("--laplace-mamba-layers", type=int, default=19)

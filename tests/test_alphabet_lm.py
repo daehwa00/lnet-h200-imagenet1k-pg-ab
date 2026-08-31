@@ -18,7 +18,10 @@ from lnet.alphabet_lm import (
     AlphabetLMConfig,
     CausalCNNPoleMemory,
     ChunkedSemanticPoleMemory,
+    ComplexDepthwiseCausalConv1d,
     ComplexDepthwiseCausalPredictor,
+    ComplexHighwayLaplaceMambaBlock,
+    ComplexHighwayLaplaceMambaLM,
     DynamicLowRankWrite,
     FactorizedTokenRateVectorPoleBlock,
     FixedComplexPoleMemory1D,
@@ -2821,6 +2824,84 @@ def test_laplace_mamba_matches_mamba_depth_and_parameter_scale() -> None:
     block = cast("LaplaceMambaBlock", model.blocks[0])
     assert sum(parameter.numel() for parameter in block.parameters()) == 1_582_144
     assert model.config.inner_real_width == 1_024
+
+
+def test_complex_depthwise_causal_conv_matches_complex_reference() -> None:
+    torch.manual_seed(501)
+    conv = ComplexDepthwiseCausalConv1d(3, 4)
+    real = torch.randn(2, 7, 3)
+    imag = torch.randn(2, 7, 3)
+    actual_real, actual_imag = conv(real, imag)
+    padded_real = torch.nn.functional.pad(real.transpose(1, 2), (3, 0))
+    padded_imag = torch.nn.functional.pad(imag.transpose(1, 2), (3, 0))
+    weight_real = conv.weight_real.unsqueeze(1)
+    weight_imag = conv.weight_imag.unsqueeze(1)
+    expected_real = (
+        torch.nn.functional.conv1d(padded_real, weight_real, groups=3)
+        - torch.nn.functional.conv1d(padded_imag, weight_imag, groups=3)
+        + conv.bias_real.view(1, 3, 1)
+    ).transpose(1, 2)
+    expected_imag = (
+        torch.nn.functional.conv1d(padded_real, weight_imag, groups=3)
+        + torch.nn.functional.conv1d(padded_imag, weight_real, groups=3)
+        + conv.bias_imag.view(1, 3, 1)
+    ).transpose(1, 2)
+    torch.testing.assert_close(actual_real, expected_real)
+    torch.testing.assert_close(actual_imag, expected_imag)
+
+
+def test_complex_highway_laplace_mamba_is_causal_and_has_live_paths() -> None:
+    torch.manual_seed(501)
+    config = _small_laplace_mamba()
+    model = ComplexHighwayLaplaceMambaLM(config)
+    tokens = torch.randint(config.vocab_size, (2, 17))
+    changed = tokens.clone()
+    changed[:, 10:] = torch.randint(config.vocab_size, changed[:, 10:].shape)
+    with torch.no_grad():
+        expected = model(tokens[:, :-1])
+        actual = model(changed[:, :-1])
+    torch.testing.assert_close(actual[:, :10], expected[:, :10], atol=1.0e-6, rtol=0.0)
+    logits = model(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(
+        logits.flatten(0, 1),
+        tokens[:, 1:].flatten(),
+    )
+    loss.backward()
+    block = cast("ComplexHighwayLaplaceMambaBlock", model.blocks[0])
+    for parameter in (
+        model.embedding_real.weight,
+        model.embedding_imag.weight,
+        block.analysis_projection.weight_real,
+        block.analysis_projection.conjugate_real,
+        block.gate_projection.weight,
+        block.conv.weight_real,
+        block.conv.weight_imag,
+        block.memory.raw_damping,
+        block.memory.raw_frequency,
+        block.direct_scale,
+        block.output_norm_weight,
+        block.synthesis.weight_real,
+        block.synthesis.conjugate_real,
+    ):
+        assert parameter.grad is not None
+        assert torch.isfinite(parameter.grad).all()
+
+
+def test_complex_highway_tied_head_and_parameter_budget() -> None:
+    config = _small_laplace_mamba()
+    model = ComplexHighwayLaplaceMambaLM(config).eval()
+    tokens = torch.randint(config.vocab_size, (2, 7))
+    with torch.no_grad():
+        real, imag = model.complex_hidden(tokens)
+        expected = torch.nn.functional.linear(real, model.embedding_real.weight)
+        expected = expected + torch.nn.functional.linear(
+            imag,
+            model.embedding_imag.weight,
+        )
+        torch.testing.assert_close(model(tokens), expected)
+    full = ComplexHighwayLaplaceMambaLM(LaplaceMambaLMConfig())
+    assert len(full.blocks) == 19
+    assert sum(parameter.numel() for parameter in full.parameters()) == 46_833_344
 
 
 def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:

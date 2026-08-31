@@ -1,0 +1,71 @@
+{
+  "architecture": {
+    "K": 512,
+    "K_complex": 256,
+    "layers": 19,
+    "variants": {
+      "complex-highway-laplace-mamba-p32n4r16-l19-fromscratch-100m": {
+        "laplace_mamba_conv_width": 4,
+        "laplace_mamba_head_width": 16,
+        "laplace_mamba_layers": 19,
+        "laplace_mamba_poles": 32,
+        "laplace_mamba_state_size": 4
+      }
+    }
+  },
+  "campaign_id": "kau-complex-highway-laplace-mamba-p32n4r16-l19-100m-s501-v1",
+  "campaign_manifest_sha256": "a0c10c994a8a2e5a8b55df1cd8332ab2bd580a689fe711edb4caf1bdddf26192",
+  "diagnostics": {
+    "final_validation_only": true,
+    "integrated_laplace_mamba_reference_parameters": 46838464,
+    "mamba1_reference_parameters": 48987136,
+    "mamba1_reference_validation_loss": 4.330902905240708
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-ComplexHighwayLaplaceMamba-100M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-complex-highway-laplace-mamba-v1",
+  "parameter_counts": {
+    "complex-highway-laplace-mamba-p32n4r16-l19-fromscratch-100m": 46833344
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "complex-highway-laplace-mamba-p32n4r16-l19-fromscratch-100m": {
+      "display_name": "RTX4090-S501-Complex-Highway-Laplace-Mamba-P32N4R16-L19-100M",
+      "id": "44f519ef654752ca",
+      "tags": [
+        "RTX4090",
+        "LaplaceMamba",
+        "ComplexHighway",
+        "FromScratch",
+        "100M"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "address_norm_bias": false,
+    "checkpoint_initialization": false,
+    "initialization": "seed501_from_scratch"
+  },
+  "total_parameter_counts": {
+    "complex-highway-laplace-mamba-p32n4r16-l19-fromscratch-100m": 46833344
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "complex-highway-laplace-mamba-p32n4r16-l19-fromscratch-100m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 100000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

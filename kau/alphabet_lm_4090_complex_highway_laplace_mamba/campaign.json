@@ -1,0 +1,59 @@
+{
+  "schema": "lnet.kau.alphabet_lm.complex_highway_laplace_mamba.v1",
+  "campaign_id": "kau-complex-highway-laplace-mamba-p32n4r16-l19-100m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-complex-highway-laplace-mamba-v1",
+  "architecture": {
+    "K_complex": 256,
+    "K_real_dof": 512,
+    "layers": 19,
+    "variants": {
+      "complex-highway-laplace-mamba-p32n4r16-l19-fromscratch-100m": {
+        "laplace_mamba_layers": 19,
+        "laplace_mamba_poles": 32,
+        "laplace_mamba_state_size": 4,
+        "laplace_mamba_head_width": 16,
+        "laplace_mamba_conv_width": 4
+      }
+    }
+  },
+  "source": {
+    "initialization": "seed501_from_scratch",
+    "checkpoint_initialization": false,
+    "address_norm_bias": false
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 100000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "complex-highway-laplace-mamba-p32n4r16-l19-fromscratch-100m"
+    ]
+  },
+  "parameter_counts": {
+    "complex-highway-laplace-mamba-p32n4r16-l19-fromscratch-100m": 46833344
+  },
+  "total_parameter_counts": {
+    "complex-highway-laplace-mamba-p32n4r16-l19-fromscratch-100m": 46833344
+  },
+  "diagnostics": {
+    "final_validation_only": true,
+    "integrated_laplace_mamba_reference_parameters": 46838464,
+    "mamba1_reference_validation_loss": 4.330902905240708,
+    "mamba1_reference_parameters": 48987136
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-ComplexHighwayLaplaceMamba-100M-S501-v1"
+  }
+}

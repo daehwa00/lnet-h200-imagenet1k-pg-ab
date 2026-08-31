@@ -19,6 +19,7 @@ from lnet.alphabet_lm import (
     AlphabetLMConfig,
     CausalCNNPoleMemory,
     ChunkedSemanticPoleMemory,
+    ComplexHighwayLaplaceMambaLM,
     DynamicLowRankWrite,
     FactorizedTokenRateVectorPoleBlock,
     FixedComplexPoleMemory1D,
@@ -39,8 +40,13 @@ from lnet.pac_complex_layers import PackedComplexLinear
 
 
 def _build(kind: str) -> nn.Module:
-    if kind == "laplace_mamba":
-        return LaplaceMambaLM(LaplaceMambaLMConfig())
+    if kind in {"laplace_mamba", "laplace_mamba_complex_highway"}:
+        model_type = (
+            ComplexHighwayLaplaceMambaLM
+            if kind == "laplace_mamba_complex_highway"
+            else LaplaceMambaLM
+        )
+        return model_type(LaplaceMambaLMConfig())
     if kind == "mamba":
         return MambaLM(MambaLMConfig())
     if kind == "mamba2":
@@ -2387,6 +2393,7 @@ def main() -> None:
             "mamba1_49m",
             "mamba2_48m",
             "laplace_mamba",
+            "laplace_mamba_complex_highway",
         ),
         required=True,
     )
@@ -2487,6 +2494,7 @@ def main() -> None:
         "mamba1_49m",
         "mamba2_48m",
         "laplace_mamba",
+        "laplace_mamba_complex_highway",
     }:
         handles = _zero_memory(model)
         results["memory_zero"] = _evaluate(
