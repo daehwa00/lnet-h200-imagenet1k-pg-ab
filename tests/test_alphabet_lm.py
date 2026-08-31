@@ -67,6 +67,7 @@ from scripts.train_h200_alphabet_lm_10m import (
     _copy_matching_legacy_initialization,
     _initialize_chunk_memory_from_trunk,
     _initialize_cnn_pole_from_trunk,
+    _initialize_laplace_continuation,
     _initialize_repeated_factorized_expansion,
     _initialize_repeated_mamba_outer,
     _initialize_repeated_retained_factor_state,
@@ -3380,6 +3381,40 @@ def test_dynamic_delta_starts_as_exact_dense_function_and_has_live_gradient() ->
 
     full = DynamicDeltaImagePostFusionAlphabet2LM(LaplaceMambaLMConfig(conv_width=3))
     assert sum(parameter.numel() for parameter in full.parameters()) == 64_441_043
+
+
+def test_laplace_continuation_loads_dense_state_and_freezes_only_poles(
+    tmp_path: Path,
+) -> None:
+    config = _small_laplace_mamba()
+    source = VectorImagePostFusionAlphabet2LM(config)
+    checkpoint = tmp_path / "dense.pt"
+    torch.save(
+        {
+            "model": source.state_dict(),
+            "tokens_seen": 100,
+            "update": 7,
+        },
+        checkpoint,
+    )
+    target = DynamicDeltaImagePostFusionAlphabet2LM(config)
+    metadata, payload = _initialize_laplace_continuation(
+        target,
+        checkpoint,
+        freeze_poles=True,
+    )
+    assert payload is not None
+    assert metadata["source_tokens_seen"] == 100
+    assert int(metadata["missing_delta_tensors"]) > 0
+    source_state = source.state_dict()
+    target_state = target.state_dict()
+    for name, value in source_state.items():
+        torch.testing.assert_close(target_state[name], value)
+    for name, parameter in target.named_parameters():
+        if name.endswith(("memory.raw_damping", "memory.raw_frequency")):
+            assert not parameter.requires_grad
+        else:
+            assert parameter.requires_grad
 
 
 def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:

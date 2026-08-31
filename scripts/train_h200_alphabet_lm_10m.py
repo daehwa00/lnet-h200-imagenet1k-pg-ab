@@ -181,6 +181,53 @@ def _copy_matching_legacy_initialization(
     return copied_tensors, copied_parameters
 
 
+def _initialize_laplace_continuation(
+    model: nn.Module,
+    checkpoint_path: Path | None,
+    *,
+    freeze_poles: bool,
+) -> tuple[dict[str, object], dict[str, Any] | None]:
+    if checkpoint_path is None:
+        if freeze_poles:
+            raise RuntimeError("freezing Laplace poles requires a continuation checkpoint")
+        return {"enabled": False, "frozen_poles": False}, None
+    if not isinstance(
+        model,
+        (VectorImagePostFusionAlphabet2LM, DynamicDeltaImagePostFusionAlphabet2LM),
+    ):
+        raise TypeError("Laplace continuation requires Dense or DynamicDelta VectorPole")
+    payload = cast(
+        "dict[str, Any]",
+        torch.load(checkpoint_path, map_location="cpu", weights_only=True),
+    )
+    source = cast("dict[str, Tensor]", payload["model"])
+    expected_missing = {
+        name for name in model.state_dict() if ".delta." in name
+    }
+    incompatible = model.load_state_dict(source, strict=False)
+    if set(incompatible.missing_keys) != expected_missing or incompatible.unexpected_keys:
+        raise RuntimeError("Dense checkpoint does not match Laplace continuation model")
+    frozen_parameters = 0
+    if freeze_poles:
+        for name, parameter in model.named_parameters():
+            if name.endswith(("memory.raw_damping", "memory.raw_frequency")):
+                parameter.requires_grad = False
+                frozen_parameters += parameter.numel()
+    return (
+        {
+            "enabled": True,
+            "frozen_poles": freeze_poles,
+            "frozen_pole_parameters": frozen_parameters,
+            "missing_delta_tensors": len(expected_missing),
+            "checkpoint": str(checkpoint_path),
+            "checkpoint_sha256": sha256_file(checkpoint_path),
+            "source_tokens_seen": int(payload["tokens_seen"]),
+            "source_update": int(payload["update"]),
+        },
+        payload,
+    )
+
+
 def _initialize_sidecar_from_trunk(
     model: nn.Module,
     checkpoint_path: Path | None,
@@ -1822,6 +1869,8 @@ def main() -> None:
     parser.add_argument("--initialize-repeated-factorized-checkpoint", type=Path)
     parser.add_argument("--initialize-repeated-retained-checkpoint", type=Path)
     parser.add_argument("--initialize-repeated-outer-checkpoint", type=Path)
+    parser.add_argument("--initialize-laplace-continuation-checkpoint", type=Path)
+    parser.add_argument("--freeze-laplace-poles", action="store_true")
     parser.add_argument("--freeze-repeated-retained-interface", action="store_true")
     parser.add_argument("--write-map", choices=("static", "dynamic_low_rank"), default="static")
     parser.add_argument("--dynamic-write-rank", type=int, default=4)
@@ -2228,6 +2277,11 @@ def main() -> None:
         runtime,
         enabled=args.initialize_repeated_outer_checkpoint is not None,
     )
+    laplace_continuation, laplace_continuation_payload = _initialize_laplace_continuation(
+        model,
+        args.initialize_laplace_continuation_checkpoint,
+        freeze_poles=args.freeze_laplace_poles,
+    )
     variant_contract = runtime.get("architecture", {}).get("variants", {}).get(run_label)
     if variant_contract is not None:
         active_arguments = {
@@ -2240,6 +2294,7 @@ def main() -> None:
             "laplace_mamba_delta_hidden": args.laplace_mamba_delta_hidden,
             "laplace_mamba_delta_log_bound": args.laplace_mamba_delta_log_bound,
             "laplace_mamba_conv_width": args.laplace_mamba_conv_width,
+            "freeze_laplace_poles": args.freeze_laplace_poles,
             "post_hidden": args.post_hidden,
             "memory_readout": args.memory_readout,
             "query_read_rank": args.query_read_rank,
@@ -2455,6 +2510,11 @@ def main() -> None:
         seed=seed,
         batch_size=int(training["global_sequences"]),
     )
+    if laplace_continuation_payload is not None:
+        batcher.load_state_dict(laplace_continuation_payload["batcher"])
+        torch.set_rng_state(laplace_continuation_payload["torch_rng_state"])
+        torch.cuda.set_rng_state_all(laplace_continuation_payload["cuda_rng_state"])
+        random.setstate(laplace_continuation_payload["python_rng_state"])
     target_tokens = (
         args.target_tokens_override
         if args.target_tokens_override is not None
@@ -2632,9 +2692,11 @@ def main() -> None:
         "repeated_factorized_initialization": repeated_factorized_initialization,
         "retained_factor_initialization": retained_factor_initialization,
         "mamba_outer_initialization": mamba_outer_initialization,
+        "laplace_continuation": laplace_continuation,
         "freeze_repeated_retained_interface": (
             args.freeze_repeated_retained_interface
         ),
+        "freeze_laplace_poles": args.freeze_laplace_poles,
         "write_map": args.write_map,
         "dynamic_write_rank": args.dynamic_write_rank,
         "dynamic_write_initial_scale": args.dynamic_write_initial_scale,
