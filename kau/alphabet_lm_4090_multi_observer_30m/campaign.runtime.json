@@ -1,0 +1,71 @@
+{
+  "architecture": {
+    "K_complex": 256,
+    "K_real_dof": 512,
+    "layers": 19,
+    "observers": 8,
+    "pole_modes": 32,
+    "vector_width": 16
+  },
+  "campaign_id": "kau-dense-write-multi-observer-j8-p32r16-l19-30m-s501-v1",
+  "campaign_manifest_sha256": "607db544f49b30487325983ffd57755bcc7c224d221edefd9f561e36ccd7589c",
+  "diagnostics": {
+    "dense_diagonal_reference_parameters": 64105427,
+    "dense_diagonal_reference_validation_loss_100m": 4.839462909301234,
+    "final_validation_only": true
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-MultiObserver-30M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-multi-observer-30m-v1",
+  "parameter_counts": {
+    "dense-write-multi-observer-j8-p32r16-l19-fromscratch-30m": 64105427
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "dense-write-multi-observer-j8-p32r16-l19-fromscratch-30m": {
+      "display_name": "RTX4090-S501-Dense-Write-Multi-Observer-J8-P32R16-L19-30M",
+      "id": "a11a708ac4612bf8",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "DenseWrite",
+        "MultiObserverJ8",
+        "FromScratch",
+        "30M"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "checkpoint_initialization": false,
+    "initialization": "seed501_from_scratch",
+    "memory_merge": "detached_rms_match_scalar_beta",
+    "post_fusion": "image_gated_widely_linear",
+    "query": "dense_strict_complex_causal_k3",
+    "read": "pole_specific_full_complex_bilinear_j8",
+    "state": "fixed_vector_laplace_PxR",
+    "synthesis": "strict_complex_PJ_to_K",
+    "write": "dense_strict_complex_causal_k3"
+  },
+  "total_parameter_counts": {
+    "dense-write-multi-observer-j8-p32r16-l19-fromscratch-30m": 64105427
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "dense-write-multi-observer-j8-p32r16-l19-fromscratch-30m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 30000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

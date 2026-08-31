@@ -1,0 +1,55 @@
+{
+  "schema": "lnet.kau.alphabet_lm.multi_observer_30m.v1",
+  "campaign_id": "kau-dense-write-multi-observer-j8-p32r16-l19-30m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-multi-observer-30m-v1",
+  "architecture": {
+    "K_complex": 256,
+    "K_real_dof": 512,
+    "layers": 19,
+    "pole_modes": 32,
+    "vector_width": 16,
+    "observers": 8
+  },
+  "source": {
+    "initialization": "seed501_from_scratch",
+    "checkpoint_initialization": false,
+    "write": "dense_strict_complex_causal_k3",
+    "query": "dense_strict_complex_causal_k3",
+    "state": "fixed_vector_laplace_PxR",
+    "read": "pole_specific_full_complex_bilinear_j8",
+    "synthesis": "strict_complex_PJ_to_K",
+    "memory_merge": "detached_rms_match_scalar_beta",
+    "post_fusion": "image_gated_widely_linear"
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 30000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "dense-write-multi-observer-j8-p32r16-l19-fromscratch-30m"
+    ]
+  },
+  "parameter_counts": {
+    "dense-write-multi-observer-j8-p32r16-l19-fromscratch-30m": 64105427
+  },
+  "diagnostics": {
+    "final_validation_only": true,
+    "dense_diagonal_reference_parameters": 64105427,
+    "dense_diagonal_reference_validation_loss_100m": 4.839462909301234
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-MultiObserver-30M-S501-v1"
+  }
+}

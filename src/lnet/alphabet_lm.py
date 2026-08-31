@@ -510,6 +510,7 @@ class LaplaceMambaLMConfig:
     state_size: int = 4
     head_width: int = 16
     aligned_content_rank: int = 1
+    observer_count: int = 8
     conv_width: int = 4
     context_length: int = 2_048
     scan_fp32: bool = True
@@ -527,6 +528,7 @@ class LaplaceMambaLMConfig:
             self.state_size,
             self.head_width,
             self.aligned_content_rank,
+            self.observer_count,
             self.conv_width,
             self.context_length,
         )
@@ -3118,6 +3120,128 @@ class ContentAlignedImagePostFusionAlphabet2Block(nn.Module):
         return self.post_fusion(*merged)
 
 
+class ComplexMultiObserverRead(nn.Module):
+    """Read each VectorPole through several learned complex bilinear forms."""
+
+    def __init__(self, poles: int, observers: int, vector_width: int) -> None:
+        super().__init__()
+        if min(poles, observers, vector_width) <= 0:
+            raise ValueError("invalid complex multi-observer dimensions")
+        self.poles = int(poles)
+        self.observers = int(observers)
+        self.vector_width = int(vector_width)
+        shape = (self.poles, self.observers, self.vector_width, self.vector_width)
+        self.weight_real = nn.Parameter(torch.empty(shape))
+        self.weight_imag = nn.Parameter(torch.empty(shape))
+        standard_deviation = 1.0 / math.sqrt(2.0 * self.vector_width)
+        nn.init.normal_(self.weight_real, std=standard_deviation)
+        nn.init.normal_(self.weight_imag, std=standard_deviation)
+
+    def forward(self, query: ComplexField, state: ComplexField) -> ComplexField:
+        if (
+            query[0].shape != query[1].shape
+            or state[0].shape != state[1].shape
+            or query[0].shape != state[0].shape
+            or query[0].shape[-2:] != (self.poles, self.vector_width)
+        ):
+            raise ValueError("complex multi-observer inputs are incompatible")
+        transformed_real = torch.einsum(
+            "pjrs,btps->btpjr",
+            self.weight_real,
+            state[0],
+        ) - torch.einsum("pjrs,btps->btpjr", self.weight_imag, state[1])
+        transformed_imag = torch.einsum(
+            "pjrs,btps->btpjr",
+            self.weight_real,
+            state[1],
+        ) + torch.einsum("pjrs,btps->btpjr", self.weight_imag, state[0])
+        return (
+            (
+                query[0].unsqueeze(-2) * transformed_real
+                + query[1].unsqueeze(-2) * transformed_imag
+            ).sum(dim=-1),
+            (
+                query[0].unsqueeze(-2) * transformed_imag
+                - query[1].unsqueeze(-2) * transformed_real
+            ).sum(dim=-1),
+        )
+
+
+class MultiObserverImagePostFusionAlphabet2Block(nn.Module):
+    """Keep dense writes and observe VectorPoles with full bilinear forms."""
+
+    memory_scale_initial = 0.01
+
+    def __init__(self, config: LaplaceMambaLMConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.complex_width = config.model_width // 2
+        self.value_width = config.inner_complex_width
+        self.reader = DenseComplexConv1dReader(
+            self.complex_width,
+            2 * self.value_width,
+            kernel_size=config.conv_width,
+        )
+        self.memory = FixedComplexPoleMemory1D(
+            config.pole_modes,
+            context_length=config.context_length,
+            scan_fp32=config.scan_fp32,
+            initialization="lifetime_palette",
+            minimum_half_life=config.minimum_half_life,
+            maximum_half_life=config.maximum_half_life,
+        )
+        self.observer = ComplexMultiObserverRead(
+            config.pole_modes,
+            config.observer_count,
+            config.head_width,
+        )
+        self.synthesis = PackedComplexLinear(
+            config.pole_modes * config.observer_count,
+            self.complex_width,
+        )
+        self.memory_scale = nn.Parameter(torch.tensor(self.memory_scale_initial))
+        self.post_fusion = GatedComplexPostFusion(
+            self.complex_width,
+            self.complex_width,
+        )
+        _scale_image_postfusion_output_(self.post_fusion, config.layers)
+
+    def _analyze(
+        self,
+        real: Tensor,
+        imag: Tensor,
+    ) -> tuple[ComplexField, ComplexField]:
+        active_real, active_imag = self.reader(real, imag)
+        excitation_real, query_real = active_real.split(self.value_width, dim=-1)
+        excitation_imag, query_imag = active_imag.split(self.value_width, dim=-1)
+        shape = (
+            active_real.shape[0],
+            active_real.shape[1],
+            self.config.pole_modes,
+            self.config.head_width,
+        )
+        return (
+            (excitation_real.reshape(shape), excitation_imag.reshape(shape)),
+            (query_real.reshape(shape), query_imag.reshape(shape)),
+        )
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        excitation, query = self._analyze(real, imag)
+        state = self.memory(*excitation)
+        observed = self.observer(query, state)
+        memory = self.synthesis(
+            observed[0].flatten(-2),
+            observed[1].flatten(-2),
+        )
+        merged = _rms_matched_complex_residual(
+            (real, imag),
+            memory,
+            self.memory_scale,
+            self.config.rms_epsilon,
+        )
+        return self.post_fusion(*merged)
+
+
 class VectorImagePostFusionAlphabet2LM(nn.Module):
     """Complex LM with image-ALPHABET fusion around selective VectorPoles."""
 
@@ -3176,6 +3300,12 @@ class ContentAlignedImagePostFusionAlphabet2LM(VectorImagePostFusionAlphabet2LM)
     """Vector ALPHABET with a shared content basis across fixed temporal modes."""
 
     block_type = ContentAlignedImagePostFusionAlphabet2Block
+
+
+class MultiObserverImagePostFusionAlphabet2LM(VectorImagePostFusionAlphabet2LM):
+    """Dense-write Vector ALPHABET with a direct multi-observer read."""
+
+    block_type = MultiObserverImagePostFusionAlphabet2Block
 
 
 class LaplaceMambaLM(nn.Module):
@@ -4426,6 +4556,7 @@ __all__ = [
     "ComplexDepthwiseCausalConv1d",
     "ComplexHighwayLaplaceMambaBlock",
     "ComplexHighwayLaplaceMambaLM",
+    "ComplexMultiObserverRead",
     "ContentAlignedImagePostFusionAlphabet2Block",
     "ContentAlignedImagePostFusionAlphabet2LM",
     "DenseComplexConv1dReader",
@@ -4444,6 +4575,8 @@ __all__ = [
     "LowRankDecaySelector",
     "LowRankPoleAlignedComplexCausalConv1d",
     "LowRankPoleRouter",
+    "MultiObserverImagePostFusionAlphabet2Block",
+    "MultiObserverImagePostFusionAlphabet2LM",
     "PoleAlignedComplexCausalConv1d",
     "QueryConditionedLowRankReadout",
     "SemanticEdgePoleMemory",

@@ -22,6 +22,7 @@ from lnet.alphabet_lm import (
     ComplexDepthwiseCausalPredictor,
     ComplexHighwayLaplaceMambaBlock,
     ComplexHighwayLaplaceMambaLM,
+    ComplexMultiObserverRead,
     ContentAlignedImagePostFusionAlphabet2Block,
     ContentAlignedImagePostFusionAlphabet2LM,
     DynamicLowRankWrite,
@@ -36,6 +37,8 @@ from lnet.alphabet_lm import (
     LaplaceMambaLMConfig,
     LowRankDecaySelector,
     LowRankPoleAlignedComplexCausalConv1d,
+    MultiObserverImagePostFusionAlphabet2Block,
+    MultiObserverImagePostFusionAlphabet2LM,
     PoleAlignedComplexCausalConv1d,
     PoleSpecificCausalVectorReader,
     QueryConditionedLowRankReadout,
@@ -3147,6 +3150,65 @@ def test_low_rank_aligned_writer_preserves_shared_semantic_families() -> None:
             LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=rank)
         )
         assert sum(parameter.numel() for parameter in model.parameters()) == parameters
+
+
+def test_complex_multi_observer_matches_direct_bilinear_form() -> None:
+    torch.manual_seed(501)
+    observer = ComplexMultiObserverRead(3, 2, 4)
+    query = torch.randn(2, 7, 3, 4), torch.randn(2, 7, 3, 4)
+    state = torch.randn(2, 7, 3, 4), torch.randn(2, 7, 3, 4)
+    actual = observer(query, state)
+    complex_query = torch.complex(*query)
+    complex_state = torch.complex(*state)
+    complex_weight = torch.complex(observer.weight_real, observer.weight_imag)
+    expected = torch.einsum(
+        "btpr,pjrs,btps->btpj",
+        complex_query.conj(),
+        complex_weight,
+        complex_state,
+    )
+    torch.testing.assert_close(actual[0], expected.real)
+    torch.testing.assert_close(actual[1], expected.imag)
+
+
+def test_multi_observer_image_postfusion_is_causal_and_parameter_matched() -> None:
+    torch.manual_seed(501)
+    config = _small_laplace_mamba()
+    model = MultiObserverImagePostFusionAlphabet2LM(config)
+    tokens = torch.randint(config.vocab_size, (2, 17))
+    changed = tokens.clone()
+    changed[:, 10:] = torch.randint(config.vocab_size, changed[:, 10:].shape)
+    with torch.no_grad():
+        expected = model(tokens[:, :-1])
+        actual = model(changed[:, :-1])
+    torch.testing.assert_close(actual[:, :10], expected[:, :10], atol=1.0e-6, rtol=0.0)
+
+    logits = model(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(
+        logits.flatten(0, 1),
+        tokens[:, 1:].flatten(),
+    )
+    loss.backward()
+    block = cast("MultiObserverImagePostFusionAlphabet2Block", model.blocks[0])
+    for parameter in (
+        block.reader.weight_real,
+        block.reader.weight_imag,
+        block.memory.raw_damping,
+        block.memory.raw_frequency,
+        block.observer.weight_real,
+        block.observer.weight_imag,
+        block.synthesis.weight_real,
+        block.synthesis.weight_imag,
+        block.memory_scale,
+        block.post_fusion.out.weight_real,
+    ):
+        assert parameter.grad is not None
+        assert torch.isfinite(parameter.grad).all()
+
+    full = MultiObserverImagePostFusionAlphabet2LM(
+        LaplaceMambaLMConfig(conv_width=3, observer_count=8)
+    )
+    assert sum(parameter.numel() for parameter in full.parameters()) == 64_105_427
 
 
 def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:
