@@ -19,12 +19,12 @@ def _render() -> str:
     raw = MANIFEST.read_bytes()
     manifest = json.loads(raw)
     labels = [
-        "dense-frozen-pole-static-continuation-4m",
-        "dense-frozen-pole-dynamic-delta-continuation-4m",
+        "dense-frozen-pole-static-continuation-30m",
+        "dense-frozen-pole-dynamic-delta-continuation-30m",
     ]
     if (
         manifest["training"]["execution"] != labels
-        or manifest["training"]["target_tokens"] != 4_000_000
+        or manifest["training"]["target_tokens"] != 30_000_000
         or manifest["parameter_counts"]
         != {labels[0]: 64_104_211, labels[1]: 64_439_827}
         or manifest["total_parameter_counts"]
@@ -40,7 +40,7 @@ def _render() -> str:
             "id": hashlib.sha256(f"{campaign_id}\0{label}".encode()).hexdigest()[:16],
             "display_name": (
                 "RTX4090-S501-Dense100M-FrozenPole-"
-                f"{'DynamicDelta' if dynamic else 'Static'}-Continuation-4M"
+                f"{'DynamicDelta' if dynamic else 'Static'}-Continuation-30M"
             ),
             "tags": [
                 "RTX4090",
@@ -48,7 +48,7 @@ def _render() -> str:
                 "Dense100MContinuation",
                 "FrozenPoles",
                 "DynamicDelta" if dynamic else "StaticControl",
-                "4M",
+                "30M",
             ],
         }
     runtime = {

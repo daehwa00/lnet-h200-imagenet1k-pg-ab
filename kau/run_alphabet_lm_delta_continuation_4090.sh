@@ -39,7 +39,7 @@ export MKL_NUM_THREADS=8
 export WANDB_BASE_URL="https://api.wandb.ai"
 export WANDB_ENTITY="daehwa"
 export WANDB_PROJECT="alphabet-lm-viability"
-export WANDB_GROUP="ALPHABET-LM-RTX4090-DeltaContinuation-4M-S501-v1"
+export WANDB_GROUP="ALPHABET-LM-RTX4090-DeltaContinuation-30M-S501-v1"
 export WANDB_CONSOLE=off
 
 run_one() {
@@ -58,21 +58,21 @@ run_one() {
     --laplace-mamba-conv-width 3 \
     --initialize-laplace-continuation-checkpoint "${SOURCE_CHECKPOINT}" \
     --freeze-laplace-poles \
-    --target-tokens-override 4000000 \
+    --target-tokens-override 30000000 \
     --runtime "${RUNTIME}" \
     --train-manifest "${TRAIN_MANIFEST}" \
     --validation-manifest "${VALIDATION_MANIFEST}" \
     --root "${OUTPUT_ROOT}/${label}"
 }
 
-run_one alphabet2_vector_image_postfusion dense-frozen-pole-static-continuation-4m
-run_one alphabet2_dynamic_delta_image_postfusion dense-frozen-pole-dynamic-delta-continuation-4m
+run_one alphabet2_vector_image_postfusion dense-frozen-pole-static-continuation-30m
+run_one alphabet2_dynamic_delta_image_postfusion dense-frozen-pole-dynamic-delta-continuation-30m
 
 for variant in static dynamic; do
-  label="dense-frozen-pole-static-continuation-4m"
+  label="dense-frozen-pole-static-continuation-30m"
   kind="alphabet2_vector_image_postfusion"
   if [[ "${variant}" == "dynamic" ]]; then
-    label="dense-frozen-pole-dynamic-delta-continuation-4m"
+    label="dense-frozen-pole-dynamic-delta-continuation-30m"
     kind="alphabet2_dynamic_delta_image_postfusion"
   fi
   timeout --signal=TERM --kill-after=3m 30m \

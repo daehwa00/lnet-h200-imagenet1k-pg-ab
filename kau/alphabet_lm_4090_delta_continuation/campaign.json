@@ -1,16 +1,16 @@
 {
-  "schema": "lnet.kau.alphabet_lm.delta_continuation.v1",
-  "campaign_id": "kau-dense100m-frozen-pole-delta-continuation-4m-s501-v1",
-  "output_namespace": "alphabet-lm-4090-delta-continuation-v1",
+  "schema": "lnet.kau.alphabet_lm.delta_continuation_30m.v1",
+  "campaign_id": "kau-dense100m-frozen-pole-delta-continuation-30m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-delta-continuation-30m-v1",
   "architecture": {
     "source_model": "dense-vector-p32r16-l19-100m",
     "source_checkpoint_sha256": "3b56bd8e61c53b652982d1e2413af7eba3ad2fa54d7317591244a396504cecc7",
     "variants": {
-      "dense-frozen-pole-static-continuation-4m": {
+      "dense-frozen-pole-static-continuation-30m": {
         "model": "alphabet2_vector_image_postfusion",
         "freeze_laplace_poles": true
       },
-      "dense-frozen-pole-dynamic-delta-continuation-4m": {
+      "dense-frozen-pole-dynamic-delta-continuation-30m": {
         "model": "alphabet2_dynamic_delta_image_postfusion",
         "freeze_laplace_poles": true,
         "laplace_mamba_delta_hidden": 32,
@@ -20,7 +20,7 @@
   },
   "training": {
     "seed": 501,
-    "target_tokens": 4000000,
+    "target_tokens": 30000000,
     "horizon_tokens": 400000000,
     "global_sequences": 32,
     "microbatch": 8,
@@ -33,17 +33,17 @@
     "warmup_updates": 0,
     "checkpoint_updates": 25,
     "execution": [
-      "dense-frozen-pole-static-continuation-4m",
-      "dense-frozen-pole-dynamic-delta-continuation-4m"
+      "dense-frozen-pole-static-continuation-30m",
+      "dense-frozen-pole-dynamic-delta-continuation-30m"
     ]
   },
   "parameter_counts": {
-    "dense-frozen-pole-static-continuation-4m": 64104211,
-    "dense-frozen-pole-dynamic-delta-continuation-4m": 64439827
+    "dense-frozen-pole-static-continuation-30m": 64104211,
+    "dense-frozen-pole-dynamic-delta-continuation-30m": 64439827
   },
   "total_parameter_counts": {
-    "dense-frozen-pole-static-continuation-4m": 64105427,
-    "dense-frozen-pole-dynamic-delta-continuation-4m": 64441043
+    "dense-frozen-pole-static-continuation-30m": 64105427,
+    "dense-frozen-pole-dynamic-delta-continuation-30m": 64441043
   },
   "diagnostics": {
     "final_validation_only": true,
@@ -54,6 +54,6 @@
   "wandb": {
     "entity": "daehwa",
     "project": "alphabet-lm-viability",
-    "group": "ALPHABET-LM-RTX4090-DeltaContinuation-4M-S501-v1"
+    "group": "ALPHABET-LM-RTX4090-DeltaContinuation-30M-S501-v1"
   }
 }
