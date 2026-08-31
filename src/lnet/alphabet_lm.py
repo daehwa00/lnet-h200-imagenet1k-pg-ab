@@ -509,6 +509,7 @@ class LaplaceMambaLMConfig:
     pole_modes: int = 32
     state_size: int = 4
     head_width: int = 16
+    aligned_content_rank: int = 1
     conv_width: int = 4
     context_length: int = 2_048
     scan_fp32: bool = True
@@ -525,6 +526,7 @@ class LaplaceMambaLMConfig:
             self.pole_modes,
             self.state_size,
             self.head_width,
+            self.aligned_content_rank,
             self.conv_width,
             self.context_length,
         )
@@ -814,6 +816,71 @@ class PoleAlignedComplexCausalConv1d(nn.Module):
             (real.transpose(1, 2), imag.transpose(1, 2)),
             dim=2,
         ).reshape(batch, 2 * self.content_modes, steps)
+        padded = functional.pad(packed, (self.kernel_size - 1, 0))
+        output = functional.conv1d(
+            padded,
+            self.packed_weight(),
+            groups=self.content_modes,
+        ).reshape(batch, self.content_modes, 2 * self.poles, steps)
+        output_real, output_imag = output.split(self.poles, dim=2)
+        return (
+            output_real.permute(0, 3, 2, 1),
+            output_imag.permute(0, 3, 2, 1),
+        )
+
+
+class LowRankPoleAlignedComplexCausalConv1d(nn.Module):
+    """Mix a small shared semantic family independently at every fixed pole."""
+
+    def __init__(
+        self,
+        poles: int,
+        content_modes: int,
+        basis_rank: int,
+        *,
+        kernel_size: int = 3,
+    ) -> None:
+        super().__init__()
+        if min(poles, content_modes, basis_rank, kernel_size) <= 0:
+            raise ValueError("invalid low-rank pole-aligned causal convolution")
+        self.poles = int(poles)
+        self.content_modes = int(content_modes)
+        self.basis_rank = int(basis_rank)
+        self.kernel_size = int(kernel_size)
+        shape = (self.poles, self.content_modes, self.basis_rank, self.kernel_size)
+        self.weight_real = nn.Parameter(torch.zeros(shape))
+        self.weight_imag = nn.Parameter(torch.zeros(shape))
+        with torch.no_grad():
+            current_real = torch.randn(self.poles, self.content_modes, self.basis_rank)
+            current_imag = torch.randn_like(current_real)
+            norm = current_real.square().add(current_imag.square()).sum(-1, keepdim=True).sqrt()
+            self.weight_real[..., -1].copy_(current_real / norm)
+            self.weight_imag[..., -1].copy_(current_imag / norm)
+
+    def packed_weight(self) -> Tensor:
+        real = self.weight_real.permute(1, 0, 2, 3)
+        imag = self.weight_imag.permute(1, 0, 2, 3)
+        real_rows = torch.cat((real, -imag), dim=2)
+        imag_rows = torch.cat((imag, real), dim=2)
+        return torch.cat((real_rows, imag_rows), dim=1).reshape(
+            2 * self.content_modes * self.poles,
+            2 * self.basis_rank,
+            self.kernel_size,
+        )
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        expected = self.basis_rank * self.content_modes
+        if real.shape != imag.shape or real.ndim != 3 or real.shape[-1] != expected:
+            raise ValueError("low-rank pole-aligned inputs are incompatible")
+        batch, steps, _modes = real.shape
+        shape = (batch, steps, self.basis_rank, self.content_modes)
+        grouped_real = real.reshape(shape).permute(0, 3, 2, 1)
+        grouped_imag = imag.reshape(shape).permute(0, 3, 2, 1)
+        packed = torch.cat((grouped_real, grouped_imag), dim=2).reshape(
+            batch,
+            2 * self.basis_rank * self.content_modes,
+            steps,
+        )
         padded = functional.pad(packed, (self.kernel_size - 1, 0))
         output = functional.conv1d(
             padded,
@@ -2963,6 +3030,7 @@ class ContentAlignedImagePostFusionAlphabet2Block(nn.Module):
         self.config = config
         self.complex_width = config.model_width // 2
         self.content_width = config.head_width
+        self.content_rank = config.aligned_content_rank
         self.value_width = config.inner_complex_width
         self.input_norm = ComplexRMSNorm(
             self.complex_width,
@@ -2970,12 +3038,21 @@ class ContentAlignedImagePostFusionAlphabet2Block(nn.Module):
         )
         self.content_analysis = PackedComplexLinear(
             self.complex_width,
-            self.content_width,
+            self.content_rank * self.content_width,
         )
-        self.excitation_reader = PoleAlignedComplexCausalConv1d(
-            config.pole_modes,
-            self.content_width,
-            kernel_size=config.conv_width,
+        self.excitation_reader = (
+            PoleAlignedComplexCausalConv1d(
+                config.pole_modes,
+                self.content_width,
+                kernel_size=config.conv_width,
+            )
+            if self.content_rank == 1
+            else LowRankPoleAlignedComplexCausalConv1d(
+                config.pole_modes,
+                self.content_width,
+                self.content_rank,
+                kernel_size=config.conv_width,
+            )
         )
         self.query_reader = StrictComplexCausalConv1d(
             self.complex_width,
@@ -4365,6 +4442,7 @@ __all__ = [
     "LaplaceMambaLM",
     "LaplaceMambaLMConfig",
     "LowRankDecaySelector",
+    "LowRankPoleAlignedComplexCausalConv1d",
     "LowRankPoleRouter",
     "PoleAlignedComplexCausalConv1d",
     "QueryConditionedLowRankReadout",

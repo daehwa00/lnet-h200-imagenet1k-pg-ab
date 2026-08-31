@@ -35,6 +35,7 @@ from lnet.alphabet_lm import (
     LaplaceMambaLM,
     LaplaceMambaLMConfig,
     LowRankDecaySelector,
+    LowRankPoleAlignedComplexCausalConv1d,
     PoleAlignedComplexCausalConv1d,
     PoleSpecificCausalVectorReader,
     QueryConditionedLowRankReadout,
@@ -3115,6 +3116,37 @@ def test_content_aligned_image_postfusion_contract_and_parameter_budget() -> Non
     )
     assert len(full.blocks) == 19
     assert sum(parameter.numel() for parameter in full.parameters()) == 49_377_235
+
+
+def test_low_rank_aligned_writer_preserves_shared_semantic_families() -> None:
+    torch.manual_seed(501)
+    reader = LowRankPoleAlignedComplexCausalConv1d(
+        4,
+        3,
+        2,
+        kernel_size=3,
+    )
+    real = torch.randn(2, 7, 6)
+    imag = torch.randn_like(real)
+    output_real, output_imag = reader(real, imag)
+    grouped_real = real.reshape(2, 7, 2, 3)
+    grouped_imag = imag.reshape(2, 7, 2, 3)
+    current_real = reader.weight_real[..., -1]
+    current_imag = reader.weight_imag[..., -1]
+    expected_real = torch.einsum(
+        "btjr,prj->btpr", grouped_real, current_real
+    ) - torch.einsum("btjr,prj->btpr", grouped_imag, current_imag)
+    expected_imag = torch.einsum(
+        "btjr,prj->btpr", grouped_real, current_imag
+    ) + torch.einsum("btjr,prj->btpr", grouped_imag, current_real)
+    torch.testing.assert_close(output_real, expected_real)
+    torch.testing.assert_close(output_imag, expected_imag)
+
+    for rank, parameters in ((2, 49_591_251), (4, 50_019_283)):
+        model = ContentAlignedImagePostFusionAlphabet2LM(
+            LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=rank)
+        )
+        assert sum(parameter.numel() for parameter in model.parameters()) == parameters
 
 
 def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:

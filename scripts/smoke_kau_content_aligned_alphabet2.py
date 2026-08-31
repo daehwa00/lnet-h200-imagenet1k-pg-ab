@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import tempfile
 from pathlib import Path
 from typing import cast
@@ -15,6 +16,9 @@ from lnet.alphabet_lm import ContentAlignedImagePostFusionAlphabet2LM, LaplaceMa
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rank", type=int, default=1)
+    args = parser.parse_args()
     torch.manual_seed(501)
     torch.cuda.manual_seed_all(501)
     config = LaplaceMambaLMConfig(
@@ -24,6 +28,7 @@ def main() -> None:
         pole_modes=4,
         state_size=2,
         head_width=8,
+        aligned_content_rank=args.rank,
         conv_width=3,
         context_length=64,
         minimum_half_life=4.0,
@@ -50,7 +55,7 @@ def main() -> None:
     if not torch.isfinite(restored_logits).all():
         raise RuntimeError("restored content-aligned ALPHABET-2 output is non-finite")
     details = f"loss={float(loss.detach()):.6f},shape={tuple(logits.shape)}"
-    print(f"CONTENT_ALIGNED_ALPHABET2_SMOKE={details}", flush=True)
+    print(f"CONTENT_ALIGNED_ALPHABET2_SMOKE=rank{args.rank},{details}", flush=True)
 
 
 if __name__ == "__main__":

@@ -49,6 +49,8 @@ def _build(kind: str) -> nn.Module:
         "alphabet2_image_postfusion",
         "alphabet2_vector_image_postfusion",
         "alphabet2_content_aligned_image_postfusion",
+        "alphabet2_content_aligned_j2",
+        "alphabet2_content_aligned_j4",
     }:
         model_type: type[nn.Module]
         if kind == "laplace_mamba_complex_highway":
@@ -57,7 +59,11 @@ def _build(kind: str) -> nn.Module:
             model_type = ImagePostFusionAlphabet2LM
         elif kind == "alphabet2_vector_image_postfusion":
             model_type = VectorImagePostFusionAlphabet2LM
-        elif kind == "alphabet2_content_aligned_image_postfusion":
+        elif kind in {
+            "alphabet2_content_aligned_image_postfusion",
+            "alphabet2_content_aligned_j2",
+            "alphabet2_content_aligned_j4",
+        }:
             model_type = ContentAlignedImagePostFusionAlphabet2LM
         else:
             model_type = LaplaceMambaLM
@@ -67,9 +73,15 @@ def _build(kind: str) -> nn.Module:
             in {
                 "alphabet2_vector_image_postfusion",
                 "alphabet2_content_aligned_image_postfusion",
+                "alphabet2_content_aligned_j2",
+                "alphabet2_content_aligned_j4",
             }
             else LaplaceMambaLMConfig()
         )
+        if kind == "alphabet2_content_aligned_j2":
+            config = LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=2)
+        elif kind == "alphabet2_content_aligned_j4":
+            config = LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=4)
         return model_type(config)
     if kind == "mamba":
         return MambaLM(MambaLMConfig())
@@ -2421,6 +2433,8 @@ def main() -> None:
             "alphabet2_image_postfusion",
             "alphabet2_vector_image_postfusion",
             "alphabet2_content_aligned_image_postfusion",
+            "alphabet2_content_aligned_j2",
+            "alphabet2_content_aligned_j4",
         ),
         required=True,
     )
@@ -2525,6 +2539,8 @@ def main() -> None:
         "alphabet2_image_postfusion",
         "alphabet2_vector_image_postfusion",
         "alphabet2_content_aligned_image_postfusion",
+        "alphabet2_content_aligned_j2",
+        "alphabet2_content_aligned_j4",
     }:
         handles = _zero_memory(model)
         results["memory_zero"] = _evaluate(

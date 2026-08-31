@@ -1,0 +1,65 @@
+{
+  "schema": "lnet.kau.alphabet_lm.content_rank_sweep_30m.v1",
+  "campaign_id": "kau-content-aligned-rank-sweep-p32r16-l19-30m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-content-rank-sweep-30m-v1",
+  "architecture": {
+    "K_complex": 256,
+    "K_real_dof": 512,
+    "layers": 19,
+    "variants": {
+      "content-aligned-j2-p32r16-l19-fromscratch-30m": {
+        "content_rank": 2,
+        "parameters": 49591251
+      },
+      "content-aligned-j4-p32r16-l19-fromscratch-30m": {
+        "content_rank": 4,
+        "parameters": 50019283
+      }
+    }
+  },
+  "source": {
+    "initialization": "seed501_from_scratch",
+    "checkpoint_initialization": false,
+    "write": "rank_j_shared_semantic_family_plus_pole_coordinate_k3",
+    "query": "full_dense_complex_pole_coordinate_q",
+    "state": "fixed_vector_laplace_PxR",
+    "read": "coordinate_preserving_conjugate_complex_q",
+    "synthesis": "baseline_strict_complex_dense",
+    "post_fusion": "image_gated_widely_linear"
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 30000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "content-aligned-j2-p32r16-l19-fromscratch-30m",
+      "content-aligned-j4-p32r16-l19-fromscratch-30m"
+    ]
+  },
+  "parameter_counts": {
+    "content-aligned-j2-p32r16-l19-fromscratch-30m": 49591251,
+    "content-aligned-j4-p32r16-l19-fromscratch-30m": 50019283
+  },
+  "diagnostics": {
+    "final_validation_only": true,
+    "j1_reference_parameters": 49377235,
+    "j1_reference_validation_loss_100m": 4.87158969048072,
+    "dense_reference_parameters": 64105427,
+    "dense_reference_validation_loss_100m": 4.839462909301234
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-ContentRankSweep-30M-S501-v1"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "architecture": {
+    "K_complex": 256,
+    "K_real_dof": 512,
+    "layers": 19,
+    "variants": {
+      "content-aligned-j2-p32r16-l19-fromscratch-30m": {
+        "content_rank": 2,
+        "parameters": 49591251
+      },
+      "content-aligned-j4-p32r16-l19-fromscratch-30m": {
+        "content_rank": 4,
+        "parameters": 50019283
+      }
+    }
+  },
+  "campaign_id": "kau-content-aligned-rank-sweep-p32r16-l19-30m-s501-v1",
+  "campaign_manifest_sha256": "a73d0e12efe555b9ac996e2fc5ece9f57805367156b03ccca008f47b09dfb89a",
+  "diagnostics": {
+    "dense_reference_parameters": 64105427,
+    "dense_reference_validation_loss_100m": 4.839462909301234,
+    "final_validation_only": true,
+    "j1_reference_parameters": 49377235,
+    "j1_reference_validation_loss_100m": 4.87158969048072
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-ContentRankSweep-30M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-content-rank-sweep-30m-v1",
+  "parameter_counts": {
+    "content-aligned-j2-p32r16-l19-fromscratch-30m": 49591251,
+    "content-aligned-j4-p32r16-l19-fromscratch-30m": 50019283
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "content-aligned-j2-p32r16-l19-fromscratch-30m": {
+      "display_name": "RTX4090-S501-Content-Aligned-J2-P32R16-L19-30M",
+      "id": "9e938153bf0522cc",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "ContentRank2",
+        "VectorPole",
+        "FromScratch",
+        "30M"
+      ]
+    },
+    "content-aligned-j4-p32r16-l19-fromscratch-30m": {
+      "display_name": "RTX4090-S501-Content-Aligned-J4-P32R16-L19-30M",
+      "id": "f841c34b3d39c826",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "ContentRank4",
+        "VectorPole",
+        "FromScratch",
+        "30M"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "checkpoint_initialization": false,
+    "initialization": "seed501_from_scratch",
+    "post_fusion": "image_gated_widely_linear",
+    "query": "full_dense_complex_pole_coordinate_q",
+    "read": "coordinate_preserving_conjugate_complex_q",
+    "state": "fixed_vector_laplace_PxR",
+    "synthesis": "baseline_strict_complex_dense",
+    "write": "rank_j_shared_semantic_family_plus_pole_coordinate_k3"
+  },
+  "total_parameter_counts": {
+    "content-aligned-j2-p32r16-l19-fromscratch-30m": 49591251,
+    "content-aligned-j4-p32r16-l19-fromscratch-30m": 50019283
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "content-aligned-j2-p32r16-l19-fromscratch-30m",
+      "content-aligned-j4-p32r16-l19-fromscratch-30m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 30000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}
