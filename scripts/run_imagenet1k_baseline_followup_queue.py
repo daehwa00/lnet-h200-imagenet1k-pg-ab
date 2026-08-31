@@ -127,6 +127,13 @@ def _load_status(
     return status
 
 
+def _ensure_job(status: dict[str, object], task: queue.Task) -> None:
+    raw_jobs = status.get("jobs")
+    if not isinstance(raw_jobs, dict):
+        raise TypeError("queue status has no mutable jobs object")
+    raw_jobs.setdefault(task.task_id, queue._new_job(task))
+
+
 def _configure_qlab_wandb(root: Path) -> Path:
     runs: dict[str, dict[str, object]] = {}
     qlab_tasks = (*FOLLOWUP_TASKS["qlab0"], *FOLLOWUP_TASKS["qlab1"])
@@ -198,7 +205,7 @@ def main() -> int:
         _configure_qlab_wandb(root)
     tasks = _selected_tasks(campaign, root, lane)
     for task in tasks:
-        queue._jobs(status).setdefault(task.task_id, queue._new_job(task))
+        _ensure_job(status, task)
     memory_fraction = 0.9 if lane == "h200" else 1.0
     status["remaining_seed_followup"] = {
         "lane": lane,
@@ -217,7 +224,7 @@ def main() -> int:
     try:
         if lane == "h200":
             stability = _moganet_stability_task(root)
-            queue._jobs(status).setdefault(stability.task_id, queue._new_job(stability))
+            _ensure_job(status, stability)
             _run_pool(
                 [stability],
                 args=args,

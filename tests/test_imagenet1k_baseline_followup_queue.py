@@ -70,3 +70,13 @@ def test_qlab_followup_wandb_ids_are_stable_and_complete(tmp_path: Path) -> None
     assert len(records) == 8
     assert len({record["id"] for record in records}) == 8
     assert payload["group"] == followup.QLAB_WANDB_GROUP
+
+
+def test_followup_job_registration_mutates_status_jobs(tmp_path: Path) -> None:
+    campaign = queue.load_campaign(ROOT / "h200/baselines/campaign.json")
+    status = queue._new_status(campaign, "a" * 64, tmp_path)
+    task = followup._selected_tasks(campaign, tmp_path, "qlab0")[0]
+    followup._ensure_job(status, task)
+    jobs = status["jobs"]
+    assert isinstance(jobs, dict)
+    assert task.task_id in jobs
