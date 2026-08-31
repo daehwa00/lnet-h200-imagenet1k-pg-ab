@@ -2956,7 +2956,7 @@ def main() -> None:
                 row["repeated_vector_pole_beta_mean"] = sum(repeated_betas) / len(
                     repeated_betas
                 )
-        if update == 1:
+        if update == 1 and laplace_continuation_payload is None:
             uniform_loss = math.log(train.manifest.vocab_size)
             if not 0.5 * uniform_loss <= row["train_loss"] <= 2.0 * uniform_loss:
                 raise RuntimeError(
