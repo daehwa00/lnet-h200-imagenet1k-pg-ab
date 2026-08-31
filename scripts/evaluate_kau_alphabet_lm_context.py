@@ -34,6 +34,7 @@ from lnet.alphabet_lm import (
     SlowCausalCNNPoleMemory,
     TensorProductPoleMemory1D,
     TokenRateVectorPoleBlock,
+    VectorImagePostFusionAlphabet2LM,
 )
 from lnet.alphabet_lm_data import TokenBlockDataset
 from lnet.alphabet_lm_mamba import MambaLM, MambaLMConfig
@@ -45,12 +46,15 @@ def _build(kind: str) -> nn.Module:
         "laplace_mamba",
         "laplace_mamba_complex_highway",
         "alphabet2_image_postfusion",
+        "alphabet2_vector_image_postfusion",
     }:
         model_type: type[nn.Module]
         if kind == "laplace_mamba_complex_highway":
             model_type = ComplexHighwayLaplaceMambaLM
         elif kind == "alphabet2_image_postfusion":
             model_type = ImagePostFusionAlphabet2LM
+        elif kind == "alphabet2_vector_image_postfusion":
+            model_type = VectorImagePostFusionAlphabet2LM
         else:
             model_type = LaplaceMambaLM
         return model_type(LaplaceMambaLMConfig())
@@ -2402,6 +2406,7 @@ def main() -> None:
             "laplace_mamba",
             "laplace_mamba_complex_highway",
             "alphabet2_image_postfusion",
+            "alphabet2_vector_image_postfusion",
         ),
         required=True,
     )
@@ -2504,6 +2509,7 @@ def main() -> None:
         "laplace_mamba",
         "laplace_mamba_complex_highway",
         "alphabet2_image_postfusion",
+        "alphabet2_vector_image_postfusion",
     }:
         handles = _zero_memory(model)
         results["memory_zero"] = _evaluate(

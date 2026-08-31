@@ -39,6 +39,8 @@ from lnet.alphabet_lm import (
     SlowCausalCNNPoleMemory,
     TensorProductPoleMemory1D,
     TokenRateVectorPoleBlock,
+    VectorImagePostFusionAlphabet2Block,
+    VectorImagePostFusionAlphabet2LM,
 )
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
 from lnet.pac_triton_recurrence_op import pac_triton_recurrence_opaque_op
@@ -2974,6 +2976,71 @@ def test_image_postfusion_alphabet2_contract_and_parameter_budget() -> None:
     full = ImagePostFusionAlphabet2LM(LaplaceMambaLMConfig())
     assert len(full.blocks) == 19
     assert sum(parameter.numel() for parameter in full.parameters()) == 41_838_035
+    assert not hasattr(full.blocks[0], "direct_scale")
+    assert not hasattr(full.blocks[0], "gate_projection")
+
+
+def test_vector_image_postfusion_alphabet2_is_causal_and_has_live_paths() -> None:
+    torch.manual_seed(501)
+    config = _small_laplace_mamba()
+    model = VectorImagePostFusionAlphabet2LM(config)
+    tokens = torch.randint(config.vocab_size, (2, 17))
+    changed = tokens.clone()
+    changed[:, 10:] = torch.randint(config.vocab_size, changed[:, 10:].shape)
+    with torch.no_grad():
+        expected = model(tokens[:, :-1])
+        actual = model(changed[:, :-1])
+    torch.testing.assert_close(actual[:, :10], expected[:, :10], atol=1.0e-6, rtol=0.0)
+
+    logits = model(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(
+        logits.flatten(0, 1),
+        tokens[:, 1:].flatten(),
+    )
+    loss.backward()
+    block = cast("VectorImagePostFusionAlphabet2Block", model.blocks[0])
+    for parameter in (
+        model.embedding_real.weight,
+        model.embedding_imag.weight,
+        block.analysis.weight_real,
+        block.analysis.weight_imag,
+        block.reader.weight_real,
+        block.reader.weight_imag,
+        block.memory.raw_damping,
+        block.memory.raw_frequency,
+        block.synthesis.weight_real,
+        block.synthesis.weight_imag,
+        block.memory_scale,
+        block.post_fusion.value.weight_real,
+        block.post_fusion.value.conjugate_real,
+        block.post_fusion.gate.weight,
+        block.post_fusion.out.weight_real,
+        block.post_fusion.out.conjugate_real,
+    ):
+        assert parameter.grad is not None
+        assert torch.isfinite(parameter.grad).all()
+
+
+def test_vector_image_postfusion_uses_exact_coordinate_preserving_complex_query() -> None:
+    config = _small_laplace_mamba()
+    block = VectorImagePostFusionAlphabet2Block(config).eval()
+    shape = (2, 7, config.pole_modes, config.head_width)
+    excitation = torch.randn(shape), torch.randn(shape)
+    query = torch.randn(shape), torch.randn(shape)
+    with torch.no_grad():
+        state = block.memory(*excitation)
+        actual = block._transport_and_read(excitation, query)
+    expected = (
+        query[0] * state[0] + query[1] * state[1],
+        query[0] * state[1] - query[1] * state[0],
+    )
+    torch.testing.assert_close(actual[0], expected[0])
+    torch.testing.assert_close(actual[1], expected[1])
+
+    full = VectorImagePostFusionAlphabet2LM(LaplaceMambaLMConfig())
+    assert len(full.blocks) == 19
+    assert sum(parameter.numel() for parameter in full.parameters()) == 44_377_043
+    assert not hasattr(full.blocks[0], "address_width")
     assert not hasattr(full.blocks[0], "direct_scale")
     assert not hasattr(full.blocks[0], "gate_projection")
 

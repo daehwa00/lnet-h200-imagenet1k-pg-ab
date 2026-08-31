@@ -1,0 +1,61 @@
+{
+  "schema": "lnet.kau.alphabet_lm.vector_image_postfusion_alphabet2.v1",
+  "campaign_id": "kau-vector-image-postfusion-alphabet2-p32r16-l19-100m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-vector-image-postfusion-alphabet2-v1",
+  "architecture": {
+    "K_complex": 256,
+    "K_real_dof": 512,
+    "layers": 19,
+    "variants": {
+      "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": {
+        "laplace_mamba_layers": 19,
+        "laplace_mamba_poles": 32,
+        "laplace_mamba_state_size": 4,
+        "laplace_mamba_head_width": 16,
+        "laplace_mamba_conv_width": 3
+      }
+    }
+  },
+  "source": {
+    "initialization": "seed501_from_scratch",
+    "checkpoint_initialization": false,
+    "reader": "joint_strict_complex_causal_k3_E_Q",
+    "state": "vector_laplace_PxR",
+    "read": "coordinate_preserving_conjugate_complex_Q",
+    "synthesis": "strict_complex",
+    "memory_merge": "detached_rms_match_scalar_beta",
+    "post_fusion": "image_gated_widely_linear"
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 100000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m"
+    ]
+  },
+  "parameter_counts": {
+    "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": 44308947
+  },
+  "diagnostics": {
+    "final_validation_only": true,
+    "matrix_image_postfusion_reference_parameters": 41808851,
+    "mamba1_reference_validation_loss": 4.330902905240708,
+    "mamba1_reference_parameters": 48987136
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-VectorImagePostFusionAlphabet2-100M-S501-v1"
+  }
+}

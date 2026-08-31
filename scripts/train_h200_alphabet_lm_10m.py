@@ -36,6 +36,7 @@ from lnet.alphabet_lm import (
     QueryConditionedLowRankReadout,
     SlowCausalCNNPoleMemory,
     TokenRateVectorPoleBlock,
+    VectorImagePostFusionAlphabet2LM,
 )
 from lnet.alphabet_lm_data import TokenBlockDataset, sha256_file
 from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
@@ -1294,6 +1295,7 @@ def _build(
         "laplace_mamba",
         "laplace_mamba_complex_highway",
         "alphabet2_image_postfusion",
+        "alphabet2_vector_image_postfusion",
     }:
         config = LaplaceMambaLMConfig(
             vocab_size=vocab_size,
@@ -1308,6 +1310,8 @@ def _build(
             model_type = ComplexHighwayLaplaceMambaLM
         elif model_name == "alphabet2_image_postfusion":
             model_type = ImagePostFusionAlphabet2LM
+        elif model_name == "alphabet2_vector_image_postfusion":
+            model_type = VectorImagePostFusionAlphabet2LM
         else:
             model_type = LaplaceMambaLM
         return model_type(config), {
@@ -1593,6 +1597,7 @@ def main() -> None:
             "laplace_mamba",
             "laplace_mamba_complex_highway",
             "alphabet2_image_postfusion",
+            "alphabet2_vector_image_postfusion",
         ),
         required=True,
     )

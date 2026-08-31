@@ -2551,6 +2551,41 @@ class ComplexHighwayLaplaceMambaLM(nn.Module):
         )
 
 
+@torch.no_grad()
+def _scale_image_postfusion_output_(
+    post_fusion: GatedComplexPostFusion,
+    layers: int,
+) -> None:
+    output = cast("WidelyLinear", post_fusion.out)
+    residual_scale = math.sqrt(layers)
+    for parameter in (
+        output.weight_real,
+        output.weight_imag,
+        output.conjugate_real,
+        output.conjugate_imag,
+    ):
+        parameter.div_(residual_scale)
+
+
+def _rms_matched_complex_residual(
+    hidden: ComplexField,
+    memory: ComplexField,
+    gain: Tensor,
+    epsilon: float,
+) -> ComplexField:
+    hidden_energy = hidden[0].float().square().add(hidden[1].float().square()).mean(
+        dim=-1,
+        keepdim=True,
+    )
+    memory_energy = memory[0].float().square().add(memory[1].float().square()).mean(
+        dim=-1,
+        keepdim=True,
+    )
+    rms_ratio = torch.sqrt(hidden_energy + epsilon) * torch.rsqrt(memory_energy + epsilon)
+    scale = gain.to(dtype=hidden[0].dtype) * rms_ratio.detach().to(dtype=hidden[0].dtype)
+    return hidden[0] + scale * memory[0], hidden[1] + scale * memory[1]
+
+
 class ImagePostFusionAlphabet2Block(nn.Module):
     """Image-ALPHABET block with content-addressable fixed-Laplace memory."""
 
@@ -2597,16 +2632,7 @@ class ImagePostFusionAlphabet2Block(nn.Module):
     def reset_parameters(self) -> None:
         with torch.no_grad():
             self.input_norm.weight.fill_(math.sqrt(2.0))
-            residual_scale = math.sqrt(self.config.layers)
-            output = cast("WidelyLinear", self.post_fusion.out)
-            output_parameters: tuple[Tensor, ...] = (
-                output.weight_real,
-                output.weight_imag,
-                output.conjugate_real,
-                output.conjugate_imag,
-            )
-            for parameter in output_parameters:
-                parameter.div_(residual_scale)
+        _scale_image_postfusion_output_(self.post_fusion, self.config.layers)
 
     def _analyze(
         self,
@@ -2676,20 +2702,12 @@ class ImagePostFusionAlphabet2Block(nn.Module):
         hidden: ComplexField,
         memory: ComplexField,
     ) -> ComplexField:
-        hidden_energy = hidden[0].float().square().add(hidden[1].float().square()).mean(
-            dim=-1,
-            keepdim=True,
+        return _rms_matched_complex_residual(
+            hidden,
+            memory,
+            self.memory_scale,
+            self.config.rms_epsilon,
         )
-        memory_energy = memory[0].float().square().add(memory[1].float().square()).mean(
-            dim=-1,
-            keepdim=True,
-        )
-        rms_ratio = torch.sqrt(hidden_energy + self.config.rms_epsilon) * torch.rsqrt(
-            memory_energy + self.config.rms_epsilon
-        )
-        rms_ratio = rms_ratio.detach().to(dtype=hidden[0].dtype)
-        scale = self.memory_scale.to(dtype=hidden[0].dtype) * rms_ratio
-        return hidden[0] + scale * memory[0], hidden[1] + scale * memory[1]
 
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
         value, write, read = self._analyze(real, imag)
@@ -2713,6 +2731,155 @@ class ImagePostFusionAlphabet2LM(nn.Module):
         self.embedding_imag = nn.Embedding(config.vocab_size, self.complex_width)
         self.blocks = nn.ModuleList(
             ImagePostFusionAlphabet2Block(config) for _ in range(config.layers)
+        )
+        self.final_norm = ComplexRMSNorm(
+            self.complex_width,
+            epsilon=config.rms_epsilon,
+        )
+        nn.init.normal_(self.embedding_real.weight, mean=0.0, std=0.02)
+        nn.init.normal_(self.embedding_imag.weight, mean=0.0, std=0.02)
+        with torch.no_grad():
+            self.final_norm.weight.fill_(math.sqrt(2.0))
+
+    def complex_hidden(self, input_ids: Tensor) -> ComplexField:
+        real = self.embedding_real(input_ids)
+        imag = self.embedding_imag(input_ids)
+        for block in self.blocks:
+            if (
+                self.config.activation_checkpoint
+                and self.training
+                and torch.is_grad_enabled()
+            ):
+                result = activation_checkpoint(
+                    block,
+                    real,
+                    imag,
+                    use_reentrant=False,
+                )
+                real, imag = cast("ComplexField", result)
+            else:
+                real, imag = block(real, imag)
+        return self.final_norm(real, imag)
+
+    def hidden(self, input_ids: Tensor) -> Tensor:
+        return torch.cat(self.complex_hidden(input_ids), dim=-1)
+
+    def forward(self, input_ids: Tensor) -> Tensor:
+        real, imag = self.complex_hidden(input_ids)
+        return functional.linear(real, self.embedding_real.weight) + functional.linear(
+            imag,
+            self.embedding_imag.weight,
+        )
+
+
+class VectorImagePostFusionAlphabet2Block(nn.Module):
+    """Image-ALPHABET block with a selectively read vector Laplace state."""
+
+    memory_scale_initial = 0.01
+
+    def __init__(self, config: LaplaceMambaLMConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.complex_width = config.model_width // 2
+        self.value_width = config.inner_complex_width
+        self.active_width = 2 * self.value_width
+        self.input_norm = ComplexRMSNorm(
+            self.complex_width,
+            epsilon=config.rms_epsilon,
+        )
+        self.analysis = PackedComplexLinear(
+            self.complex_width,
+            self.active_width,
+        )
+        self.reader = ComplexDepthwiseCausalConv1d(
+            self.active_width,
+            config.conv_width,
+        )
+        self.memory = FixedComplexPoleMemory1D(
+            config.pole_modes,
+            context_length=config.context_length,
+            scan_fp32=config.scan_fp32,
+            initialization="lifetime_palette",
+            minimum_half_life=config.minimum_half_life,
+            maximum_half_life=config.maximum_half_life,
+        )
+        self.synthesis = PackedComplexLinear(
+            self.value_width,
+            self.complex_width,
+        )
+        self.memory_scale = nn.Parameter(torch.tensor(self.memory_scale_initial))
+        self.post_fusion = GatedComplexPostFusion(
+            self.complex_width,
+            self.complex_width,
+        )
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        with torch.no_grad():
+            self.input_norm.weight.fill_(math.sqrt(2.0))
+        _scale_image_postfusion_output_(self.post_fusion, self.config.layers)
+
+    def _analyze(
+        self,
+        real: Tensor,
+        imag: Tensor,
+    ) -> tuple[ComplexField, ComplexField]:
+        normalized = self.input_norm(real, imag)
+        active_real, active_imag = self.analysis(*normalized)
+        active_real, active_imag = self.reader(active_real, active_imag)
+        excitation_real, query_real = active_real.split(self.value_width, dim=-1)
+        excitation_imag, query_imag = active_imag.split(self.value_width, dim=-1)
+        batch, steps, _width = excitation_real.shape
+        shape = (batch, steps, self.config.pole_modes, self.config.head_width)
+        excitation = excitation_real.reshape(shape), excitation_imag.reshape(shape)
+        query = query_real.reshape(shape), query_imag.reshape(shape)
+        return excitation, query
+
+    def _transport_and_read(
+        self,
+        excitation: ComplexField,
+        query: ComplexField,
+    ) -> ComplexField:
+        state_real, state_imag = self.memory(*excitation)
+        return (
+            query[0] * state_real + query[1] * state_imag,
+            query[0] * state_imag - query[1] * state_real,
+        )
+
+    def _merge_memory(
+        self,
+        hidden: ComplexField,
+        memory: ComplexField,
+    ) -> ComplexField:
+        return _rms_matched_complex_residual(
+            hidden,
+            memory,
+            self.memory_scale,
+            self.config.rms_epsilon,
+        )
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        excitation, query = self._analyze(real, imag)
+        selected = self._transport_and_read(excitation, query)
+        memory = self.synthesis(
+            selected[0].flatten(-2),
+            selected[1].flatten(-2),
+        )
+        merged = self._merge_memory((real, imag), memory)
+        return self.post_fusion(*merged)
+
+
+class VectorImagePostFusionAlphabet2LM(nn.Module):
+    """Complex LM with image-ALPHABET fusion around selective VectorPoles."""
+
+    def __init__(self, config: LaplaceMambaLMConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.complex_width = config.model_width // 2
+        self.embedding_real = nn.Embedding(config.vocab_size, self.complex_width)
+        self.embedding_imag = nn.Embedding(config.vocab_size, self.complex_width)
+        self.blocks = nn.ModuleList(
+            VectorImagePostFusionAlphabet2Block(config) for _ in range(config.layers)
         )
         self.final_norm = ComplexRMSNorm(
             self.complex_width,
@@ -4022,4 +4189,6 @@ __all__ = [
     "SlowCausalCNNPoleMemory",
     "TensorProductPoleMemory1D",
     "TokenRateVectorPoleBlock",
+    "VectorImagePostFusionAlphabet2Block",
+    "VectorImagePostFusionAlphabet2LM",
 ]
