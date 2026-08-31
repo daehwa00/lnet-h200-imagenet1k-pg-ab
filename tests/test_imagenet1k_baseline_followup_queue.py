@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 # pyright: reportPrivateUsage=false
+import json
 from pathlib import Path
 
 from scripts import h200_baseline_registry as registry
+from scripts import run_h200_baseline_queue as queue
 from scripts import run_h200_baseline_worker as worker
 from scripts import run_imagenet1k_baseline_followup_queue as followup
 
@@ -45,3 +47,26 @@ def test_h200_followup_is_selected_before_generic_queue() -> None:
     assert "H200_BASELINE_FOLLOWUP_ONLY" in source
     assert 'QUEUE+=(--lane h200)' in source
     assert "scripts/run_imagenet1k_baseline_followup_queue.py" in source
+
+
+def test_followup_tasks_do_not_depend_on_campaign_seed_list(tmp_path: Path) -> None:
+    campaign = queue.load_campaign(ROOT / "h200/baselines/campaign.json")
+    object.__setattr__(campaign, "seeds", (501,))
+    tasks = followup._selected_tasks(campaign, tmp_path, "qlab0")
+    assert [(task.model_key, task.seed) for task in tasks] == list(
+        followup.FOLLOWUP_TASKS["qlab0"]
+    )
+    assert all("followup-full" in task.output_dir.parts for task in tasks)
+
+
+def test_qlab_followup_wandb_ids_are_stable_and_complete(tmp_path: Path) -> None:
+    path = followup._configure_qlab_wandb(tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    records = [
+        record
+        for model in payload["runs"].values()
+        for record in model["seeds"].values()
+    ]
+    assert len(records) == 8
+    assert len({record["id"] for record in records}) == 8
+    assert payload["group"] == followup.QLAB_WANDB_GROUP

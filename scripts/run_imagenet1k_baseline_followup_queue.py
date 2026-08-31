@@ -5,9 +5,12 @@ from __future__ import annotations
 
 # pyright: reportImplicitRelativeImport=false, reportPrivateUsage=false
 import argparse
+import hashlib
 import json
+import os
 import signal
 from pathlib import Path
+from typing import cast
 
 import run_h200_baseline_queue as queue
 
@@ -36,6 +39,7 @@ FOLLOWUP_TASKS = {
 MOGANET_STABILITY_TASK_ID = (
     "preflight:stability:moganet_xt:seed501:bf16_train_fp32_validation"
 )
+QLAB_WANDB_GROUP = "rtx4090-imagenet1k-remaining-seeds-v1"
 
 
 def _arguments() -> argparse.Namespace:
@@ -72,15 +76,82 @@ def _moganet_stability_task(root: Path) -> queue.Task:
 
 
 def _selected_tasks(campaign: queue.Campaign, root: Path, lane: str) -> list[queue.Task]:
-    selected = {model: LEARNING_RATE for model, _seed in FOLLOWUP_TASKS[lane]}
-    available = {
-        (task.model_key, task.seed): task
-        for task in queue.full_tasks(campaign, root, selected)
-    }
-    tasks = [available[key] for key in FOLLOWUP_TASKS[lane]]
+    declared_models = {model.key for model in campaign.models}
+    tasks = []
+    for model_key, seed in FOLLOWUP_TASKS[lane]:
+        if model_key not in declared_models:
+            raise RuntimeError(f"follow-up model is absent from campaign: {model_key}")
+        output = root / "followup-full" / model_key / f"seed_{seed}"
+        tasks.append(
+            queue.Task(
+                task_id=f"followup:full:seed{seed}:{model_key}",
+                phase="full",
+                model_key=model_key,
+                seed=seed,
+                learning_rate=LEARNING_RATE,
+                epochs=campaign.full_epochs,
+                wandb_mode="online",
+                output_dir=output,
+                result_path=output / "result.json",
+                checkpoint_path=output / "checkpoint.pt",
+                max_steps=None,
+            )
+        )
     if len({task.task_id for task in tasks}) != len(tasks):
         raise RuntimeError("follow-up lane contains duplicate tasks")
     return tasks
+
+
+def _load_status(
+    campaign: queue.Campaign,
+    manifest_sha256: str,
+    root: Path,
+) -> dict[str, object]:
+    path = root / "queue-status.json"
+    if not path.is_file():
+        return queue._new_status(campaign, manifest_sha256, root)
+    status = queue._json_object(path)
+    if (
+        status.get("schema") != queue.STATUS_SCHEMA
+        or status.get("campaign_id") != campaign.campaign_id
+        or status.get("manifest_sha256") != manifest_sha256
+    ):
+        raise ValueError("existing queue status belongs to another campaign contract")
+    for job in queue._jobs(status).values():
+        if job.get("status") == "RUNNING":
+            checkpoint = Path(cast("str", job["checkpoint_path"]))
+            job["status"] = "RESUMABLE" if checkpoint.is_file() else "QUEUED"
+            job["last_error"] = "orchestrator_restart"
+        if job.get("status") != "COMPLETED":
+            job["attempts"] = 0
+    return status
+
+
+def _configure_qlab_wandb(root: Path) -> Path:
+    runs: dict[str, dict[str, object]] = {}
+    qlab_tasks = (*FOLLOWUP_TASKS["qlab0"], *FOLLOWUP_TASKS["qlab1"])
+    for model_key, seed in qlab_tasks:
+        run_id = hashlib.sha256(
+            f"{QLAB_WANDB_GROUP}:{model_key}:seed{seed}".encode()
+        ).hexdigest()[:16]
+        model = runs.setdefault(model_key, {"seeds": {}})
+        seeds = cast("dict[str, object]", model["seeds"])
+        seeds[str(seed)] = {
+            "display_name": f"QLAB-BL-{model_key}-s{seed}",
+            "id": run_id,
+            "tags": [
+                "RTX4090",
+                "ImageNet-1K",
+                "matched-baseline",
+                "100ep",
+                f"seed{seed}",
+            ],
+        }
+    path = root / "followup-wandb.runtime.json"
+    queue._atomic_json(path, {"group": QLAB_WANDB_GROUP, "runs": runs})
+    os.environ["H200_BASELINE_WANDB_RUNTIME"] = str(path)
+    os.environ["WANDB_GROUP"] = QLAB_WANDB_GROUP
+    return path
 
 
 def _run_pool(
@@ -116,13 +187,18 @@ def main() -> int:
     campaign = queue.load_campaign(args.manifest.resolve())
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=True)
-    status = queue._load_or_create_status(
+    manifest_sha256 = queue._manifest_sha256(args.manifest.resolve())
+    status = _load_status(
         campaign,
-        queue._manifest_sha256(args.manifest.resolve()),
+        manifest_sha256,
         root,
     )
     lane = str(args.lane)
+    if lane.startswith("qlab"):
+        _configure_qlab_wandb(root)
     tasks = _selected_tasks(campaign, root, lane)
+    for task in tasks:
+        queue._jobs(status).setdefault(task.task_id, queue._new_job(task))
     memory_fraction = 0.9 if lane == "h200" else 1.0
     status["remaining_seed_followup"] = {
         "lane": lane,
