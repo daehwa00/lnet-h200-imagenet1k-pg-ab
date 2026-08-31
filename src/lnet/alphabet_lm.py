@@ -3197,6 +3197,57 @@ class PoleWiseComplexReadAdapter(nn.Module):
         )
 
 
+class PoleAxisTemporalWhitening(nn.Module):
+    """Recondition fixed exponential histories along the temporal pole axis."""
+
+    def __init__(
+        self,
+        memory: FixedComplexPoleMemory1D,
+        *,
+        horizon: int = 1_536,
+        relative_epsilon: float = 1.0e-3,
+    ) -> None:
+        super().__init__()
+        if horizon <= 0 or relative_epsilon <= 0.0:
+            raise ValueError("invalid temporal whitening configuration")
+        self.poles = memory.modes
+        self.horizon = int(horizon)
+        self.relative_epsilon = float(relative_epsilon)
+        with torch.no_grad():
+            damping = memory.damping().double()
+            frequency = memory.frequency().double()
+            continuous = torch.complex(-damping, frequency)
+            decay = torch.exp(continuous)
+            injection = (decay - 1.0) / continuous
+            lag = torch.arange(self.horizon, dtype=torch.float64)
+            kernels = injection[:, None] * decay[:, None].pow(lag[None, :])
+            gram = kernels @ kernels.conj().transpose(0, 1)
+            regularization = self.relative_epsilon * gram.diagonal().real.mean()
+            eigenvalues, eigenvectors = torch.linalg.eigh(gram)
+            inverse_root = torch.rsqrt(eigenvalues.clamp_min(0.0) + regularization)
+            transform = (eigenvectors * inverse_root.unsqueeze(0)) @ eigenvectors.conj().T
+            whitened_gram = transform @ gram @ transform.conj().T
+            output_scale = torch.sqrt(
+                torch.tensor(float(self.poles), dtype=torch.float64)
+                / whitened_gram.diagonal().real.sum().clamp_min(1.0e-30)
+            )
+            transform = transform * output_scale
+        self.weight_real = nn.Parameter(transform.real.float())
+        self.weight_imag = nn.Parameter(transform.imag.float())
+        self.register_buffer("initial_gram_eigenvalues", eigenvalues.real.float())
+        self.register_buffer("initial_regularization", regularization.float())
+
+    def forward(self, state: ComplexField) -> ComplexField:
+        if state[0].shape != state[1].shape or state[0].shape[-2] != self.poles:
+            raise ValueError("pole-axis temporal whitening inputs are incompatible")
+        return (
+            torch.einsum("qp,btpr->btqr", self.weight_real, state[0])
+            - torch.einsum("qp,btpr->btqr", self.weight_imag, state[1]),
+            torch.einsum("qp,btpr->btqr", self.weight_real, state[1])
+            + torch.einsum("qp,btpr->btqr", self.weight_imag, state[0]),
+        )
+
+
 class MultiObserverImagePostFusionAlphabet2Block(nn.Module):
     """Keep dense writes and observe VectorPoles with full bilinear forms."""
 
@@ -3298,6 +3349,38 @@ class ReadAdaptedImagePostFusionAlphabet2Block(VectorImagePostFusionAlphabet2Blo
         return self.post_fusion(*merged)
 
 
+class TemporallyWhitenedImagePostFusionAlphabet2Block(
+    ContentAlignedImagePostFusionAlphabet2Block
+):
+    """Keep J2 transport diagonal and expose a conditioned pole observation basis."""
+
+    def __init__(self, config: LaplaceMambaLMConfig) -> None:
+        if config.aligned_content_rank != 2:
+            raise ValueError("temporally whitened ALPHABET requires content rank 2")
+        super().__init__(config)
+        self.temporal_whitening = PoleAxisTemporalWhitening(self.memory)
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        excitation, query = self._analyze(real, imag)
+        state = self.memory(*excitation)
+        observed_state = self.temporal_whitening(state)
+        selected = (
+            query[0] * observed_state[0] + query[1] * observed_state[1],
+            query[0] * observed_state[1] - query[1] * observed_state[0],
+        )
+        memory = self.synthesis(
+            selected[0].flatten(-2),
+            selected[1].flatten(-2),
+        )
+        merged = _rms_matched_complex_residual(
+            (real, imag),
+            memory,
+            self.memory_scale,
+            self.config.rms_epsilon,
+        )
+        return self.post_fusion(*merged)
+
+
 class VectorImagePostFusionAlphabet2LM(nn.Module):
     """Complex LM with image-ALPHABET fusion around selective VectorPoles."""
 
@@ -3368,6 +3451,12 @@ class ReadAdaptedImagePostFusionAlphabet2LM(VectorImagePostFusionAlphabet2LM):
     """Dense Vector ALPHABET with identity-initialized pole-wise read bases."""
 
     block_type = ReadAdaptedImagePostFusionAlphabet2Block
+
+
+class TemporallyWhitenedImagePostFusionAlphabet2LM(VectorImagePostFusionAlphabet2LM):
+    """J2 ALPHABET with separate transport and temporal observation bases."""
+
+    block_type = TemporallyWhitenedImagePostFusionAlphabet2Block
 
 
 class LaplaceMambaLM(nn.Module):
@@ -4640,6 +4729,7 @@ __all__ = [
     "MultiObserverImagePostFusionAlphabet2Block",
     "MultiObserverImagePostFusionAlphabet2LM",
     "PoleAlignedComplexCausalConv1d",
+    "PoleAxisTemporalWhitening",
     "PoleWiseComplexReadAdapter",
     "QueryConditionedLowRankReadout",
     "ReadAdaptedImagePostFusionAlphabet2Block",
@@ -4647,6 +4737,8 @@ __all__ = [
     "SemanticEdgePoleMemory",
     "SlowCausalCNNPoleMemory",
     "StrictComplexCausalConv1d",
+    "TemporallyWhitenedImagePostFusionAlphabet2Block",
+    "TemporallyWhitenedImagePostFusionAlphabet2LM",
     "TensorProductPoleMemory1D",
     "TokenRateVectorPoleBlock",
     "VectorImagePostFusionAlphabet2Block",

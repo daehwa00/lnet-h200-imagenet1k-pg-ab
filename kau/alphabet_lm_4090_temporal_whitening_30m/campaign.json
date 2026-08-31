@@ -1,0 +1,57 @@
+{
+  "schema": "lnet.kau.alphabet_lm.temporal_whitening_30m.v1",
+  "campaign_id": "kau-j2-pole-axis-whitening-p32r16-l19-30m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-temporal-whitening-30m-v1",
+  "architecture": {
+    "K_complex": 256,
+    "K_real_dof": 512,
+    "layers": 19,
+    "pole_modes": 32,
+    "vector_width": 16,
+    "content_rank": 2,
+    "whitening_horizon": 1536,
+    "relative_epsilon": 0.001
+  },
+  "source": {
+    "initialization": "seed501_from_scratch",
+    "checkpoint_initialization": false,
+    "write": "rank2_shared_semantic_family_plus_pole_coordinate_k3",
+    "state": "fixed_vector_laplace_PxR",
+    "temporal_observer": "learnable_regularized_symmetric_gram_whitening",
+    "query": "full_dense_complex_pole_coordinate_q",
+    "read": "coordinate_preserving_conjugate_complex_q",
+    "synthesis": "dense_strict_complex_PR_to_K",
+    "post_fusion": "image_gated_widely_linear"
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 30000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "j2-pole-axis-whitening-p32r16-l19-fromscratch-30m"
+    ]
+  },
+  "parameter_counts": {
+    "j2-pole-axis-whitening-p32r16-l19-fromscratch-30m": 49630163
+  },
+  "diagnostics": {
+    "final_validation_only": true,
+    "j2_reference_parameters": 49591251,
+    "j2_reference_validation_loss_30m": 5.502673654939814
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-TemporalWhitening-30M-S501-v1"
+  }
+}

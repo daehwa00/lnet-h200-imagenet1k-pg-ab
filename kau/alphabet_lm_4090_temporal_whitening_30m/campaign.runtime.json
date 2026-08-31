@@ -1,0 +1,73 @@
+{
+  "architecture": {
+    "K_complex": 256,
+    "K_real_dof": 512,
+    "content_rank": 2,
+    "layers": 19,
+    "pole_modes": 32,
+    "relative_epsilon": 0.001,
+    "vector_width": 16,
+    "whitening_horizon": 1536
+  },
+  "campaign_id": "kau-j2-pole-axis-whitening-p32r16-l19-30m-s501-v1",
+  "campaign_manifest_sha256": "b7bb466c248839785003d1ec37b9e013441e7cdda37ec90f2ed87153faf0ea4d",
+  "diagnostics": {
+    "final_validation_only": true,
+    "j2_reference_parameters": 49591251,
+    "j2_reference_validation_loss_30m": 5.502673654939814
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-TemporalWhitening-30M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-temporal-whitening-30m-v1",
+  "parameter_counts": {
+    "j2-pole-axis-whitening-p32r16-l19-fromscratch-30m": 49630163
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "j2-pole-axis-whitening-p32r16-l19-fromscratch-30m": {
+      "display_name": "RTX4090-S501-J2-Pole-Axis-Whitening-P32R16-L19-30M",
+      "id": "a84a16482b98ac9a",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "ContentRank2",
+        "TemporalWhitening",
+        "FromScratch",
+        "30M"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "checkpoint_initialization": false,
+    "initialization": "seed501_from_scratch",
+    "post_fusion": "image_gated_widely_linear",
+    "query": "full_dense_complex_pole_coordinate_q",
+    "read": "coordinate_preserving_conjugate_complex_q",
+    "state": "fixed_vector_laplace_PxR",
+    "synthesis": "dense_strict_complex_PR_to_K",
+    "temporal_observer": "learnable_regularized_symmetric_gram_whitening",
+    "write": "rank2_shared_semantic_family_plus_pole_coordinate_k3"
+  },
+  "total_parameter_counts": {
+    "j2-pole-axis-whitening-p32r16-l19-fromscratch-30m": 49630163
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "j2-pole-axis-whitening-p32r16-l19-fromscratch-30m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 30000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

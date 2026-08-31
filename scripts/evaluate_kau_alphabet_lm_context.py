@@ -35,6 +35,7 @@ from lnet.alphabet_lm import (
     ReadAdaptedImagePostFusionAlphabet2LM,
     SemanticEdgePoleMemory,
     SlowCausalCNNPoleMemory,
+    TemporallyWhitenedImagePostFusionAlphabet2LM,
     TensorProductPoleMemory1D,
     TokenRateVectorPoleBlock,
     VectorImagePostFusionAlphabet2LM,
@@ -55,6 +56,7 @@ def _build(kind: str) -> nn.Module:
         "alphabet2_content_aligned_j4",
         "alphabet2_multi_observer_image_postfusion",
         "alphabet2_read_adapter_image_postfusion",
+        "alphabet2_temporal_whitening_image_postfusion",
     }:
         model_type: type[nn.Module]
         if kind == "laplace_mamba_complex_highway":
@@ -73,6 +75,8 @@ def _build(kind: str) -> nn.Module:
             model_type = MultiObserverImagePostFusionAlphabet2LM
         elif kind == "alphabet2_read_adapter_image_postfusion":
             model_type = ReadAdaptedImagePostFusionAlphabet2LM
+        elif kind == "alphabet2_temporal_whitening_image_postfusion":
+            model_type = TemporallyWhitenedImagePostFusionAlphabet2LM
         else:
             model_type = LaplaceMambaLM
         config = (
@@ -85,6 +89,7 @@ def _build(kind: str) -> nn.Module:
                 "alphabet2_content_aligned_j4",
                 "alphabet2_multi_observer_image_postfusion",
                 "alphabet2_read_adapter_image_postfusion",
+                "alphabet2_temporal_whitening_image_postfusion",
             }
             else LaplaceMambaLMConfig()
         )
@@ -92,6 +97,8 @@ def _build(kind: str) -> nn.Module:
             config = LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=2)
         elif kind == "alphabet2_content_aligned_j4":
             config = LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=4)
+        elif kind == "alphabet2_temporal_whitening_image_postfusion":
+            config = LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=2)
         return model_type(config)
     if kind == "mamba":
         return MambaLM(MambaLMConfig())
@@ -2447,6 +2454,7 @@ def main() -> None:
             "alphabet2_content_aligned_j4",
             "alphabet2_multi_observer_image_postfusion",
             "alphabet2_read_adapter_image_postfusion",
+            "alphabet2_temporal_whitening_image_postfusion",
         ),
         required=True,
     )
@@ -2555,6 +2563,7 @@ def main() -> None:
         "alphabet2_content_aligned_j4",
         "alphabet2_multi_observer_image_postfusion",
         "alphabet2_read_adapter_image_postfusion",
+        "alphabet2_temporal_whitening_image_postfusion",
     }:
         handles = _zero_memory(model)
         results["memory_zero"] = _evaluate(

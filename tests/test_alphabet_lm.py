@@ -46,6 +46,8 @@ from lnet.alphabet_lm import (
     ReadAdaptedImagePostFusionAlphabet2LM,
     SemanticEdgePoleMemory,
     SlowCausalCNNPoleMemory,
+    TemporallyWhitenedImagePostFusionAlphabet2Block,
+    TemporallyWhitenedImagePostFusionAlphabet2LM,
     TensorProductPoleMemory1D,
     TokenRateVectorPoleBlock,
     VectorImagePostFusionAlphabet2Block,
@@ -3261,6 +3263,70 @@ def test_read_adapter_is_causal_and_receives_finite_gradients() -> None:
 
     full = ReadAdaptedImagePostFusionAlphabet2LM(LaplaceMambaLMConfig(conv_width=3))
     assert sum(parameter.numel() for parameter in full.parameters()) == 64_416_723
+
+
+def test_temporal_whitening_reconditions_initial_pole_gram() -> None:
+    config = LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=2)
+    block = TemporallyWhitenedImagePostFusionAlphabet2Block(config)
+    whitening = block.temporal_whitening
+    with torch.no_grad():
+        damping = block.memory.damping().double()
+        frequency = block.memory.frequency().double()
+        continuous = torch.complex(-damping, frequency)
+        decay = torch.exp(continuous)
+        injection = (decay - 1.0) / continuous
+        lag = torch.arange(whitening.horizon, dtype=torch.float64)
+        kernels = injection[:, None] * decay[:, None].pow(lag[None, :])
+        gram = kernels @ kernels.conj().T
+        transform = torch.complex(
+            whitening.weight_real.double(),
+            whitening.weight_imag.double(),
+        )
+        whitened = transform @ gram @ transform.conj().T
+        original_eigenvalues = torch.linalg.eigvalsh(gram).real.clamp_min(1.0e-12)
+        whitened_eigenvalues = torch.linalg.eigvalsh(whitened).real.clamp_min(1.0e-12)
+    original_condition = original_eigenvalues.max() / original_eigenvalues.min()
+    whitened_condition = whitened_eigenvalues.max() / whitened_eigenvalues.min()
+    assert whitened_condition < original_condition
+    torch.testing.assert_close(
+        whitened.diagonal().real.mean(),
+        torch.tensor(1.0, dtype=torch.float64),
+    )
+
+
+def test_temporally_whitened_model_is_causal_and_has_live_transform() -> None:
+    torch.manual_seed(501)
+    config = replace(_small_laplace_mamba(), aligned_content_rank=2)
+    model = TemporallyWhitenedImagePostFusionAlphabet2LM(config)
+    tokens = torch.randint(config.vocab_size, (2, 17))
+    changed = tokens.clone()
+    changed[:, 10:] = torch.randint(config.vocab_size, changed[:, 10:].shape)
+    with torch.no_grad():
+        expected = model(tokens[:, :-1])
+        actual = model(changed[:, :-1])
+    torch.testing.assert_close(actual[:, :10], expected[:, :10], atol=1.0e-6, rtol=0.0)
+    logits = model(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(
+        logits.flatten(0, 1),
+        tokens[:, 1:].flatten(),
+    )
+    loss.backward()
+    block = cast("TemporallyWhitenedImagePostFusionAlphabet2Block", model.blocks[0])
+    for parameter in (
+        block.temporal_whitening.weight_real,
+        block.temporal_whitening.weight_imag,
+        block.content_analysis.weight_real,
+        block.excitation_reader.weight_real,
+        block.query_reader.weight_real,
+        block.memory.raw_damping,
+    ):
+        assert parameter.grad is not None
+        assert torch.isfinite(parameter.grad).all()
+
+    full = TemporallyWhitenedImagePostFusionAlphabet2LM(
+        LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=2)
+    )
+    assert sum(parameter.numel() for parameter in full.parameters()) == 49_630_163
 
 
 def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:
