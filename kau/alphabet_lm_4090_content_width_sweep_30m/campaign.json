@@ -1,7 +1,7 @@
 {
   "schema": "lnet.kau.alphabet_lm.content_width_sweep_30m.v1",
-  "campaign_id": "kau-j2-content-width-r32-r64-p32-l19-30m-s501-v1",
-  "output_namespace": "alphabet-lm-4090-content-width-sweep-30m-v1",
+  "campaign_id": "kau-j2-content-width-r32-r64-p32-l19-30m-s501-v2",
+  "output_namespace": "alphabet-lm-4090-content-width-sweep-30m-v2",
   "architecture": {
     "K_complex": 256,
     "K_real_dof": 512,
@@ -62,6 +62,6 @@
   "wandb": {
     "entity": "daehwa",
     "project": "alphabet-lm-viability",
-    "group": "ALPHABET-LM-RTX4090-ContentWidthSweep-30M-S501-v1"
+    "group": "ALPHABET-LM-RTX4090-ContentWidthSweep-30M-S501-v2"
   }
 }

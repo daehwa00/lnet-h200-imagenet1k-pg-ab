@@ -18,16 +18,16 @@
       }
     }
   },
-  "campaign_id": "kau-j2-content-width-r32-r64-p32-l19-30m-s501-v1",
-  "campaign_manifest_sha256": "672b8d93d8c6e7c87a925ef388a9ecfee18ddaedc3b25a9ef951d7a0f487c4f6",
+  "campaign_id": "kau-j2-content-width-r32-r64-p32-l19-30m-s501-v2",
+  "campaign_manifest_sha256": "70f41bdbd8abd8ff461e8687257649f52a65af042e504659cb3b3fb251cb3421",
   "diagnostics": {
     "final_validation_only": true,
     "j2_r16_reference_parameters": 49591251,
     "j2_r16_reference_validation_loss_30m": 5.502673654939814
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-ContentWidthSweep-30M-S501-v1",
-  "output_namespace": "alphabet-lm-4090-content-width-sweep-30m-v1",
+  "group": "ALPHABET-LM-RTX4090-ContentWidthSweep-30M-S501-v2",
+  "output_namespace": "alphabet-lm-4090-content-width-sweep-30m-v2",
   "parameter_counts": {
     "j2-p32r32-l19-fromscratch-30m": 69942227,
     "j2-p32r64-l19-fromscratch-30m": 110644179
@@ -36,7 +36,7 @@
   "runs": {
     "j2-p32r32-l19-fromscratch-30m": {
       "display_name": "RTX4090-S501-J2-P32R32-L19-30M",
-      "id": "e59690b0bee5ff57",
+      "id": "a273f4cc46d824cd",
       "tags": [
         "RTX4090",
         "ALPHABET2",
@@ -48,7 +48,7 @@
     },
     "j2-p32r64-l19-fromscratch-30m": {
       "display_name": "RTX4090-S501-J2-P32R64-L19-30M",
-      "id": "9c9e3edeb803567d",
+      "id": "e97c6008f14c816e",
       "tags": [
         "RTX4090",
         "ALPHABET2",
