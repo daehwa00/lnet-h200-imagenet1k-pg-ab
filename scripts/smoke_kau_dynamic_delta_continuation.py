@@ -5,6 +5,7 @@ from __future__ import annotations
 
 # pyright: reportPrivateUsage=false
 import argparse
+from pathlib import Path
 from typing import cast
 
 import torch
@@ -22,7 +23,7 @@ from lnet.alphabet_lm import (
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", required=True)
+    parser.add_argument("--checkpoint", type=Path, required=True)
     args = parser.parse_args()
     torch.manual_seed(501)
     config = LaplaceMambaLMConfig(conv_width=3)
