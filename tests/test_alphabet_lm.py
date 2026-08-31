@@ -3155,6 +3155,16 @@ def test_low_rank_aligned_writer_preserves_shared_semantic_families() -> None:
         )
         assert sum(parameter.numel() for parameter in model.parameters()) == parameters
 
+    for width, parameters in ((32, 69_942_227), (64, 110_644_179)):
+        model = ContentAlignedImagePostFusionAlphabet2LM(
+            LaplaceMambaLMConfig(
+                conv_width=3,
+                aligned_content_rank=2,
+                head_width=width,
+            )
+        )
+        assert sum(parameter.numel() for parameter in model.parameters()) == parameters
+
 
 def test_complex_multi_observer_matches_direct_bilinear_form() -> None:
     torch.manual_seed(501)

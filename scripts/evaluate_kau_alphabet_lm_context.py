@@ -54,6 +54,8 @@ def _build(kind: str) -> nn.Module:
         "alphabet2_content_aligned_image_postfusion",
         "alphabet2_content_aligned_j2",
         "alphabet2_content_aligned_j4",
+        "alphabet2_content_aligned_j2_r32",
+        "alphabet2_content_aligned_j2_r64",
         "alphabet2_multi_observer_image_postfusion",
         "alphabet2_read_adapter_image_postfusion",
         "alphabet2_temporal_whitening_image_postfusion",
@@ -69,6 +71,8 @@ def _build(kind: str) -> nn.Module:
             "alphabet2_content_aligned_image_postfusion",
             "alphabet2_content_aligned_j2",
             "alphabet2_content_aligned_j4",
+            "alphabet2_content_aligned_j2_r32",
+            "alphabet2_content_aligned_j2_r64",
         }:
             model_type = ContentAlignedImagePostFusionAlphabet2LM
         elif kind == "alphabet2_multi_observer_image_postfusion":
@@ -97,6 +101,18 @@ def _build(kind: str) -> nn.Module:
             config = LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=2)
         elif kind == "alphabet2_content_aligned_j4":
             config = LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=4)
+        elif kind == "alphabet2_content_aligned_j2_r32":
+            config = LaplaceMambaLMConfig(
+                conv_width=3,
+                aligned_content_rank=2,
+                head_width=32,
+            )
+        elif kind == "alphabet2_content_aligned_j2_r64":
+            config = LaplaceMambaLMConfig(
+                conv_width=3,
+                aligned_content_rank=2,
+                head_width=64,
+            )
         elif kind == "alphabet2_temporal_whitening_image_postfusion":
             config = LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=2)
         return model_type(config)
@@ -2452,6 +2468,8 @@ def main() -> None:
             "alphabet2_content_aligned_image_postfusion",
             "alphabet2_content_aligned_j2",
             "alphabet2_content_aligned_j4",
+            "alphabet2_content_aligned_j2_r32",
+            "alphabet2_content_aligned_j2_r64",
             "alphabet2_multi_observer_image_postfusion",
             "alphabet2_read_adapter_image_postfusion",
             "alphabet2_temporal_whitening_image_postfusion",
@@ -2561,6 +2579,8 @@ def main() -> None:
         "alphabet2_content_aligned_image_postfusion",
         "alphabet2_content_aligned_j2",
         "alphabet2_content_aligned_j4",
+        "alphabet2_content_aligned_j2_r32",
+        "alphabet2_content_aligned_j2_r64",
         "alphabet2_multi_observer_image_postfusion",
         "alphabet2_read_adapter_image_postfusion",
         "alphabet2_temporal_whitening_image_postfusion",
