@@ -1,0 +1,77 @@
+{
+  "architecture": {
+    "K_complex": 256,
+    "K_real_dof": 512,
+    "delta_hidden": 32,
+    "delta_range": [
+      0.5,
+      2.0
+    ],
+    "layers": 19,
+    "pole_modes": 32,
+    "vector_width": 16
+  },
+  "campaign_id": "kau-dense-vector-exact-dynamic-delta-p32r16-l19-30m-s501-v1",
+  "campaign_manifest_sha256": "41e514492f6e0f461883db6835fd12a3567e0ba908ae7d12fc19d4870f0bce29",
+  "diagnostics": {
+    "dense_reference_parameters": 64105427,
+    "dense_reference_validation_loss_100m": 4.839462909301234,
+    "final_validation_only": true
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-DynamicDelta-30M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-dynamic-delta-30m-v1",
+  "parameter_counts": {
+    "dense-vector-exact-dynamic-delta-p32r16-l19-fromscratch-30m": 64441043
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "dense-vector-exact-dynamic-delta-p32r16-l19-fromscratch-30m": {
+      "display_name": "RTX4090-S501-Dense-Vector-Exact-Dynamic-Delta-P32R16-L19-30M",
+      "id": "67d8b48f4ed67450",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "DenseWrite",
+        "DynamicDelta",
+        "ExactZOH",
+        "FromScratch",
+        "30M"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1",
+  "source": {
+    "checkpoint_initialization": false,
+    "initialization": "seed501_from_scratch_exact_dense_function",
+    "injection": "exact_zoh_gamma_from_same_delta",
+    "post_fusion": "image_gated_widely_linear",
+    "query": "dense_strict_complex_causal_k3",
+    "read": "coordinate_preserving_conjugate_complex_q",
+    "state": "fixed_lambda_vector_laplace_PxR",
+    "synthesis": "dense_strict_complex_PR_to_K",
+    "transition": "mandatory_exact_polewise_content_conditioned_delta",
+    "write": "dense_strict_complex_causal_k3"
+  },
+  "total_parameter_counts": {
+    "dense-vector-exact-dynamic-delta-p32r16-l19-fromscratch-30m": 64441043
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "dense-vector-exact-dynamic-delta-p32r16-l19-fromscratch-30m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 30000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

@@ -511,6 +511,8 @@ class LaplaceMambaLMConfig:
     head_width: int = 16
     aligned_content_rank: int = 1
     observer_count: int = 8
+    dynamic_delta_hidden: int = 32
+    dynamic_delta_log_bound: float = math.log(2.0)
     conv_width: int = 4
     context_length: int = 2_048
     scan_fp32: bool = True
@@ -529,12 +531,17 @@ class LaplaceMambaLMConfig:
             self.head_width,
             self.aligned_content_rank,
             self.observer_count,
+            self.dynamic_delta_hidden,
             self.conv_width,
             self.context_length,
         )
         if any(value <= 0 for value in integers):
             raise ValueError("invalid Laplace-Mamba configuration")
-        if self.model_width % 2 or self.minimum_half_life >= self.maximum_half_life:
+        if (
+            self.model_width % 2
+            or self.minimum_half_life >= self.maximum_half_life
+            or self.dynamic_delta_log_bound <= 0.0
+        ):
             raise ValueError("invalid Laplace-Mamba width or pole lifetime")
 
     @property
@@ -2219,14 +2226,20 @@ class FixedComplexPoleMemory1D(nn.Module):
         if damping_control is not None and clock_step is not None:
             raise ValueError("dynamic damping and semantic clock are mutually exclusive")
         if clock_step is not None:
-            if clock_step.shape != drive_real.shape[:2]:
-                raise ValueError("semantic clock must match the B,T pole drive axes")
+            shared_shape = drive_real.shape[:2]
+            pole_shape = (*shared_shape, self.modes)
+            if clock_step.shape == shared_shape:
+                active_clock = clock_step.unsqueeze(-1)
+            elif clock_step.shape == pole_shape:
+                active_clock = clock_step
+            else:
+                raise ValueError("semantic clock must match B,T or B,T,P pole axes")
             damping = self.damping().to(device=drive_real.device, dtype=scan_dtype)
             frequency = self.frequency().to(device=drive_real.device, dtype=scan_dtype)
             coefficients = discrete_pole_real2d(
                 damping.view(1, 1, -1),
                 frequency.view(1, 1, -1),
-                clock_step.to(scan_dtype).unsqueeze(-1),
+                active_clock.to(scan_dtype),
             )
         elif damping_control is None:
             coefficients = self.coefficients()
@@ -3248,6 +3261,35 @@ class PoleAxisTemporalWhitening(nn.Module):
         )
 
 
+class PoleWiseDynamicDelta(nn.Module):
+    """Advance each fixed Laplace mode on a content-conditioned positive clock."""
+
+    def __init__(
+        self,
+        modes: int,
+        poles: int,
+        *,
+        hidden: int,
+        log_bound: float,
+    ) -> None:
+        super().__init__()
+        if min(modes, poles, hidden) <= 0 or log_bound <= 0.0:
+            raise ValueError("invalid pole-wise dynamic delta configuration")
+        self.poles = int(poles)
+        self.log_bound = float(log_bound)
+        self.norm = ComplexRMSNorm(modes)
+        self.input = nn.Linear(2 * modes, hidden, bias=False)
+        self.output = nn.Linear(hidden, self.poles, bias=False)
+        nn.init.xavier_uniform_(self.input.weight)
+        nn.init.zeros_(self.output.weight)
+
+    def forward(self, real: Tensor, imag: Tensor) -> Tensor:
+        unit_real, unit_imag = self.norm(real, imag)
+        hidden = functional.silu(self.input(torch.cat((unit_real, unit_imag), dim=-1)))
+        log_delta = self.log_bound * torch.tanh(self.output(hidden))
+        return torch.exp(log_delta)
+
+
 class MultiObserverImagePostFusionAlphabet2Block(nn.Module):
     """Keep dense writes and observe VectorPoles with full bilinear forms."""
 
@@ -3381,6 +3423,37 @@ class TemporallyWhitenedImagePostFusionAlphabet2Block(
         return self.post_fusion(*merged)
 
 
+class DynamicDeltaImagePostFusionAlphabet2Block(VectorImagePostFusionAlphabet2Block):
+    """Use dense writes and reads with exact content-conditioned Laplace time."""
+
+    def __init__(self, config: LaplaceMambaLMConfig) -> None:
+        super().__init__(config)
+        # The zero-output controller must not perturb the established Dense
+        # initialization sequence merely by being constructed.
+        with torch.random.fork_rng(devices=[]):
+            self.delta = PoleWiseDynamicDelta(
+                self.complex_width,
+                config.pole_modes,
+                hidden=config.dynamic_delta_hidden,
+                log_bound=config.dynamic_delta_log_bound,
+            )
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        excitation, query = self._analyze(real, imag)
+        clock_step = self.delta(real, imag)
+        state = self.memory(*excitation, clock_step=clock_step)
+        selected = (
+            query[0] * state[0] + query[1] * state[1],
+            query[0] * state[1] - query[1] * state[0],
+        )
+        memory = self.synthesis(
+            selected[0].flatten(-2),
+            selected[1].flatten(-2),
+        )
+        merged = self._merge_memory((real, imag), memory)
+        return self.post_fusion(*merged)
+
+
 class VectorImagePostFusionAlphabet2LM(nn.Module):
     """Complex LM with image-ALPHABET fusion around selective VectorPoles."""
 
@@ -3457,6 +3530,12 @@ class TemporallyWhitenedImagePostFusionAlphabet2LM(VectorImagePostFusionAlphabet
     """J2 ALPHABET with separate transport and temporal observation bases."""
 
     block_type = TemporallyWhitenedImagePostFusionAlphabet2Block
+
+
+class DynamicDeltaImagePostFusionAlphabet2LM(VectorImagePostFusionAlphabet2LM):
+    """Dense Vector ALPHABET with mandatory exact pole-wise dynamic time."""
+
+    block_type = DynamicDeltaImagePostFusionAlphabet2Block
 
 
 class LaplaceMambaLM(nn.Module):
@@ -4711,6 +4790,8 @@ __all__ = [
     "ContentAlignedImagePostFusionAlphabet2Block",
     "ContentAlignedImagePostFusionAlphabet2LM",
     "DenseComplexConv1dReader",
+    "DynamicDeltaImagePostFusionAlphabet2Block",
+    "DynamicDeltaImagePostFusionAlphabet2LM",
     "DynamicLowRankWrite",
     "FactorizedTokenRateVectorPoleBlock",
     "FixedComplexPoleMemory1D",
@@ -4731,6 +4812,7 @@ __all__ = [
     "PoleAlignedComplexCausalConv1d",
     "PoleAxisTemporalWhitening",
     "PoleWiseComplexReadAdapter",
+    "PoleWiseDynamicDelta",
     "QueryConditionedLowRankReadout",
     "ReadAdaptedImagePostFusionAlphabet2Block",
     "ReadAdaptedImagePostFusionAlphabet2LM",

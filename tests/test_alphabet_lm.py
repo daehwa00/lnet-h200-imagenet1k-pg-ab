@@ -25,6 +25,8 @@ from lnet.alphabet_lm import (
     ComplexMultiObserverRead,
     ContentAlignedImagePostFusionAlphabet2Block,
     ContentAlignedImagePostFusionAlphabet2LM,
+    DynamicDeltaImagePostFusionAlphabet2Block,
+    DynamicDeltaImagePostFusionAlphabet2LM,
     DynamicLowRankWrite,
     FactorizedTokenRateVectorPoleBlock,
     FixedComplexPoleMemory1D,
@@ -3337,6 +3339,47 @@ def test_temporally_whitened_model_is_causal_and_has_live_transform() -> None:
         LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=2)
     )
     assert sum(parameter.numel() for parameter in full.parameters()) == 49_630_163
+
+
+def test_polewise_unit_delta_matches_fixed_vectorpole_recurrence() -> None:
+    config = _small_laplace_mamba()
+    block = DynamicDeltaImagePostFusionAlphabet2Block(config)
+    shape = (2, 7, config.pole_modes, config.head_width)
+    drive = torch.randn(shape), torch.randn(shape)
+    fixed = block.memory(*drive)
+    clock = torch.ones(shape[:3])
+    dynamic = block.memory(*drive, clock_step=clock)
+    torch.testing.assert_close(dynamic[0], fixed[0])
+    torch.testing.assert_close(dynamic[1], fixed[1])
+
+
+def test_dynamic_delta_starts_as_exact_dense_function_and_has_live_gradient() -> None:
+    torch.manual_seed(501)
+    config = _small_laplace_mamba()
+    dense = VectorImagePostFusionAlphabet2LM(config).eval()
+    torch.manual_seed(501)
+    dynamic = DynamicDeltaImagePostFusionAlphabet2LM(config).eval()
+    tokens = torch.randint(config.vocab_size, (2, 17))
+    with torch.no_grad():
+        torch.testing.assert_close(dynamic(tokens), dense(tokens))
+        block = cast("DynamicDeltaImagePostFusionAlphabet2Block", dynamic.blocks[0])
+        real = dynamic.embedding_real(tokens)
+        imag = dynamic.embedding_imag(tokens)
+        torch.testing.assert_close(block.delta(real, imag), torch.ones(2, 17, 2))
+
+    dynamic.train()
+    logits = dynamic(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(
+        logits.flatten(0, 1),
+        tokens[:, 1:].flatten(),
+    )
+    loss.backward()
+    block = cast("DynamicDeltaImagePostFusionAlphabet2Block", dynamic.blocks[0])
+    assert block.delta.output.weight.grad is not None
+    assert torch.isfinite(block.delta.output.weight.grad).all()
+
+    full = DynamicDeltaImagePostFusionAlphabet2LM(LaplaceMambaLMConfig(conv_width=3))
+    assert sum(parameter.numel() for parameter in full.parameters()) == 64_441_043
 
 
 def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:

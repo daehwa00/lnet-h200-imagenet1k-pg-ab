@@ -28,6 +28,7 @@ from lnet.alphabet_lm import (
     CausalCNNPoleMemory,
     ComplexHighwayLaplaceMambaLM,
     ContentAlignedImagePostFusionAlphabet2LM,
+    DynamicDeltaImagePostFusionAlphabet2LM,
     DynamicLowRankWrite,
     FactorizedTokenRateVectorPoleBlock,
     ImagePostFusionAlphabet2LM,
@@ -1195,6 +1196,8 @@ def _build(
     laplace_mamba_head_width: int = 16,
     laplace_mamba_content_rank: int = 1,
     laplace_mamba_observers: int = 8,
+    laplace_mamba_delta_hidden: int = 32,
+    laplace_mamba_delta_log_bound: float = 0.6931471805599453,
     laplace_mamba_conv_width: int = 4,
     pole_initialization: str = "legacy",
     memory_banks: int = 1,
@@ -1306,6 +1309,7 @@ def _build(
         "alphabet2_multi_observer_image_postfusion",
         "alphabet2_read_adapter_image_postfusion",
         "alphabet2_temporal_whitening_image_postfusion",
+        "alphabet2_dynamic_delta_image_postfusion",
     }:
         config = LaplaceMambaLMConfig(
             vocab_size=vocab_size,
@@ -1315,6 +1319,8 @@ def _build(
             head_width=laplace_mamba_head_width,
             aligned_content_rank=laplace_mamba_content_rank,
             observer_count=laplace_mamba_observers,
+            dynamic_delta_hidden=laplace_mamba_delta_hidden,
+            dynamic_delta_log_bound=laplace_mamba_delta_log_bound,
             conv_width=laplace_mamba_conv_width,
         )
         model_type: type[nn.Module]
@@ -1332,6 +1338,8 @@ def _build(
             model_type = ReadAdaptedImagePostFusionAlphabet2LM
         elif model_name == "alphabet2_temporal_whitening_image_postfusion":
             model_type = TemporallyWhitenedImagePostFusionAlphabet2LM
+        elif model_name == "alphabet2_dynamic_delta_image_postfusion":
+            model_type = DynamicDeltaImagePostFusionAlphabet2LM
         else:
             model_type = LaplaceMambaLM
         return model_type(config), {
@@ -1622,6 +1630,7 @@ def main() -> None:
             "alphabet2_multi_observer_image_postfusion",
             "alphabet2_read_adapter_image_postfusion",
             "alphabet2_temporal_whitening_image_postfusion",
+            "alphabet2_dynamic_delta_image_postfusion",
         ),
         required=True,
     )
@@ -1631,6 +1640,8 @@ def main() -> None:
     parser.add_argument("--laplace-mamba-head-width", type=int, default=16)
     parser.add_argument("--laplace-mamba-content-rank", type=int, default=1)
     parser.add_argument("--laplace-mamba-observers", type=int, default=8)
+    parser.add_argument("--laplace-mamba-delta-hidden", type=int, default=32)
+    parser.add_argument("--laplace-mamba-delta-log-bound", type=float, default=math.log(2.0))
     parser.add_argument("--laplace-mamba-conv-width", type=int, default=4)
     parser.add_argument("--run-label")
     parser.add_argument(
@@ -1897,6 +1908,8 @@ def main() -> None:
         laplace_mamba_head_width=args.laplace_mamba_head_width,
         laplace_mamba_content_rank=args.laplace_mamba_content_rank,
         laplace_mamba_observers=args.laplace_mamba_observers,
+        laplace_mamba_delta_hidden=args.laplace_mamba_delta_hidden,
+        laplace_mamba_delta_log_bound=args.laplace_mamba_delta_log_bound,
         laplace_mamba_conv_width=args.laplace_mamba_conv_width,
         pole_initialization=args.pole_initialization,
         memory_banks=args.memory_banks,
@@ -2224,6 +2237,8 @@ def main() -> None:
             "laplace_mamba_head_width": args.laplace_mamba_head_width,
             "laplace_mamba_content_rank": args.laplace_mamba_content_rank,
             "laplace_mamba_observers": args.laplace_mamba_observers,
+            "laplace_mamba_delta_hidden": args.laplace_mamba_delta_hidden,
+            "laplace_mamba_delta_log_bound": args.laplace_mamba_delta_log_bound,
             "laplace_mamba_conv_width": args.laplace_mamba_conv_width,
             "post_hidden": args.post_hidden,
             "memory_readout": args.memory_readout,
@@ -2466,6 +2481,8 @@ def main() -> None:
         "laplace_mamba_head_width": args.laplace_mamba_head_width,
         "laplace_mamba_content_rank": args.laplace_mamba_content_rank,
         "laplace_mamba_observers": args.laplace_mamba_observers,
+        "laplace_mamba_delta_hidden": args.laplace_mamba_delta_hidden,
+        "laplace_mamba_delta_log_bound": args.laplace_mamba_delta_log_bound,
         "laplace_mamba_conv_width": args.laplace_mamba_conv_width,
         "pole_initialization": args.pole_initialization,
         "memory_banks": args.memory_banks,
