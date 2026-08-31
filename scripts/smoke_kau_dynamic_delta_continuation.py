@@ -10,6 +10,7 @@ from typing import cast
 import torch
 from torch import nn
 from torch.nn import functional
+from train_h200_alphabet_lm_10m import _initialize_laplace_continuation
 
 from lnet.alphabet_lm import (
     DynamicDeltaImagePostFusionAlphabet2Block,
@@ -17,7 +18,6 @@ from lnet.alphabet_lm import (
     LaplaceMambaLMConfig,
     VectorImagePostFusionAlphabet2LM,
 )
-from scripts.train_h200_alphabet_lm_10m import _initialize_laplace_continuation
 
 
 def main() -> None:
