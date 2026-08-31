@@ -32,6 +32,7 @@ from lnet.alphabet_lm import (
     LowRankDecaySelector,
     MultiObserverImagePostFusionAlphabet2LM,
     QueryConditionedLowRankReadout,
+    ReadAdaptedImagePostFusionAlphabet2LM,
     SemanticEdgePoleMemory,
     SlowCausalCNNPoleMemory,
     TensorProductPoleMemory1D,
@@ -53,6 +54,7 @@ def _build(kind: str) -> nn.Module:
         "alphabet2_content_aligned_j2",
         "alphabet2_content_aligned_j4",
         "alphabet2_multi_observer_image_postfusion",
+        "alphabet2_read_adapter_image_postfusion",
     }:
         model_type: type[nn.Module]
         if kind == "laplace_mamba_complex_highway":
@@ -69,6 +71,8 @@ def _build(kind: str) -> nn.Module:
             model_type = ContentAlignedImagePostFusionAlphabet2LM
         elif kind == "alphabet2_multi_observer_image_postfusion":
             model_type = MultiObserverImagePostFusionAlphabet2LM
+        elif kind == "alphabet2_read_adapter_image_postfusion":
+            model_type = ReadAdaptedImagePostFusionAlphabet2LM
         else:
             model_type = LaplaceMambaLM
         config = (
@@ -80,6 +84,7 @@ def _build(kind: str) -> nn.Module:
                 "alphabet2_content_aligned_j2",
                 "alphabet2_content_aligned_j4",
                 "alphabet2_multi_observer_image_postfusion",
+                "alphabet2_read_adapter_image_postfusion",
             }
             else LaplaceMambaLMConfig()
         )
@@ -2441,6 +2446,7 @@ def main() -> None:
             "alphabet2_content_aligned_j2",
             "alphabet2_content_aligned_j4",
             "alphabet2_multi_observer_image_postfusion",
+            "alphabet2_read_adapter_image_postfusion",
         ),
         required=True,
     )
@@ -2548,6 +2554,7 @@ def main() -> None:
         "alphabet2_content_aligned_j2",
         "alphabet2_content_aligned_j4",
         "alphabet2_multi_observer_image_postfusion",
+        "alphabet2_read_adapter_image_postfusion",
     }:
         handles = _zero_memory(model)
         results["memory_zero"] = _evaluate(

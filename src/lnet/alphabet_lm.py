@@ -3167,6 +3167,36 @@ class ComplexMultiObserverRead(nn.Module):
         )
 
 
+class PoleWiseComplexReadAdapter(nn.Module):
+    """Learn a strict-complex read basis independently at every pole."""
+
+    def __init__(self, poles: int, vector_width: int) -> None:
+        super().__init__()
+        if min(poles, vector_width) <= 0:
+            raise ValueError("invalid pole-wise read adapter dimensions")
+        self.poles = int(poles)
+        self.vector_width = int(vector_width)
+        shape = (self.poles, self.vector_width, self.vector_width)
+        self.weight_real = nn.Parameter(torch.zeros(shape))
+        self.weight_imag = nn.Parameter(torch.zeros(shape))
+        with torch.no_grad():
+            identity = torch.eye(self.vector_width).expand(self.poles, -1, -1)
+            self.weight_real.copy_(identity)
+
+    def forward(self, state: ComplexField) -> ComplexField:
+        if (
+            state[0].shape != state[1].shape
+            or state[0].shape[-2:] != (self.poles, self.vector_width)
+        ):
+            raise ValueError("pole-wise read adapter inputs are incompatible")
+        return (
+            torch.einsum("prs,btps->btpr", self.weight_real, state[0])
+            - torch.einsum("prs,btps->btpr", self.weight_imag, state[1]),
+            torch.einsum("prs,btps->btpr", self.weight_real, state[1])
+            + torch.einsum("prs,btps->btpr", self.weight_imag, state[0]),
+        )
+
+
 class MultiObserverImagePostFusionAlphabet2Block(nn.Module):
     """Keep dense writes and observe VectorPoles with full bilinear forms."""
 
@@ -3242,6 +3272,32 @@ class MultiObserverImagePostFusionAlphabet2Block(nn.Module):
         return self.post_fusion(*merged)
 
 
+class ReadAdaptedImagePostFusionAlphabet2Block(VectorImagePostFusionAlphabet2Block):
+    """Keep Dense VectorPole intact and align only its read coordinate system."""
+
+    def __init__(self, config: LaplaceMambaLMConfig) -> None:
+        super().__init__(config)
+        self.read_adapter = PoleWiseComplexReadAdapter(
+            config.pole_modes,
+            config.head_width,
+        )
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        excitation, query = self._analyze(real, imag)
+        state = self.memory(*excitation)
+        adapted_state = self.read_adapter(state)
+        selected = (
+            query[0] * adapted_state[0] + query[1] * adapted_state[1],
+            query[0] * adapted_state[1] - query[1] * adapted_state[0],
+        )
+        memory = self.synthesis(
+            selected[0].flatten(-2),
+            selected[1].flatten(-2),
+        )
+        merged = self._merge_memory((real, imag), memory)
+        return self.post_fusion(*merged)
+
+
 class VectorImagePostFusionAlphabet2LM(nn.Module):
     """Complex LM with image-ALPHABET fusion around selective VectorPoles."""
 
@@ -3306,6 +3362,12 @@ class MultiObserverImagePostFusionAlphabet2LM(VectorImagePostFusionAlphabet2LM):
     """Dense-write Vector ALPHABET with a direct multi-observer read."""
 
     block_type = MultiObserverImagePostFusionAlphabet2Block
+
+
+class ReadAdaptedImagePostFusionAlphabet2LM(VectorImagePostFusionAlphabet2LM):
+    """Dense Vector ALPHABET with identity-initialized pole-wise read bases."""
+
+    block_type = ReadAdaptedImagePostFusionAlphabet2Block
 
 
 class LaplaceMambaLM(nn.Module):
@@ -4578,7 +4640,10 @@ __all__ = [
     "MultiObserverImagePostFusionAlphabet2Block",
     "MultiObserverImagePostFusionAlphabet2LM",
     "PoleAlignedComplexCausalConv1d",
+    "PoleWiseComplexReadAdapter",
     "QueryConditionedLowRankReadout",
+    "ReadAdaptedImagePostFusionAlphabet2Block",
+    "ReadAdaptedImagePostFusionAlphabet2LM",
     "SemanticEdgePoleMemory",
     "SlowCausalCNNPoleMemory",
     "StrictComplexCausalConv1d",

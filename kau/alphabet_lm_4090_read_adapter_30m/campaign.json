@@ -1,0 +1,55 @@
+{
+  "schema": "lnet.kau.alphabet_lm.read_adapter_30m.v1",
+  "campaign_id": "kau-dense-vector-read-adapter-p32r16-l19-30m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-read-adapter-30m-v1",
+  "architecture": {
+    "K_complex": 256,
+    "K_real_dof": 512,
+    "layers": 19,
+    "pole_modes": 32,
+    "vector_width": 16
+  },
+  "source": {
+    "initialization": "seed501_from_scratch",
+    "checkpoint_initialization": false,
+    "write": "dense_strict_complex_causal_k3",
+    "query": "dense_strict_complex_causal_k3",
+    "state": "fixed_vector_laplace_PxR",
+    "read_adapter": "identity_initialized_pole_wise_strict_complex_RxR",
+    "read": "coordinate_preserving_conjugate_complex_q",
+    "synthesis": "dense_strict_complex_PR_to_K",
+    "memory_merge": "detached_rms_match_scalar_beta",
+    "post_fusion": "image_gated_widely_linear"
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 30000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "dense-vector-read-adapter-p32r16-l19-fromscratch-30m"
+    ]
+  },
+  "parameter_counts": {
+    "dense-vector-read-adapter-p32r16-l19-fromscratch-30m": 64416723
+  },
+  "diagnostics": {
+    "final_validation_only": true,
+    "dense_reference_parameters": 64105427,
+    "dense_reference_validation_loss_100m": 4.839462909301234
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-ReadAdapter-30M-S501-v1"
+  }
+}

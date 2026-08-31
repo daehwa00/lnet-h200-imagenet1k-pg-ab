@@ -36,6 +36,7 @@ from lnet.alphabet_lm import (
     LowRankDecaySelector,
     MultiObserverImagePostFusionAlphabet2LM,
     QueryConditionedLowRankReadout,
+    ReadAdaptedImagePostFusionAlphabet2LM,
     SlowCausalCNNPoleMemory,
     TokenRateVectorPoleBlock,
     VectorImagePostFusionAlphabet2LM,
@@ -1302,6 +1303,7 @@ def _build(
         "alphabet2_vector_image_postfusion",
         "alphabet2_content_aligned_image_postfusion",
         "alphabet2_multi_observer_image_postfusion",
+        "alphabet2_read_adapter_image_postfusion",
     }:
         config = LaplaceMambaLMConfig(
             vocab_size=vocab_size,
@@ -1324,6 +1326,8 @@ def _build(
             model_type = ContentAlignedImagePostFusionAlphabet2LM
         elif model_name == "alphabet2_multi_observer_image_postfusion":
             model_type = MultiObserverImagePostFusionAlphabet2LM
+        elif model_name == "alphabet2_read_adapter_image_postfusion":
+            model_type = ReadAdaptedImagePostFusionAlphabet2LM
         else:
             model_type = LaplaceMambaLM
         return model_type(config), {
@@ -1612,6 +1616,7 @@ def main() -> None:
             "alphabet2_vector_image_postfusion",
             "alphabet2_content_aligned_image_postfusion",
             "alphabet2_multi_observer_image_postfusion",
+            "alphabet2_read_adapter_image_postfusion",
         ),
         required=True,
     )

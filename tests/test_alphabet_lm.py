@@ -42,6 +42,8 @@ from lnet.alphabet_lm import (
     PoleAlignedComplexCausalConv1d,
     PoleSpecificCausalVectorReader,
     QueryConditionedLowRankReadout,
+    ReadAdaptedImagePostFusionAlphabet2Block,
+    ReadAdaptedImagePostFusionAlphabet2LM,
     SemanticEdgePoleMemory,
     SlowCausalCNNPoleMemory,
     TensorProductPoleMemory1D,
@@ -3209,6 +3211,56 @@ def test_multi_observer_image_postfusion_is_causal_and_parameter_matched() -> No
         LaplaceMambaLMConfig(conv_width=3, observer_count=8)
     )
     assert sum(parameter.numel() for parameter in full.parameters()) == 64_105_427
+
+
+def test_read_adapter_starts_as_exact_dense_vectorpole_function() -> None:
+    torch.manual_seed(501)
+    config = _small_laplace_mamba()
+    dense = VectorImagePostFusionAlphabet2LM(config).eval()
+    torch.manual_seed(501)
+    adapted = ReadAdaptedImagePostFusionAlphabet2LM(config).eval()
+    tokens = torch.randint(config.vocab_size, (2, 11))
+    with torch.no_grad():
+        torch.testing.assert_close(adapted(tokens), dense(tokens))
+    block = cast("ReadAdaptedImagePostFusionAlphabet2Block", adapted.blocks[0])
+    identity = torch.eye(config.head_width).expand(config.pole_modes, -1, -1)
+    torch.testing.assert_close(block.read_adapter.weight_real, identity)
+    torch.testing.assert_close(
+        block.read_adapter.weight_imag,
+        torch.zeros_like(block.read_adapter.weight_imag),
+    )
+
+
+def test_read_adapter_is_causal_and_receives_finite_gradients() -> None:
+    torch.manual_seed(501)
+    config = _small_laplace_mamba()
+    model = ReadAdaptedImagePostFusionAlphabet2LM(config)
+    tokens = torch.randint(config.vocab_size, (2, 17))
+    changed = tokens.clone()
+    changed[:, 10:] = torch.randint(config.vocab_size, changed[:, 10:].shape)
+    with torch.no_grad():
+        expected = model(tokens[:, :-1])
+        actual = model(changed[:, :-1])
+    torch.testing.assert_close(actual[:, :10], expected[:, :10], atol=1.0e-6, rtol=0.0)
+    logits = model(tokens[:, :-1])
+    loss = torch.nn.functional.cross_entropy(
+        logits.flatten(0, 1),
+        tokens[:, 1:].flatten(),
+    )
+    loss.backward()
+    block = cast("ReadAdaptedImagePostFusionAlphabet2Block", model.blocks[0])
+    for parameter in (
+        block.read_adapter.weight_real,
+        block.read_adapter.weight_imag,
+        block.reader.weight_real,
+        block.memory.raw_damping,
+        block.synthesis.weight_real,
+    ):
+        assert parameter.grad is not None
+        assert torch.isfinite(parameter.grad).all()
+
+    full = ReadAdaptedImagePostFusionAlphabet2LM(LaplaceMambaLMConfig(conv_width=3))
+    assert sum(parameter.numel() for parameter in full.parameters()) == 64_416_723
 
 
 def test_opaque_recurrence_compiles_time_major_noncontiguous_input() -> None:
