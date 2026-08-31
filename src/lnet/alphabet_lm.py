@@ -694,12 +694,21 @@ class DenseComplexConv1dReader(nn.Module):
         shape = (output_modes, input_modes, kernel_size)
         self.weight_real = nn.Parameter(torch.empty(shape))
         self.weight_imag = nn.Parameter(torch.empty(shape))
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        nn.init.xavier_uniform_(self.weight_real)
+        nn.init.xavier_uniform_(self.weight_imag)
+        with torch.no_grad():
+            self.weight_real.mul_(math.sqrt(0.5))
+            self.weight_imag.mul_(math.sqrt(0.5))
 
     @classmethod
     def from_factorized(
         cls, source: CausalFactorizedComplexConv1dReader
     ) -> DenseComplexConv1dReader:
-        dense = cls(source.input_modes, source.output_modes, kernel_size=source.kernel_size)
+        with torch.random.fork_rng(devices=[]):
+            dense = cls(source.input_modes, source.output_modes, kernel_size=source.kernel_size)
         with torch.no_grad():
             dense.input_norm.weight.copy_(source.input_norm.weight)
             dense.weight_real.copy_(
@@ -2783,17 +2792,10 @@ class VectorImagePostFusionAlphabet2Block(nn.Module):
         self.complex_width = config.model_width // 2
         self.value_width = config.inner_complex_width
         self.active_width = 2 * self.value_width
-        self.input_norm = ComplexRMSNorm(
-            self.complex_width,
-            epsilon=config.rms_epsilon,
-        )
-        self.analysis = PackedComplexLinear(
+        self.reader = DenseComplexConv1dReader(
             self.complex_width,
             self.active_width,
-        )
-        self.reader = ComplexDepthwiseCausalConv1d(
-            self.active_width,
-            config.conv_width,
+            kernel_size=config.conv_width,
         )
         self.memory = FixedComplexPoleMemory1D(
             config.pole_modes,
@@ -2816,7 +2818,7 @@ class VectorImagePostFusionAlphabet2Block(nn.Module):
 
     def reset_parameters(self) -> None:
         with torch.no_grad():
-            self.input_norm.weight.fill_(math.sqrt(2.0))
+            self.reader.input_norm.weight.fill_(math.sqrt(2.0))
         _scale_image_postfusion_output_(self.post_fusion, self.config.layers)
 
     def _analyze(
@@ -2824,9 +2826,7 @@ class VectorImagePostFusionAlphabet2Block(nn.Module):
         real: Tensor,
         imag: Tensor,
     ) -> tuple[ComplexField, ComplexField]:
-        normalized = self.input_norm(real, imag)
-        active_real, active_imag = self.analysis(*normalized)
-        active_real, active_imag = self.reader(active_real, active_imag)
+        active_real, active_imag = self.reader(real, imag)
         excitation_real, query_real = active_real.split(self.value_width, dim=-1)
         excitation_imag, query_imag = active_imag.split(self.value_width, dim=-1)
         batch, steps, _width = excitation_real.shape

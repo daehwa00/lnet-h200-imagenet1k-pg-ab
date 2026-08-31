@@ -19,7 +19,7 @@
   "source": {
     "initialization": "seed501_from_scratch",
     "checkpoint_initialization": false,
-    "reader": "joint_strict_complex_causal_k3_E_Q",
+    "reader": "joint_dense_strict_complex_causal_k3_E_Q",
     "state": "vector_laplace_PxR",
     "read": "coordinate_preserving_conjugate_complex_Q",
     "synthesis": "strict_complex",
@@ -45,7 +45,7 @@
     ]
   },
   "parameter_counts": {
-    "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": 44308947
+    "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": 64076243
   },
   "diagnostics": {
     "final_validation_only": true,

@@ -3002,8 +3002,6 @@ def test_vector_image_postfusion_alphabet2_is_causal_and_has_live_paths() -> Non
     for parameter in (
         model.embedding_real.weight,
         model.embedding_imag.weight,
-        block.analysis.weight_real,
-        block.analysis.weight_imag,
         block.reader.weight_real,
         block.reader.weight_imag,
         block.memory.raw_damping,
@@ -3037,9 +3035,9 @@ def test_vector_image_postfusion_uses_exact_coordinate_preserving_complex_query(
     torch.testing.assert_close(actual[0], expected[0])
     torch.testing.assert_close(actual[1], expected[1])
 
-    full = VectorImagePostFusionAlphabet2LM(LaplaceMambaLMConfig())
+    full = VectorImagePostFusionAlphabet2LM(LaplaceMambaLMConfig(conv_width=3))
     assert len(full.blocks) == 19
-    assert sum(parameter.numel() for parameter in full.parameters()) == 44_377_043
+    assert sum(parameter.numel() for parameter in full.parameters()) == 64_105_427
     assert not hasattr(full.blocks[0], "address_width")
     assert not hasattr(full.blocks[0], "direct_scale")
     assert not hasattr(full.blocks[0], "gate_projection")

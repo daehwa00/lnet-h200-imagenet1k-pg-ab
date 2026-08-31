@@ -14,7 +14,7 @@
     }
   },
   "campaign_id": "kau-vector-image-postfusion-alphabet2-p32r16-l19-100m-s501-v1",
-  "campaign_manifest_sha256": "b66d95fe45edb50876b599a22ce9a713edd9b12677b8bd45b776e4d58291d177",
+  "campaign_manifest_sha256": "94e549270aba5718fd909372f144b63b64f416b404fe8892094615248a1ee600",
   "diagnostics": {
     "final_validation_only": true,
     "mamba1_reference_parameters": 48987136,
@@ -25,7 +25,7 @@
   "group": "ALPHABET-LM-RTX4090-VectorImagePostFusionAlphabet2-100M-S501-v1",
   "output_namespace": "alphabet-lm-4090-vector-image-postfusion-alphabet2-v1",
   "parameter_counts": {
-    "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": 44308947
+    "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": 64076243
   },
   "project": "alphabet-lm-viability",
   "runs": {
@@ -50,12 +50,12 @@
     "memory_merge": "detached_rms_match_scalar_beta",
     "post_fusion": "image_gated_widely_linear",
     "read": "coordinate_preserving_conjugate_complex_Q",
-    "reader": "joint_strict_complex_causal_k3_E_Q",
+    "reader": "joint_dense_strict_complex_causal_k3_E_Q",
     "state": "vector_laplace_PxR",
     "synthesis": "strict_complex"
   },
   "total_parameter_counts": {
-    "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": 44308947
+    "vector-image-postfusion-alphabet2-p32r16-l19-fromscratch-100m": 64076243
   },
   "training": {
     "checkpoint_updates": 25,

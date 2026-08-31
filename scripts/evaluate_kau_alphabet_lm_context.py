@@ -57,7 +57,12 @@ def _build(kind: str) -> nn.Module:
             model_type = VectorImagePostFusionAlphabet2LM
         else:
             model_type = LaplaceMambaLM
-        return model_type(LaplaceMambaLMConfig())
+        config = (
+            LaplaceMambaLMConfig(conv_width=3)
+            if kind == "alphabet2_vector_image_postfusion"
+            else LaplaceMambaLMConfig()
+        )
+        return model_type(config)
     if kind == "mamba":
         return MambaLM(MambaLMConfig())
     if kind == "mamba2":
