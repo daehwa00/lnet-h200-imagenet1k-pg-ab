@@ -1,13 +1,13 @@
 {
   "schema": "lnet.kau.alphabet_lm.content_preserving_image_postfusion.v1",
-  "campaign_id": "kau-content-historyonly-noscale-f256-h4p8k64-l19-30m-s501-v8",
+  "campaign_id": "kau-content-historyonly-learnbeta-f256-h4p8k64-l19-30m-s501-v9",
   "output_namespace": "alphabet-lm-4090-content-preserving-image-postfusion-v1",
   "architecture": {
     "K_complex": 256,
     "K_real_dof": 512,
     "layers": 19,
     "variants": {
-      "content-historyonly-noscale-f256-h4p8k64-l19-fromscratch-30m": {
+      "content-historyonly-learnbeta-f256-h4p8k64-l19-fromscratch-30m": {
         "laplace_mamba_layers": 19,
         "laplace_mamba_poles": 32,
         "laplace_mamba_conv_width": 3,
@@ -29,7 +29,7 @@
     "state": "content_h4_k64_p8_exact_history_only",
     "pole_palette": "independent_complete_lifetime_palette_per_content",
     "synthesis": "strict_complex_256_to256",
-    "memory_merge": "direct_H_plus_M_no_rmsmatch_no_beta_zero_init_synthesis",
+    "memory_merge": "detached_rms_match_layerwise_learnable_beta_init_0.01",
     "post_fusion": "image_gated_widely_linear"
   },
   "training": {
@@ -47,11 +47,11 @@
     "warmup_updates": 20,
     "checkpoint_updates": 25,
     "execution": [
-      "content-historyonly-noscale-f256-h4p8k64-l19-fromscratch-30m"
+      "content-historyonly-learnbeta-f256-h4p8k64-l19-fromscratch-30m"
     ]
   },
   "parameter_counts": {
-    "content-historyonly-noscale-f256-h4p8k64-l19-fromscratch-30m": 39901536
+    "content-historyonly-learnbeta-f256-h4p8k64-l19-fromscratch-30m": 39901555
   },
   "diagnostics": {
     "final_validation_only": true,
@@ -63,6 +63,6 @@
   "wandb": {
     "entity": "daehwa",
     "project": "alphabet-lm-viability",
-    "group": "ALPHABET-LM-RTX4090-Content-HistoryOnly-NoScale-F256-H4P8K64-30M-S501-v8"
+    "group": "ALPHABET-LM-RTX4090-Content-HistoryOnly-LearnBeta-F256-H4P8K64-30M-S501-v9"
   }
 }

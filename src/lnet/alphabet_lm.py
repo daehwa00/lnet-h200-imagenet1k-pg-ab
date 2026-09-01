@@ -3094,6 +3094,7 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
             banks=self.content_width,
         )
         self.synthesis = PackedComplexLinear(self.content_width, self.complex_width)
+        self.memory_scale = nn.Parameter(torch.tensor(self.memory_scale_initial))
         self.post_fusion = GatedComplexPostFusion(
             self.complex_width,
             self.complex_width,
@@ -3103,8 +3104,6 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
     def reset_parameters(self) -> None:
         with torch.no_grad():
             self.feature_reader.input_norm.weight.fill_(math.sqrt(2.0))
-            self.synthesis.weight_real.zero_()
-            self.synthesis.weight_imag.zero_()
         _scale_image_postfusion_output_(self.post_fusion, self.config.layers)
 
     def _analyze(
@@ -3163,7 +3162,9 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
         content, write, read = self._analyze(real, imag)
         selected = self._transport_and_read(content, write, read)
         memory = self.synthesis(*selected)
-        merged = real + memory[0], imag + memory[1]
+        merged = _rms_matched_complex_residual(
+            (real, imag), memory, self.memory_scale, self.config.rms_epsilon
+        )
         return self.post_fusion(*merged)
 
 

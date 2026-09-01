@@ -73,16 +73,10 @@ def test_content_memory_reads_history_before_the_current_write() -> None:
     torch.testing.assert_close(selected[1][:, 0], torch.zeros_like(selected[1][:, 0]))
 
 
-def test_history_residual_starts_at_zero_without_a_scale_parameter() -> None:
+def test_history_residual_has_one_interpretable_layer_scale() -> None:
     model = ContentPreservingImagePostFusionAlphabet2LM(_small_config())
     block = cast("ContentPreservingImagePostFusionAlphabet2Block", model.blocks[0])
-    assert not hasattr(block, "memory_scale")
-    torch.testing.assert_close(
-        block.synthesis.weight_real, torch.zeros_like(block.synthesis.weight_real)
-    )
-    torch.testing.assert_close(
-        block.synthesis.weight_imag, torch.zeros_like(block.synthesis.weight_imag)
-    )
+    torch.testing.assert_close(block.memory_scale, torch.tensor(0.01))
 
 
 def test_every_head_starts_with_the_complete_pole_palette() -> None:
@@ -115,6 +109,6 @@ def test_projection_free_candidate_has_declared_capacity() -> None:
     baseline_parameters = sum(parameter.numel() for parameter in baseline.parameters())
     candidate_parameters = sum(parameter.numel() for parameter in candidate.parameters())
     assert baseline_parameters == 64_105_427
-    assert candidate_parameters == 39_901_536
+    assert candidate_parameters == 39_901_555
     assert candidate_parameters < 0.82 * 48_987_136
-    assert not any(name.endswith("memory_scale") for name, _ in candidate.named_parameters())
+    assert sum(name.endswith("memory_scale") for name, _ in candidate.named_parameters()) == 19
