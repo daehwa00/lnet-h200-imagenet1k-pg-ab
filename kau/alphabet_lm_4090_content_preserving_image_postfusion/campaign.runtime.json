@@ -4,24 +4,20 @@
     "K_real_dof": 512,
     "layers": 19,
     "variants": {
-      "hybrid-content-h4p4k64-dense-p32r8-l19-fromscratch-30m": {
-        "content_complex_state_per_layer": 1024,
+      "content-historyonly-f256-h4p8k64-l19-fromscratch-30m": {
+        "complex_state_per_layer": 2048,
         "content_feature_width": 256,
         "content_preserving_heads": 4,
-        "content_preserving_poles_per_head": 4,
+        "content_preserving_poles_per_head": 8,
         "content_preserving_width_per_head": 64,
-        "dense_complex_state_per_layer": 256,
-        "hybrid_dense_poles": 32,
-        "hybrid_dense_width": 8,
         "laplace_mamba_conv_width": 3,
         "laplace_mamba_layers": 19,
-        "laplace_mamba_poles": 16,
-        "total_complex_state_per_layer": 1280
+        "laplace_mamba_poles": 16
       }
     }
   },
-  "campaign_id": "kau-hybrid-content-h4p4k64-dense-p32r8-l19-30m-s501-v6",
-  "campaign_manifest_sha256": "b0d1ef58ac1bb9762eb0080ff503c083ef04f09c55c1f3b99d7d09e846ac5e9c",
+  "campaign_id": "kau-content-historyonly-f256-h4p8k64-l19-30m-s501-v7",
+  "campaign_manifest_sha256": "41a483a67381023902fdd802d0da50a87c72908a143e1171f0650137fdc0d401",
   "diagnostics": {
     "dense_vector_reference_parameters": 64105427,
     "dense_vector_reference_validation_loss": 4.83946,
@@ -30,22 +26,23 @@
     "mamba1_reference_validation_loss": 4.330902905240708
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-Hybrid-ContentH4P4K64-DenseP32R8-30M-S501-v6",
+  "group": "ALPHABET-LM-RTX4090-Content-HistoryOnly-F256-H4P8K64-30M-S501-v7",
   "output_namespace": "alphabet-lm-4090-content-preserving-image-postfusion-v1",
   "parameter_counts": {
-    "hybrid-content-h4p4k64-dense-p32r8-l19-fromscratch-30m": 56989718
+    "content-historyonly-f256-h4p8k64-l19-fromscratch-30m": 39901536
   },
   "project": "alphabet-lm-viability",
   "runs": {
-    "hybrid-content-h4p4k64-dense-p32r8-l19-fromscratch-30m": {
-      "display_name": "RTX4090-S501-Hybrid-ContentH4P4K64-DenseP32R8-L19-30M",
-      "id": "5fb516904f00f8cf",
+    "content-historyonly-f256-h4p8k64-l19-fromscratch-30m": {
+      "display_name": "RTX4090-S501-Content-HistoryOnly-F256-H4P8K64-L19-30M",
+      "id": "716c0ea45feda9c5",
       "tags": [
         "RTX4090",
         "ALPHABET2",
-        "Hybrid",
-        "ContentH4P4K64",
-        "DenseP32R8",
+        "ContentPreserving",
+        "HistoryOnly",
+        "F256",
+        "H4P8K64",
         "FixedLaplace",
         "ImagePostFusion",
         "FromScratch",
@@ -55,26 +52,25 @@
   },
   "schema": "lnet.kau.alphabet_lm.content_preserving_image_postfusion.runtime.v1",
   "source": {
-    "analysis": "content_K3_256_to256_plus_dense_K3_256_to_E256_Q256",
-    "branch_merge": "independent_detached_rms_match_beta_C_beta_D_then_single_postfusion",
+    "analysis": "dense_strict_complex_causal_k3_256_to_F256_with_X_equal_F",
     "checkpoint_initialization": false,
     "content": "projection_free_persistent_complex_h4k64",
     "initialization": "seed501_from_scratch",
-    "memory_merge": "detached_rms_match_scalar_beta",
+    "memory_merge": "detached_rms_match_fixed_gain_0.01_no_learnable_beta",
     "pole_palette": "independent_complete_lifetime_palette_per_content",
     "post_fusion": "image_gated_widely_linear",
-    "read": "head_shared_complex_C_h4p4_plus_dense_complex_Q_p32r8",
-    "state": "content_h4_k64_p4_plus_dense_p32_r8",
-    "synthesis": "independent_content_256_to256_and_dense_256_to256",
-    "write": "head_shared_unnormalized_real_B_h4p4_plus_dense_complex_E_p32r8"
+    "read": "head_shared_complex_C_h4p8_on_prewrite_history_state",
+    "state": "content_h4_k64_p8_exact_history_only",
+    "synthesis": "strict_complex_256_to256",
+    "write": "head_shared_unnormalized_real_B_h4p8"
   },
   "total_parameter_counts": {
-    "hybrid-content-h4p4k64-dense-p32r8-l19-fromscratch-30m": 56989718
+    "content-historyonly-f256-h4p8k64-l19-fromscratch-30m": 39901536
   },
   "training": {
     "checkpoint_updates": 25,
     "execution": [
-      "hybrid-content-h4p4k64-dense-p32r8-l19-fromscratch-30m"
+      "content-historyonly-f256-h4p8k64-l19-fromscratch-30m"
     ],
     "global_sequences": 32,
     "gradient_clip": 1.0,

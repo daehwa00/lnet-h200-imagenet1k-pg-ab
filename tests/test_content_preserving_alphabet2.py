@@ -58,6 +58,21 @@ def test_content_preserving_block_keeps_state_budget_and_group_axes() -> None:
     assert captured[0].shape == (2, 9, 64)
 
 
+def test_content_memory_reads_history_before_the_current_write() -> None:
+    model = ContentPreservingImagePostFusionAlphabet2LM(_small_config())
+    block = cast("ContentPreservingImagePostFusionAlphabet2Block", model.blocks[0])
+    real = torch.randn(2, 9, 16)
+    imag = torch.randn_like(real)
+    content, write, read = block._analyze(  # pyright: ignore[reportPrivateUsage]
+        real, imag
+    )
+    selected = block._transport_and_read(  # pyright: ignore[reportPrivateUsage]
+        content, write, read
+    )
+    torch.testing.assert_close(selected[0][:, 0], torch.zeros_like(selected[0][:, 0]))
+    torch.testing.assert_close(selected[1][:, 0], torch.zeros_like(selected[1][:, 0]))
+
+
 def test_every_head_starts_with_the_complete_pole_palette() -> None:
     model = ContentPreservingImagePostFusionAlphabet2LM(_small_config())
     block = cast("ContentPreservingImagePostFusionAlphabet2Block", model.blocks[0])
@@ -88,5 +103,6 @@ def test_projection_free_candidate_has_declared_capacity() -> None:
     baseline_parameters = sum(parameter.numel() for parameter in baseline.parameters())
     candidate_parameters = sum(parameter.numel() for parameter in candidate.parameters())
     assert baseline_parameters == 64_105_427
-    assert candidate_parameters == 39_901_555
+    assert candidate_parameters == 39_901_536
     assert candidate_parameters < 0.82 * 48_987_136
+    assert not any(name.endswith("memory_scale") for name, _ in candidate.named_parameters())

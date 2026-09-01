@@ -2763,7 +2763,7 @@ def _scale_image_postfusion_output_(
 def _rms_matched_complex_residual(
     hidden: ComplexField,
     memory: ComplexField,
-    gain: Tensor,
+    gain: Tensor | float,
     epsilon: float,
 ) -> ComplexField:
     hidden_energy = hidden[0].float().square().add(hidden[1].float().square()).mean(
@@ -2775,7 +2775,8 @@ def _rms_matched_complex_residual(
         keepdim=True,
     )
     rms_ratio = torch.sqrt(hidden_energy + epsilon) * torch.rsqrt(memory_energy + epsilon)
-    scale = gain.to(dtype=hidden[0].dtype) * rms_ratio.detach().to(dtype=hidden[0].dtype)
+    active_gain = torch.as_tensor(gain, device=hidden[0].device, dtype=hidden[0].dtype)
+    scale = active_gain * rms_ratio.detach().to(dtype=hidden[0].dtype)
     return hidden[0] + scale * memory[0], hidden[1] + scale * memory[1]
 
 
@@ -3093,7 +3094,7 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
             banks=self.content_width,
         )
         self.synthesis = PackedComplexLinear(self.content_width, self.complex_width)
-        self.memory_scale = nn.Parameter(torch.tensor(self.memory_scale_initial))
+        self.memory_scale = self.memory_scale_initial
         self.post_fusion = GatedComplexPostFusion(
             self.complex_width,
             self.complex_width,
@@ -3132,6 +3133,13 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
         drive_real = (write.unsqueeze(-2) * content[0].unsqueeze(-1)).flatten(2)
         drive_imag = (write.unsqueeze(-2) * content[1].unsqueeze(-1)).flatten(2)
         state_real, state_imag = self.memory(drive_real, drive_imag)
+        _decay_real, _decay_imag, gamma_real, gamma_imag = self.memory.coefficients()
+        gamma_real = gamma_real.to(device=drive_real.device, dtype=drive_real.dtype)
+        gamma_imag = gamma_imag.to(device=drive_real.device, dtype=drive_real.dtype)
+        forcing_real = gamma_real * drive_real - gamma_imag * drive_imag
+        forcing_imag = gamma_real * drive_imag + gamma_imag * drive_real
+        state_real = state_real - forcing_real
+        state_imag = state_imag - forcing_imag
         state_shape = (
             *state_real.shape[:2],
             self.heads,

@@ -1,40 +1,35 @@
 {
   "schema": "lnet.kau.alphabet_lm.content_preserving_image_postfusion.v1",
-  "campaign_id": "kau-hybrid-content-h4p4k64-dense-p32r8-l19-30m-s501-v6",
+  "campaign_id": "kau-content-historyonly-f256-h4p8k64-l19-30m-s501-v7",
   "output_namespace": "alphabet-lm-4090-content-preserving-image-postfusion-v1",
   "architecture": {
     "K_complex": 256,
     "K_real_dof": 512,
     "layers": 19,
     "variants": {
-      "hybrid-content-h4p4k64-dense-p32r8-l19-fromscratch-30m": {
+      "content-historyonly-f256-h4p8k64-l19-fromscratch-30m": {
         "laplace_mamba_layers": 19,
         "laplace_mamba_poles": 16,
         "laplace_mamba_conv_width": 3,
         "content_preserving_heads": 4,
-        "content_preserving_poles_per_head": 4,
+        "content_preserving_poles_per_head": 8,
         "content_preserving_width_per_head": 64,
         "content_feature_width": 256,
-        "hybrid_dense_poles": 32,
-        "hybrid_dense_width": 8,
-        "content_complex_state_per_layer": 1024,
-        "dense_complex_state_per_layer": 256,
-        "total_complex_state_per_layer": 1280
+        "complex_state_per_layer": 2048
       }
     }
   },
   "source": {
     "initialization": "seed501_from_scratch",
     "checkpoint_initialization": false,
-    "analysis": "content_K3_256_to256_plus_dense_K3_256_to_E256_Q256",
+    "analysis": "dense_strict_complex_causal_k3_256_to_F256_with_X_equal_F",
     "content": "projection_free_persistent_complex_h4k64",
-    "write": "head_shared_unnormalized_real_B_h4p4_plus_dense_complex_E_p32r8",
-    "read": "head_shared_complex_C_h4p4_plus_dense_complex_Q_p32r8",
-    "state": "content_h4_k64_p4_plus_dense_p32_r8",
+    "write": "head_shared_unnormalized_real_B_h4p8",
+    "read": "head_shared_complex_C_h4p8_on_prewrite_history_state",
+    "state": "content_h4_k64_p8_exact_history_only",
     "pole_palette": "independent_complete_lifetime_palette_per_content",
-    "synthesis": "independent_content_256_to256_and_dense_256_to256",
-    "branch_merge": "independent_detached_rms_match_beta_C_beta_D_then_single_postfusion",
-    "memory_merge": "detached_rms_match_scalar_beta",
+    "synthesis": "strict_complex_256_to256",
+    "memory_merge": "detached_rms_match_fixed_gain_0.01_no_learnable_beta",
     "post_fusion": "image_gated_widely_linear"
   },
   "training": {
@@ -52,11 +47,11 @@
     "warmup_updates": 20,
     "checkpoint_updates": 25,
     "execution": [
-      "hybrid-content-h4p4k64-dense-p32r8-l19-fromscratch-30m"
+      "content-historyonly-f256-h4p8k64-l19-fromscratch-30m"
     ]
   },
   "parameter_counts": {
-    "hybrid-content-h4p4k64-dense-p32r8-l19-fromscratch-30m": 56989718
+    "content-historyonly-f256-h4p8k64-l19-fromscratch-30m": 39901536
   },
   "diagnostics": {
     "final_validation_only": true,
@@ -68,6 +63,6 @@
   "wandb": {
     "entity": "daehwa",
     "project": "alphabet-lm-viability",
-    "group": "ALPHABET-LM-RTX4090-Hybrid-ContentH4P4K64-DenseP32R8-30M-S501-v6"
+    "group": "ALPHABET-LM-RTX4090-Content-HistoryOnly-F256-H4P8K64-30M-S501-v7"
   }
 }
