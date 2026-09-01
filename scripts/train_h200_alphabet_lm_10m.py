@@ -1256,6 +1256,7 @@ def _build(
     laplace_mamba_delta_hidden: int = 32,
     laplace_mamba_delta_log_bound: float = 0.6931471805599453,
     laplace_mamba_conv_width: int = 4,
+    laplace_mamba_parallel_static_scan: bool = False,
     pole_initialization: str = "legacy",
     memory_banks: int = 1,
     bank_pole_modes: int = 128,
@@ -1390,6 +1391,7 @@ def _build(
             dynamic_delta_hidden=laplace_mamba_delta_hidden,
             dynamic_delta_log_bound=laplace_mamba_delta_log_bound,
             conv_width=laplace_mamba_conv_width,
+            parallel_static_scan=laplace_mamba_parallel_static_scan,
         )
         model_type: type[nn.Module]
         if model_name == "laplace_mamba_complex_highway":
@@ -1722,6 +1724,7 @@ def main() -> None:
     parser.add_argument("--laplace-mamba-delta-hidden", type=int, default=32)
     parser.add_argument("--laplace-mamba-delta-log-bound", type=float, default=math.log(2.0))
     parser.add_argument("--laplace-mamba-conv-width", type=int, default=4)
+    parser.add_argument("--laplace-mamba-parallel-static-scan", action="store_true")
     parser.add_argument("--run-label")
     parser.add_argument(
         "--pole-initialization",
@@ -2004,6 +2007,7 @@ def main() -> None:
         laplace_mamba_delta_hidden=args.laplace_mamba_delta_hidden,
         laplace_mamba_delta_log_bound=args.laplace_mamba_delta_log_bound,
         laplace_mamba_conv_width=args.laplace_mamba_conv_width,
+        laplace_mamba_parallel_static_scan=args.laplace_mamba_parallel_static_scan,
         pole_initialization=args.pole_initialization,
         memory_banks=args.memory_banks,
         bank_pole_modes=args.bank_pole_modes,
@@ -2338,6 +2342,9 @@ def main() -> None:
             "laplace_mamba_delta_hidden": args.laplace_mamba_delta_hidden,
             "laplace_mamba_delta_log_bound": args.laplace_mamba_delta_log_bound,
             "laplace_mamba_conv_width": args.laplace_mamba_conv_width,
+            "laplace_mamba_parallel_static_scan": (
+                args.laplace_mamba_parallel_static_scan
+            ),
             "freeze_laplace_poles": args.freeze_laplace_poles,
             "post_hidden": args.post_hidden,
             "memory_readout": args.memory_readout,

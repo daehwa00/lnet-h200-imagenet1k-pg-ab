@@ -4,7 +4,7 @@
     "K_real_dof": 512,
     "layers": 19,
     "variants": {
-      "content-fullcausal-noscale-f256-h4p8k64-l19-fromscratch-30m": {
+      "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m": {
         "complex_state_per_layer": 2048,
         "content_feature_width": 256,
         "content_preserving_heads": 4,
@@ -12,12 +12,13 @@
         "content_preserving_width_per_head": 64,
         "laplace_mamba_conv_width": 3,
         "laplace_mamba_layers": 19,
+        "laplace_mamba_parallel_static_scan": true,
         "laplace_mamba_poles": 32
       }
     }
   },
-  "campaign_id": "kau-content-fullcausal-noscale-f256-h4p8k64-l19-30m-s501-v12",
-  "campaign_manifest_sha256": "51fd4aff2d941cd0b2a75f02d43647f3bdce070a92c51350bc472bb6f192f05a",
+  "campaign_id": "kau-content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-30m-s501-v13",
+  "campaign_manifest_sha256": "9461187fc9deae4996c7306fd2fcacf8c8960d846faf14c56bcf92033ba66c85",
   "diagnostics": {
     "dense_vector_reference_parameters": 64105427,
     "dense_vector_reference_validation_loss": 4.83946,
@@ -26,23 +27,24 @@
     "mamba1_reference_validation_loss": 4.330902905240708
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-Content-FullCausal-NoScale-F256-H4P8K64-30M-S501-v12",
+  "group": "ALPHABET-LM-RTX4090-Content-FullCausal-Assoc-LearnBeta-F256-H4P8K64-30M-S501-v13",
   "output_namespace": "alphabet-lm-4090-content-preserving-image-postfusion-v1",
   "parameter_counts": {
-    "content-fullcausal-noscale-f256-h4p8k64-l19-fromscratch-30m": 39901536
+    "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m": 39901555
   },
   "project": "alphabet-lm-viability",
   "runs": {
-    "content-fullcausal-noscale-f256-h4p8k64-l19-fromscratch-30m": {
-      "display_name": "RTX4090-S501-Content-FullCausal-NoScale-F256-H4P8K64-L19-30M",
-      "id": "5dda5fbd0e394bd4",
+    "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m": {
+      "display_name": "RTX4090-S501-Content-FullCausal-Assoc-LearnBeta-F256-H4P8K64-L19-30M",
+      "id": "8ec3ab5990a83e5e",
       "tags": [
         "RTX4090",
         "ALPHABET2",
         "ContentPreserving",
         "FullCausalState",
-        "NoScale",
-        "ZeroInitSynthesis",
+        "AssociativeScan",
+        "LearnBeta",
+        "RMSMatch",
         "RealB",
         "P8PerHead",
         "F256",
@@ -60,21 +62,22 @@
     "checkpoint_initialization": false,
     "content": "projection_free_persistent_complex_h4k64",
     "initialization": "seed501_from_scratch",
-    "memory_merge": "direct_H_plus_M_no_rmsmatch_no_beta_zero_init_synthesis",
+    "memory_merge": "detached_rms_match_layerwise_learnable_beta_init_0.01",
     "pole_palette": "independent_complete_lifetime_palette_per_content",
     "post_fusion": "image_gated_widely_linear",
     "read": "head_shared_complex_C_h4p8_on_full_causal_state",
+    "scan": "chunked_triton_associative_prefix_1024x2_forward_backward",
     "state": "content_h4_k64_p8_current_plus_history",
     "synthesis": "strict_complex_256_to256",
     "write": "head_shared_unnormalized_real_B_h4p8"
   },
   "total_parameter_counts": {
-    "content-fullcausal-noscale-f256-h4p8k64-l19-fromscratch-30m": 39901536
+    "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m": 39901555
   },
   "training": {
     "checkpoint_updates": 25,
     "execution": [
-      "content-fullcausal-noscale-f256-h4p8k64-l19-fromscratch-30m"
+      "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m"
     ],
     "global_sequences": 32,
     "gradient_clip": 1.0,

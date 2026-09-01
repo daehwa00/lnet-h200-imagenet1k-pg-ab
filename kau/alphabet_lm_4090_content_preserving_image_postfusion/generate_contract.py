@@ -16,7 +16,7 @@ RUNTIME = (
     ROOT
     / "kau/alphabet_lm_4090_content_preserving_image_postfusion/campaign.runtime.json"
 )
-LABEL = "content-fullcausal-noscale-f256-h4p8k64-l19-fromscratch-30m"
+LABEL = "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m"
 
 
 def _render() -> str:
@@ -31,7 +31,8 @@ def _render() -> str:
         or variant["content_preserving_width_per_head"] != 64
         or variant["content_feature_width"] != 256
         or variant["complex_state_per_layer"] != 2_048
-        or manifest["parameter_counts"][LABEL] != 39_901_536
+        or not variant["laplace_mamba_parallel_static_scan"]
+        or manifest["parameter_counts"][LABEL] != 39_901_555
     ):
         raise RuntimeError("invalid content-preserving ALPHABET campaign")
     campaign_id = manifest["campaign_id"]
@@ -54,14 +55,15 @@ def _render() -> str:
                 "id": hashlib.sha256(
                     f"{campaign_id}\0{LABEL}:seed501".encode()
                 ).hexdigest()[:16],
-                "display_name": "RTX4090-S501-Content-FullCausal-NoScale-F256-H4P8K64-L19-30M",
+                "display_name": "RTX4090-S501-Content-FullCausal-Assoc-LearnBeta-F256-H4P8K64-L19-30M",
                 "tags": [
                     "RTX4090",
                     "ALPHABET2",
                     "ContentPreserving",
                     "FullCausalState",
-                    "NoScale",
-                    "ZeroInitSynthesis",
+                    "AssociativeScan",
+                    "LearnBeta",
+                    "RMSMatch",
                     "RealB",
                     "P8PerHead",
                     "F256",

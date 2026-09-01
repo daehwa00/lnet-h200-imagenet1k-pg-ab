@@ -15,6 +15,9 @@ from .complex_scan_transitions import ComplexRMSNorm, complex_rms_unit
 from .pac_complex_layers import PackedComplexLinear, WidelyLinear
 from .pac_gated_post_fusion import GatedComplexPostFusion
 from .pac_real2d_math import discrete_pole_real2d, pole_gamma_from_control_real2d
+from .pac_triton_parallel_static_recurrence import (
+    chunked_parallel_static_recurrence_packed,
+)
 from .pac_triton_recurrence_op import pac_triton_recurrence_opaque_op
 
 ComplexField = tuple[Tensor, Tensor]
@@ -525,6 +528,7 @@ class LaplaceMambaLMConfig:
     minimum_half_life: float = 16.0
     maximum_half_life: float = 4_096.0
     activation_checkpoint: bool = True
+    parallel_static_scan: bool = False
 
     def __post_init__(self) -> None:
         integers = (
@@ -2180,11 +2184,13 @@ class FixedComplexPoleMemory1D(nn.Module):
         maximum_half_life: float = 8_192.0,
         decay_dominant_fraction: float = 0.5,
         banks: int = 1,
+        parallel_static_scan: bool = False,
     ) -> None:
         super().__init__()
         self.modes = int(modes)
         self.context_length = int(context_length)
         self.scan_fp32 = bool(scan_fp32)
+        self.parallel_static_scan = bool(parallel_static_scan)
         if modes % banks:
             raise ValueError("fixed-pole modes must divide evenly across banks")
         modes_per_bank = modes // banks
@@ -2296,6 +2302,10 @@ class FixedComplexPoleMemory1D(nn.Module):
     ) -> ComplexField:
         if drive_real.shape != drive_imag.shape:
             raise ValueError("fixed-pole memory expects matching complex coordinates")
+        if self.parallel_static_scan and (
+            damping_control is not None or clock_step is not None
+        ):
+            raise ValueError("parallel static scan does not accept dynamic pole controls")
         vector_width = 1
         output_shape = drive_real.shape
         if drive_real.ndim >= 4 and drive_real.shape[2] == self.modes:
@@ -2329,12 +2339,22 @@ class FixedComplexPoleMemory1D(nn.Module):
         shape = (1, 1, self.modes * vector_width)
         active_decay_real = dr.view(shape).expand_as(input_real) if dr.ndim == 1 else dr
         active_decay_imag = di.view(shape).expand_as(input_imag) if di.ndim == 1 else di
-        state_real, state_imag = pac_triton_recurrence_opaque_op(
-            active_decay_real,
-            active_decay_imag,
-            input_real,
-            input_imag,
-        )
+        if self.parallel_static_scan:
+            if dr.ndim != 1 or di.ndim != 1:
+                raise RuntimeError("parallel static scan requires mode-static decay")
+            packed_states = chunked_parallel_static_recurrence_packed(
+                dr,
+                di,
+                torch.cat((input_real, input_imag), dim=-1),
+            )
+            state_real, state_imag = packed_states.split(input_real.shape[-1], dim=-1)
+        else:
+            state_real, state_imag = pac_triton_recurrence_opaque_op(
+                active_decay_real,
+                active_decay_imag,
+                input_real,
+                input_imag,
+            )
         state_real = state_real.to(drive_real.dtype).reshape(output_shape)
         state_imag = state_imag.to(drive_imag.dtype).reshape(output_shape)
         return state_real, state_imag
@@ -3092,8 +3112,10 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
             minimum_half_life=config.minimum_half_life,
             maximum_half_life=config.maximum_half_life,
             banks=self.content_width,
+            parallel_static_scan=config.parallel_static_scan,
         )
         self.synthesis = PackedComplexLinear(self.content_width, self.complex_width)
+        self.memory_scale = nn.Parameter(torch.tensor(self.memory_scale_initial))
         self.post_fusion = GatedComplexPostFusion(
             self.complex_width,
             self.complex_width,
@@ -3103,8 +3125,6 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
     def reset_parameters(self) -> None:
         with torch.no_grad():
             self.feature_reader.input_norm.weight.fill_(math.sqrt(2.0))
-            self.synthesis.weight_real.zero_()
-            self.synthesis.weight_imag.zero_()
         _scale_image_postfusion_output_(self.post_fusion, self.config.layers)
 
     def _analyze(
@@ -3156,7 +3176,9 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
         content, write, read = self._analyze(real, imag)
         selected = self._transport_and_read(content, write, read)
         memory = self.synthesis(*selected)
-        merged = real + memory[0], imag + memory[1]
+        merged = _rms_matched_complex_residual(
+            (real, imag), memory, self.memory_scale, self.config.rms_epsilon
+        )
         return self.post_fusion(*merged)
 
 
