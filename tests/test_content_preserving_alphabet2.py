@@ -40,8 +40,8 @@ def test_content_preserving_block_keeps_state_budget_and_group_axes() -> None:
         real, imag
     )
     assert content[0].shape == (2, 9, 2, 8)
-    assert write.shape == (2, 9, 2, 8, 4)
-    assert read[0].shape == (2, 9, 2, 8, 4)
+    assert write.shape == (2, 9, 2, 4)
+    assert read[0].shape == (2, 9, 2, 4)
 
     captured: list[torch.Tensor] = []
     def capture_state(
@@ -88,5 +88,5 @@ def test_projection_free_candidate_has_declared_capacity() -> None:
     baseline_parameters = sum(parameter.numel() for parameter in baseline.parameters())
     candidate_parameters = sum(parameter.numel() for parameter in candidate.parameters())
     assert baseline_parameters == 64_105_427
-    assert candidate_parameters == 79_163_155
-    assert candidate_parameters > baseline_parameters
+    assert candidate_parameters == 39_901_555
+    assert candidate_parameters < 0.82 * 48_987_136

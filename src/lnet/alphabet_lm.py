@@ -3077,8 +3077,8 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
             self.content_width,
             kernel_size=config.conv_width,
         )
-        self.write_router = nn.Linear(2 * self.content_width, self.state_modes)
-        self.read_router = PackedComplexLinear(self.content_width, self.state_modes)
+        self.write_router = nn.Linear(2 * self.content_width, self.total_poles)
+        self.read_router = PackedComplexLinear(self.content_width, self.total_poles)
         self.memory = FixedComplexPoleMemory1D(
             self.state_modes,
             context_length=config.context_length,
@@ -3112,13 +3112,7 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
         read_real, read_imag = self.read_router(content_real, content_imag)
         batch, steps, _width = content_real.shape
         content_shape = (batch, steps, self.heads, self.width_per_head)
-        route_shape = (
-            batch,
-            steps,
-            self.heads,
-            self.width_per_head,
-            self.poles_per_head,
-        )
+        route_shape = (batch, steps, self.heads, self.poles_per_head)
         return (
             (content_real.reshape(content_shape), content_imag.reshape(content_shape)),
             write.reshape(route_shape),
@@ -3131,8 +3125,8 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
         write: Tensor,
         read: ComplexField,
     ) -> ComplexField:
-        drive_real = (write * content[0].unsqueeze(-1)).flatten(2)
-        drive_imag = (write * content[1].unsqueeze(-1)).flatten(2)
+        drive_real = (write.unsqueeze(-2) * content[0].unsqueeze(-1)).flatten(2)
+        drive_imag = (write.unsqueeze(-2) * content[1].unsqueeze(-1)).flatten(2)
         state_real, state_imag = self.memory(drive_real, drive_imag)
         state_shape = (
             *state_real.shape[:2],
@@ -3142,8 +3136,14 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
         )
         state_real = state_real.reshape(state_shape)
         state_imag = state_imag.reshape(state_shape)
-        selected_real = (read[0] * state_real + read[1] * state_imag).sum(dim=-1)
-        selected_imag = (read[0] * state_imag - read[1] * state_real).sum(dim=-1)
+        selected_real = (
+            read[0].unsqueeze(-2) * state_real
+            + read[1].unsqueeze(-2) * state_imag
+        ).sum(dim=-1)
+        selected_imag = (
+            read[0].unsqueeze(-2) * state_imag
+            - read[1].unsqueeze(-2) * state_real
+        ).sum(dim=-1)
         return selected_real.flatten(-2), selected_imag.flatten(-2)
 
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:

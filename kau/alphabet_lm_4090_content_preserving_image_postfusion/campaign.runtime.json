@@ -4,7 +4,7 @@
     "K_real_dof": 512,
     "layers": 19,
     "variants": {
-      "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m": {
+      "content-preserving-f256-sharedbc-contentpoles-h4p8k64-l19-fromscratch-30m": {
         "complex_state_per_layer": 2048,
         "content_feature_width": 256,
         "content_preserving_heads": 4,
@@ -16,8 +16,8 @@
       }
     }
   },
-  "campaign_id": "kau-content-preserving-f256-fullroute-h4p8k64-l19-30m-s501-v4",
-  "campaign_manifest_sha256": "626e5050725b6b8a6876bfa1b6eda27b5827bc68bf32f65ce43df7933b8dd457",
+  "campaign_id": "kau-content-preserving-f256-sharedbc-contentpoles-h4p8k64-l19-30m-s501-v5",
+  "campaign_manifest_sha256": "b6c3775425be697579e45e179c1e09d8c95ce78434322466101922535523aa3f",
   "diagnostics": {
     "dense_vector_reference_parameters": 64105427,
     "dense_vector_reference_validation_loss": 4.83946,
@@ -26,21 +26,22 @@
     "mamba1_reference_validation_loss": 4.330902905240708
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-ContentPreserving-F256-FullRoute-H4P8K64-30M-S501-v4",
+  "group": "ALPHABET-LM-RTX4090-ContentPreserving-F256-SharedBC-ContentPoles-H4P8K64-30M-S501-v5",
   "output_namespace": "alphabet-lm-4090-content-preserving-image-postfusion-v1",
   "parameter_counts": {
-    "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m": 79163155
+    "content-preserving-f256-sharedbc-contentpoles-h4p8k64-l19-fromscratch-30m": 39901555
   },
   "project": "alphabet-lm-viability",
   "runs": {
-    "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m": {
-      "display_name": "RTX4090-S501-ContentPreserving-F256-FullRoute-H4P8K64-L19-30M",
-      "id": "dae21feade64faf0",
+    "content-preserving-f256-sharedbc-contentpoles-h4p8k64-l19-fromscratch-30m": {
+      "display_name": "RTX4090-S501-ContentPreserving-F256-SharedBC-ContentPoles-H4P8K64-L19-30M",
+      "id": "b3e4cbcc74cd9651",
       "tags": [
         "RTX4090",
         "ALPHABET2",
         "ContentPreserving",
-        "FullRoute",
+        "SharedBC",
+        "ContentSpecificPoles",
         "F256",
         "H4P8K64",
         "FixedLaplace",
@@ -59,18 +60,18 @@
     "memory_merge": "detached_rms_match_scalar_beta",
     "pole_palette": "independent_complete_lifetime_palette_per_content",
     "post_fusion": "image_gated_widely_linear",
-    "read": "content_specific_unnormalized_conjugate_complex_C_h4k64p8",
-    "state": "content_preserving_complex_h4_k64_p8_fullroute",
+    "read": "head_shared_unnormalized_conjugate_complex_C_h4p8",
+    "state": "content_preserving_complex_h4_k64_p8_with_content_specific_poles",
     "synthesis": "strict_complex_h4k64_to_256",
-    "write": "content_specific_unnormalized_real_B_h4k64p8"
+    "write": "head_shared_unnormalized_real_B_h4p8"
   },
   "total_parameter_counts": {
-    "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m": 79163155
+    "content-preserving-f256-sharedbc-contentpoles-h4p8k64-l19-fromscratch-30m": 39901555
   },
   "training": {
     "checkpoint_updates": 25,
     "execution": [
-      "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m"
+      "content-preserving-f256-sharedbc-contentpoles-h4p8k64-l19-fromscratch-30m"
     ],
     "global_sequences": 32,
     "gradient_clip": 1.0,
