@@ -11,6 +11,7 @@ from typing import Any, Literal, cast
 import torch
 from torch import Tensor, nn
 from torch.nn import functional
+from torch.utils.checkpoint import checkpoint as activation_checkpoint
 
 from .alphabet_lm import FixedComplexPoleMemory1D
 
@@ -104,6 +105,7 @@ class LaplaceSSDMamba2Config:
     maximum_half_life: float = 4_096.0
     scan_fp32: bool = True
     parallel_static_scan: bool = True
+    activation_checkpoint: bool = True
 
     def __post_init__(self) -> None:
         if min(
@@ -158,7 +160,6 @@ class LaplaceSSDMamba2Mixer(nn.Module):
             parallel_static_scan=config.parallel_static_scan,
         )
         self.D = nn.Parameter(torch.ones(self.nheads))
-        self.D._no_weight_decay = True
         try:
             norm_type = importlib.import_module(
                 "mamba_ssm.ops.triton.layernorm_gated"
@@ -185,14 +186,10 @@ class LaplaceSSDMamba2Mixer(nn.Module):
             .reshape(batch, steps, self.nheads, self.poles)
         )
 
-    def forward(
+    def _forward_impl(
         self,
         hidden: Tensor,
-        inference_params: object | None = None,
-        **_kwargs: object,
     ) -> Tensor:
-        if inference_params is not None:
-            raise NotImplementedError("Laplace-SSD inference cache is not implemented")
         batch, steps, _width = hidden.shape
         projected = self.in_proj(hidden)
         z, active = projected.split((self.d_inner, projected.shape[-1] - self.d_inner), dim=-1)
@@ -228,6 +225,21 @@ class LaplaceSSDMamba2Mixer(nn.Module):
         y = y + self.D.to(y.dtype).view(1, 1, self.nheads, 1) * x
         y = self.norm(y.flatten(-2), z)
         return self.out_proj(y)
+
+    def forward(
+        self,
+        hidden: Tensor,
+        inference_params: object | None = None,
+        **_kwargs: object,
+    ) -> Tensor:
+        if inference_params is not None:
+            raise NotImplementedError("Laplace-SSD inference cache is not implemented")
+        if self.config.activation_checkpoint and self.training and torch.is_grad_enabled():
+            return cast(
+                "Tensor",
+                activation_checkpoint(self._forward_impl, hidden, use_reentrant=False),
+            )
+        return self._forward_impl(hidden)
 
 
 class LaplaceSSDMamba2LM(nn.Module):
@@ -288,7 +300,12 @@ def build_parameter_matched_mamba(
 
 
 __all__ = [
-    "LaplaceSSDMamba2Config", "LaplaceSSDMamba2LM", "LaplaceSSDMamba2Mixer",
-    "MAMBA_GIT_COMMIT", "MambaLM", "MambaLMConfig",
-    "build_parameter_matched_mamba", "trainable_parameters",
+    "MAMBA_GIT_COMMIT",
+    "LaplaceSSDMamba2Config",
+    "LaplaceSSDMamba2LM",
+    "LaplaceSSDMamba2Mixer",
+    "MambaLM",
+    "MambaLMConfig",
+    "build_parameter_matched_mamba",
+    "trainable_parameters",
 ]
