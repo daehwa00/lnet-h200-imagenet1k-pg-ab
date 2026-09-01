@@ -9,7 +9,7 @@
     "variants": {
       "content-historyonly-f256-h4p8k64-l19-fromscratch-30m": {
         "laplace_mamba_layers": 19,
-        "laplace_mamba_poles": 16,
+        "laplace_mamba_poles": 32,
         "laplace_mamba_conv_width": 3,
         "content_preserving_heads": 4,
         "content_preserving_poles_per_head": 8,

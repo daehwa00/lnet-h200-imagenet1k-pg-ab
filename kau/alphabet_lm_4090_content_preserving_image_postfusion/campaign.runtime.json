@@ -12,12 +12,12 @@
         "content_preserving_width_per_head": 64,
         "laplace_mamba_conv_width": 3,
         "laplace_mamba_layers": 19,
-        "laplace_mamba_poles": 16
+        "laplace_mamba_poles": 32
       }
     }
   },
   "campaign_id": "kau-content-historyonly-f256-h4p8k64-l19-30m-s501-v7",
-  "campaign_manifest_sha256": "41a483a67381023902fdd802d0da50a87c72908a143e1171f0650137fdc0d401",
+  "campaign_manifest_sha256": "b4900e255da572bcec64220d2316ebe6b81398c058cffb7ecaf79d45a53aedf6",
   "diagnostics": {
     "dense_vector_reference_parameters": 64105427,
     "dense_vector_reference_validation_loss": 4.83946,
