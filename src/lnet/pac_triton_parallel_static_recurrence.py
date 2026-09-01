@@ -14,7 +14,6 @@ separate deterministic batch reduction for the static-pole gradient.
 from __future__ import annotations
 
 # pyright: reportCallIssue=false, reportMissingParameterType=false
-# ruff: noqa: ANN001, ANN202, FBT001, N803
 from typing import Final, Protocol
 
 import torch
@@ -321,21 +320,7 @@ def _parallel_forward_impl(
     reverse: bool,
     num_warps: int,
 ) -> Tensor:
-    if (
-        decay_real.ndim != 1
-        or decay_real.numel() == 0
-        or decay_imag.shape != decay_real.shape
-        or packed_input.ndim != 3
-        or packed_input.shape[1] == 0
-        or packed_input.shape[-1] != 2 * decay_real.numel()
-    ):
-        raise ValueError("invalid chunked parallel recurrence inputs")
-    if any(
-        tensor.dtype != torch.float32
-        or tensor.device != packed_input.device
-        for tensor in (decay_real, decay_imag, packed_input)
-    ):
-        raise TypeError("chunked parallel recurrence requires colocated FP32 tensors")
+    _validate_inputs(decay_real, decay_imag, packed_input)
     if num_warps not in _VALID_WARPS:
         message = f"num_warps must be one of {_VALID_WARPS}"
         raise ValueError(message)
@@ -561,16 +546,31 @@ def chunked_parallel_static_recurrence_packed(
 
     if chunk_size <= 0 or chunk_size > _MAX_STEPS:
         raise ValueError(f"chunk size must lie in [1, {_MAX_STEPS}]")
-    _validate_inputs(decay_real, decay_imag, packed_input)
+    if (
+        decay_real.ndim != 1
+        or decay_real.numel() == 0
+        or decay_imag.shape != decay_real.shape
+        or packed_input.ndim != 3
+        or packed_input.shape[1] == 0
+        or packed_input.shape[-1] != 2 * decay_real.numel()
+    ):
+        raise ValueError("invalid chunked parallel recurrence inputs")
+    if any(
+        tensor.dtype != torch.float32
+        or tensor.device != packed_input.device
+        for tensor in (decay_real, decay_imag, packed_input)
+    ):
+        raise TypeError("chunked parallel recurrence requires colocated FP32 tensors")
     modes = decay_real.numel()
     chunks: list[Tensor] = []
     previous: Tensor | None = None
-    for active in packed_input.split(chunk_size, dim=1):
+    for chunk in packed_input.split(chunk_size, dim=1):
+        active_chunk = chunk
         if previous is not None:
             previous_real, previous_imag = previous.split(modes, dim=-1)
             advanced_real = decay_real * previous_real - decay_imag * previous_imag
             advanced_imag = decay_imag * previous_real + decay_real * previous_imag
-            first_real, first_imag = active[:, :1].split(modes, dim=-1)
+            first_real, first_imag = active_chunk[:, :1].split(modes, dim=-1)
             first = torch.cat(
                 (
                     first_real + advanced_real.unsqueeze(1),
@@ -578,11 +578,11 @@ def chunked_parallel_static_recurrence_packed(
                 ),
                 dim=-1,
             )
-            active = torch.cat((first, active[:, 1:]), dim=1)
+            active_chunk = torch.cat((first, active_chunk[:, 1:]), dim=1)
         states = parallel_static_recurrence_packed(
             decay_real,
             decay_imag,
-            active,
+            active_chunk,
             num_warps=num_warps,
         )
         chunks.append(states)
