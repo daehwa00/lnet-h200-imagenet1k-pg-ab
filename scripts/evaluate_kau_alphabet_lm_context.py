@@ -130,6 +130,12 @@ def _build(kind: str) -> nn.Module:
             )
         elif kind == "alphabet2_temporal_whitening_image_postfusion":
             config = LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=2)
+        elif kind == "alphabet2_content_preserving_image_postfusion":
+            config = LaplaceMambaLMConfig(
+                conv_width=3,
+                pole_modes=128,
+                content_preserving_poles_per_head=32,
+            )
         elif kind == "alphabet2_hybrid_content_dense_image_postfusion":
             config = LaplaceMambaLMConfig(
                 conv_width=3,

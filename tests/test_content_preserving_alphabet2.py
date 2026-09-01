@@ -40,8 +40,7 @@ def test_content_preserving_block_keeps_state_budget_and_group_axes() -> None:
         real, imag
     )
     assert content[0].shape == (2, 9, 2, 8)
-    assert write[0].shape == (2, 9, 2, 4)
-    assert write[1].shape == (2, 9, 2, 4)
+    assert write.shape == (2, 9, 2, 4)
     assert read[0].shape == (2, 9, 2, 4)
 
     captured: list[torch.Tensor] = []
@@ -98,8 +97,7 @@ def test_content_preserving_lm_has_finite_forward_and_gradients() -> None:
     assert torch.isfinite(logits).all()
     logits.square().mean().backward()
     assert block.feature_reader.weight_real.grad is not None
-    assert block.write_router.weight_real.grad is not None
-    assert block.write_router.conjugate_real.grad is not None
+    assert block.write_router.weight.grad is not None
     assert block.read_router.weight_real.grad is not None
     assert block.memory.raw_damping.grad is not None
 
@@ -111,6 +109,18 @@ def test_projection_free_candidate_has_declared_capacity() -> None:
     baseline_parameters = sum(parameter.numel() for parameter in baseline.parameters())
     candidate_parameters = sum(parameter.numel() for parameter in candidate.parameters())
     assert baseline_parameters == 64_105_427
-    assert candidate_parameters == 40_213_459
+    assert candidate_parameters == 39_901_555
     assert candidate_parameters < 0.83 * 48_987_136
     assert sum(name.endswith("memory_scale") for name, _ in candidate.named_parameters()) == 19
+
+
+def test_p32_candidate_has_declared_temporal_capacity() -> None:
+    config = LaplaceMambaLMConfig(
+        conv_width=3,
+        pole_modes=128,
+        content_preserving_poles_per_head=32,
+    )
+    candidate = ContentPreservingImagePostFusionAlphabet2LM(config)
+    block = cast("ContentPreservingImagePostFusionAlphabet2Block", candidate.blocks[0])
+    assert block.state_modes == 8_192
+    assert sum(parameter.numel() for parameter in candidate.parameters()) == 42_004_627

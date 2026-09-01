@@ -1,21 +1,21 @@
 {
   "schema": "lnet.kau.alphabet_lm.content_preserving_image_postfusion.v1",
-  "campaign_id": "kau-content-historyonly-complexwlb-f256-h4p8k64-l19-30m-s501-v10",
+  "campaign_id": "kau-content-historyonly-realb-f256-h4p32k64-l19-30m-s501-v11",
   "output_namespace": "alphabet-lm-4090-content-preserving-image-postfusion-v1",
   "architecture": {
     "K_complex": 256,
     "K_real_dof": 512,
     "layers": 19,
     "variants": {
-      "content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m": {
+      "content-historyonly-realb-f256-h4p32k64-l19-fromscratch-30m": {
         "laplace_mamba_layers": 19,
-        "laplace_mamba_poles": 32,
+        "laplace_mamba_poles": 128,
         "laplace_mamba_conv_width": 3,
         "content_preserving_heads": 4,
-        "content_preserving_poles_per_head": 8,
+        "content_preserving_poles_per_head": 32,
         "content_preserving_width_per_head": 64,
         "content_feature_width": 256,
-        "complex_state_per_layer": 2048
+        "complex_state_per_layer": 8192
       }
     }
   },
@@ -24,9 +24,9 @@
     "checkpoint_initialization": false,
     "analysis": "dense_strict_complex_causal_k3_256_to_F256_with_X_equal_F",
     "content": "projection_free_persistent_complex_h4k64",
-    "write": "head_shared_unnormalized_complex_WL_B_h4p8",
-    "read": "head_shared_complex_C_h4p8_on_prewrite_history_state",
-    "state": "content_h4_k64_p8_exact_history_only",
+    "write": "head_shared_unnormalized_real_B_h4p32",
+    "read": "head_shared_complex_C_h4p32_on_prewrite_history_state",
+    "state": "content_h4_k64_p32_exact_history_only",
     "pole_palette": "independent_complete_lifetime_palette_per_content",
     "synthesis": "strict_complex_256_to256",
     "memory_merge": "detached_rms_match_layerwise_learnable_beta_init_0.01",
@@ -47,11 +47,11 @@
     "warmup_updates": 20,
     "checkpoint_updates": 25,
     "execution": [
-      "content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m"
+      "content-historyonly-realb-f256-h4p32k64-l19-fromscratch-30m"
     ]
   },
   "parameter_counts": {
-    "content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m": 40213459
+    "content-historyonly-realb-f256-h4p32k64-l19-fromscratch-30m": 42004627
   },
   "diagnostics": {
     "final_validation_only": true,
@@ -63,6 +63,6 @@
   "wandb": {
     "entity": "daehwa",
     "project": "alphabet-lm-viability",
-    "group": "ALPHABET-LM-RTX4090-Content-HistoryOnly-ComplexWLB-F256-H4P8K64-30M-S501-v10"
+    "group": "ALPHABET-LM-RTX4090-Content-HistoryOnly-RealB-F256-H4P32K64-30M-S501-v11"
   }
 }

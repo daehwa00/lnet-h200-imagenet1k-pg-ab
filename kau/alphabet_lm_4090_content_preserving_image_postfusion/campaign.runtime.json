@@ -4,20 +4,20 @@
     "K_real_dof": 512,
     "layers": 19,
     "variants": {
-      "content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m": {
-        "complex_state_per_layer": 2048,
+      "content-historyonly-realb-f256-h4p32k64-l19-fromscratch-30m": {
+        "complex_state_per_layer": 8192,
         "content_feature_width": 256,
         "content_preserving_heads": 4,
-        "content_preserving_poles_per_head": 8,
+        "content_preserving_poles_per_head": 32,
         "content_preserving_width_per_head": 64,
         "laplace_mamba_conv_width": 3,
         "laplace_mamba_layers": 19,
-        "laplace_mamba_poles": 32
+        "laplace_mamba_poles": 128
       }
     }
   },
-  "campaign_id": "kau-content-historyonly-complexwlb-f256-h4p8k64-l19-30m-s501-v10",
-  "campaign_manifest_sha256": "b98694dc1c53b90cd82aa4785a1f4d436b69979d79c37f681db4d5278febe5bc",
+  "campaign_id": "kau-content-historyonly-realb-f256-h4p32k64-l19-30m-s501-v11",
+  "campaign_manifest_sha256": "2bbc3d3f348fc06f8558bf5c49a601268bacc3b506de5c2894df4bc0896b0d14",
   "diagnostics": {
     "dense_vector_reference_parameters": 64105427,
     "dense_vector_reference_validation_loss": 4.83946,
@@ -26,25 +26,26 @@
     "mamba1_reference_validation_loss": 4.330902905240708
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-Content-HistoryOnly-ComplexWLB-F256-H4P8K64-30M-S501-v10",
+  "group": "ALPHABET-LM-RTX4090-Content-HistoryOnly-RealB-F256-H4P32K64-30M-S501-v11",
   "output_namespace": "alphabet-lm-4090-content-preserving-image-postfusion-v1",
   "parameter_counts": {
-    "content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m": 40213459
+    "content-historyonly-realb-f256-h4p32k64-l19-fromscratch-30m": 42004627
   },
   "project": "alphabet-lm-viability",
   "runs": {
-    "content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m": {
-      "display_name": "RTX4090-S501-Content-HistoryOnly-ComplexWLB-F256-H4P8K64-L19-30M",
-      "id": "8d90cbeb7c0b627a",
+    "content-historyonly-realb-f256-h4p32k64-l19-fromscratch-30m": {
+      "display_name": "RTX4090-S501-Content-HistoryOnly-RealB-F256-H4P32K64-L19-30M",
+      "id": "7949201888e72ff1",
       "tags": [
         "RTX4090",
         "ALPHABET2",
         "ContentPreserving",
         "HistoryOnly",
         "LearnBeta",
-        "ComplexWLB",
+        "RealB",
+        "P32PerHead",
         "F256",
-        "H4P8K64",
+        "H4P32K64",
         "FixedLaplace",
         "ImagePostFusion",
         "FromScratch",
@@ -61,18 +62,18 @@
     "memory_merge": "detached_rms_match_layerwise_learnable_beta_init_0.01",
     "pole_palette": "independent_complete_lifetime_palette_per_content",
     "post_fusion": "image_gated_widely_linear",
-    "read": "head_shared_complex_C_h4p8_on_prewrite_history_state",
-    "state": "content_h4_k64_p8_exact_history_only",
+    "read": "head_shared_complex_C_h4p32_on_prewrite_history_state",
+    "state": "content_h4_k64_p32_exact_history_only",
     "synthesis": "strict_complex_256_to256",
-    "write": "head_shared_unnormalized_complex_WL_B_h4p8"
+    "write": "head_shared_unnormalized_real_B_h4p32"
   },
   "total_parameter_counts": {
-    "content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m": 40213459
+    "content-historyonly-realb-f256-h4p32k64-l19-fromscratch-30m": 42004627
   },
   "training": {
     "checkpoint_updates": 25,
     "execution": [
-      "content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m"
+      "content-historyonly-realb-f256-h4p32k64-l19-fromscratch-30m"
     ],
     "global_sequences": 32,
     "gradient_clip": 1.0,
