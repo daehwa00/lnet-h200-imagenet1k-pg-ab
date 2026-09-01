@@ -28,6 +28,7 @@ from lnet.alphabet_lm import (
     FixedComplexPoleMemory1D,
     FixedPoleResidualSidecar,
     GroupedPackedComplexLinear,
+    HybridContentDenseImagePostFusionAlphabet2LM,
     ImagePostFusionAlphabet2LM,
     LaplaceMambaLM,
     LaplaceMambaLMConfig,
@@ -55,6 +56,7 @@ def _build(kind: str) -> nn.Module:
         "alphabet2_vector_image_postfusion",
         "alphabet2_content_aligned_image_postfusion",
         "alphabet2_content_preserving_image_postfusion",
+        "alphabet2_hybrid_content_dense_image_postfusion",
         "alphabet2_content_aligned_j2",
         "alphabet2_content_aligned_j4",
         "alphabet2_content_aligned_j2_r32",
@@ -81,6 +83,8 @@ def _build(kind: str) -> nn.Module:
             model_type = ContentAlignedImagePostFusionAlphabet2LM
         elif kind == "alphabet2_content_preserving_image_postfusion":
             model_type = ContentPreservingImagePostFusionAlphabet2LM
+        elif kind == "alphabet2_hybrid_content_dense_image_postfusion":
+            model_type = HybridContentDenseImagePostFusionAlphabet2LM
         elif kind == "alphabet2_multi_observer_image_postfusion":
             model_type = MultiObserverImagePostFusionAlphabet2LM
         elif kind == "alphabet2_read_adapter_image_postfusion":
@@ -98,6 +102,7 @@ def _build(kind: str) -> nn.Module:
                 "alphabet2_vector_image_postfusion",
                 "alphabet2_content_aligned_image_postfusion",
                 "alphabet2_content_preserving_image_postfusion",
+                "alphabet2_hybrid_content_dense_image_postfusion",
                 "alphabet2_content_aligned_j2",
                 "alphabet2_content_aligned_j4",
                 "alphabet2_multi_observer_image_postfusion",
@@ -125,6 +130,13 @@ def _build(kind: str) -> nn.Module:
             )
         elif kind == "alphabet2_temporal_whitening_image_postfusion":
             config = LaplaceMambaLMConfig(conv_width=3, aligned_content_rank=2)
+        elif kind == "alphabet2_hybrid_content_dense_image_postfusion":
+            config = LaplaceMambaLMConfig(
+                conv_width=3,
+                content_preserving_poles_per_head=4,
+                hybrid_dense_poles=32,
+                hybrid_dense_width=8,
+            )
         return model_type(config)
     if kind == "mamba":
         return MambaLM(MambaLMConfig())
@@ -2477,6 +2489,7 @@ def main() -> None:
             "alphabet2_vector_image_postfusion",
             "alphabet2_content_aligned_image_postfusion",
             "alphabet2_content_preserving_image_postfusion",
+            "alphabet2_hybrid_content_dense_image_postfusion",
             "alphabet2_content_aligned_j2",
             "alphabet2_content_aligned_j4",
             "alphabet2_content_aligned_j2_r32",
@@ -2590,6 +2603,7 @@ def main() -> None:
         "alphabet2_vector_image_postfusion",
         "alphabet2_content_aligned_image_postfusion",
         "alphabet2_content_preserving_image_postfusion",
+        "alphabet2_hybrid_content_dense_image_postfusion",
         "alphabet2_content_aligned_j2",
         "alphabet2_content_aligned_j4",
         "alphabet2_content_aligned_j2_r32",

@@ -32,6 +32,7 @@ from lnet.alphabet_lm import (
     DynamicDeltaImagePostFusionAlphabet2LM,
     DynamicLowRankWrite,
     FactorizedTokenRateVectorPoleBlock,
+    HybridContentDenseImagePostFusionAlphabet2LM,
     ImagePostFusionAlphabet2LM,
     LaplaceMambaLM,
     LaplaceMambaLMConfig,
@@ -1250,6 +1251,8 @@ def _build(
     laplace_mamba_content_preserving_heads: int = 4,
     laplace_mamba_content_preserving_poles: int = 8,
     laplace_mamba_content_preserving_width: int = 64,
+    laplace_mamba_hybrid_dense_poles: int = 32,
+    laplace_mamba_hybrid_dense_width: int = 8,
     laplace_mamba_delta_hidden: int = 32,
     laplace_mamba_delta_log_bound: float = 0.6931471805599453,
     laplace_mamba_conv_width: int = 4,
@@ -1361,6 +1364,7 @@ def _build(
         "alphabet2_vector_image_postfusion",
         "alphabet2_content_aligned_image_postfusion",
         "alphabet2_content_preserving_image_postfusion",
+        "alphabet2_hybrid_content_dense_image_postfusion",
         "alphabet2_multi_observer_image_postfusion",
         "alphabet2_read_adapter_image_postfusion",
         "alphabet2_temporal_whitening_image_postfusion",
@@ -1381,6 +1385,8 @@ def _build(
             content_preserving_width_per_head=(
                 laplace_mamba_content_preserving_width
             ),
+            hybrid_dense_poles=laplace_mamba_hybrid_dense_poles,
+            hybrid_dense_width=laplace_mamba_hybrid_dense_width,
             dynamic_delta_hidden=laplace_mamba_delta_hidden,
             dynamic_delta_log_bound=laplace_mamba_delta_log_bound,
             conv_width=laplace_mamba_conv_width,
@@ -1396,6 +1402,8 @@ def _build(
             model_type = ContentAlignedImagePostFusionAlphabet2LM
         elif model_name == "alphabet2_content_preserving_image_postfusion":
             model_type = ContentPreservingImagePostFusionAlphabet2LM
+        elif model_name == "alphabet2_hybrid_content_dense_image_postfusion":
+            model_type = HybridContentDenseImagePostFusionAlphabet2LM
         elif model_name == "alphabet2_multi_observer_image_postfusion":
             model_type = MultiObserverImagePostFusionAlphabet2LM
         elif model_name == "alphabet2_read_adapter_image_postfusion":
@@ -1692,6 +1700,7 @@ def main() -> None:
             "alphabet2_vector_image_postfusion",
             "alphabet2_content_aligned_image_postfusion",
             "alphabet2_content_preserving_image_postfusion",
+            "alphabet2_hybrid_content_dense_image_postfusion",
             "alphabet2_multi_observer_image_postfusion",
             "alphabet2_read_adapter_image_postfusion",
             "alphabet2_temporal_whitening_image_postfusion",
@@ -1708,6 +1717,8 @@ def main() -> None:
     parser.add_argument("--laplace-mamba-content-preserving-heads", type=int, default=4)
     parser.add_argument("--laplace-mamba-content-preserving-poles", type=int, default=8)
     parser.add_argument("--laplace-mamba-content-preserving-width", type=int, default=64)
+    parser.add_argument("--laplace-mamba-hybrid-dense-poles", type=int, default=32)
+    parser.add_argument("--laplace-mamba-hybrid-dense-width", type=int, default=8)
     parser.add_argument("--laplace-mamba-delta-hidden", type=int, default=32)
     parser.add_argument("--laplace-mamba-delta-log-bound", type=float, default=math.log(2.0))
     parser.add_argument("--laplace-mamba-conv-width", type=int, default=4)
@@ -1988,6 +1999,8 @@ def main() -> None:
         laplace_mamba_content_preserving_width=(
             args.laplace_mamba_content_preserving_width
         ),
+        laplace_mamba_hybrid_dense_poles=args.laplace_mamba_hybrid_dense_poles,
+        laplace_mamba_hybrid_dense_width=args.laplace_mamba_hybrid_dense_width,
         laplace_mamba_delta_hidden=args.laplace_mamba_delta_hidden,
         laplace_mamba_delta_log_bound=args.laplace_mamba_delta_log_bound,
         laplace_mamba_conv_width=args.laplace_mamba_conv_width,

@@ -9,7 +9,7 @@ readonly OUTPUT_ROOT="${KAU_OUTPUT_ROOT:-/home/daehwa/alphabet-lm-4090-content-p
 readonly DATA_ROOT="/home/daehwa/alphabet-lm-data-fineweb-edu-v1"
 readonly TRAIN_MANIFEST="${DATA_ROOT}/tokens/train.manifest.json"
 readonly VALIDATION_MANIFEST="${DATA_ROOT}/tokens/validation.manifest.json"
-readonly LABEL="content-preserving-f256-sharedbc-contentpoles-h4p8k64-l19-fromscratch-30m"
+readonly LABEL="hybrid-content-h4p4k64-dense-p32r8-l19-fromscratch-30m"
 
 cd "${PROJECT_ROOT}"
 if [[ ! "${KAU_EXPECTED_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] \
@@ -34,20 +34,22 @@ export MKL_NUM_THREADS=8
 export WANDB_BASE_URL="https://api.wandb.ai"
 export WANDB_ENTITY="daehwa"
 export WANDB_PROJECT="alphabet-lm-viability"
-export WANDB_GROUP="ALPHABET-LM-RTX4090-ContentPreserving-F256-SharedBC-ContentPoles-H4P8K64-30M-S501-v5"
+export WANDB_GROUP="ALPHABET-LM-RTX4090-Hybrid-ContentH4P4K64-DenseP32R8-30M-S501-v6"
 export WANDB_CONSOLE=off
 
 timeout --signal=TERM --kill-after=5m 8h \
   "${PYTHON}" scripts/train_h200_alphabet_lm_10m.py \
-  --model alphabet2_content_preserving_image_postfusion \
+  --model alphabet2_hybrid_content_dense_image_postfusion \
   --run-label "${LABEL}" \
   --laplace-mamba-layers 19 \
-  --laplace-mamba-poles 32 \
+  --laplace-mamba-poles 16 \
   --laplace-mamba-head-width 16 \
   --laplace-mamba-conv-width 3 \
   --laplace-mamba-content-preserving-heads 4 \
-  --laplace-mamba-content-preserving-poles 8 \
+  --laplace-mamba-content-preserving-poles 4 \
   --laplace-mamba-content-preserving-width 64 \
+  --laplace-mamba-hybrid-dense-poles 32 \
+  --laplace-mamba-hybrid-dense-width 8 \
   --target-tokens-override 30000000 \
   --runtime "${RUNTIME}" \
   --train-manifest "${TRAIN_MANIFEST}" \
@@ -56,7 +58,7 @@ timeout --signal=TERM --kill-after=5m 8h \
 
 timeout --signal=TERM --kill-after=3m 30m \
   "${PYTHON}" scripts/evaluate_kau_alphabet_lm_context.py \
-  --kind alphabet2_content_preserving_image_postfusion \
+  --kind alphabet2_hybrid_content_dense_image_postfusion \
   --checkpoint "${OUTPUT_ROOT}/${LABEL}/checkpoint.pt" \
   --validation-manifest "${VALIDATION_MANIFEST}" \
   --sequence-limit 128 \
