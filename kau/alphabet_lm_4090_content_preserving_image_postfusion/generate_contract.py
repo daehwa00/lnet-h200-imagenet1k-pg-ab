@@ -16,7 +16,7 @@ RUNTIME = (
     ROOT
     / "kau/alphabet_lm_4090_content_preserving_image_postfusion/campaign.runtime.json"
 )
-LABEL = "content-preserving-fullroute-h4p8k16-l19-fromscratch-100m"
+LABEL = "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m"
 
 
 def _render() -> str:
@@ -25,12 +25,13 @@ def _render() -> str:
     variant = manifest["architecture"]["variants"][LABEL]
     if (
         manifest["training"]["execution"] != [LABEL]
-        or manifest["training"]["target_tokens"] != 100_000_000
+        or manifest["training"]["target_tokens"] != 30_000_000
         or variant["content_preserving_heads"] != 4
         or variant["content_preserving_poles_per_head"] != 8
-        or variant["content_preserving_width_per_head"] != 16
-        or variant["complex_state_per_layer"] != 512
-        or manifest["parameter_counts"][LABEL] != 61_633_299
+        or variant["content_preserving_width_per_head"] != 64
+        or variant["content_feature_width"] != 256
+        or variant["complex_state_per_layer"] != 2_048
+        or manifest["parameter_counts"][LABEL] != 79_163_155
     ):
         raise RuntimeError("invalid content-preserving ALPHABET campaign")
     campaign_id = manifest["campaign_id"]
@@ -53,17 +54,18 @@ def _render() -> str:
                 "id": hashlib.sha256(
                     f"{campaign_id}\0{LABEL}:seed501".encode()
                 ).hexdigest()[:16],
-                "display_name": "RTX4090-S501-ContentPreserving-FullRoute-H4P8K16-L19-100M",
+                "display_name": "RTX4090-S501-ContentPreserving-F256-FullRoute-H4P8K64-L19-30M",
                 "tags": [
                     "RTX4090",
                     "ALPHABET2",
                     "ContentPreserving",
                     "FullRoute",
-                    "H4P8K16",
+                    "F256",
+                    "H4P8K64",
                     "FixedLaplace",
                     "ImagePostFusion",
                     "FromScratch",
-                    "100M",
+                    "30M",
                 ],
             }
         },

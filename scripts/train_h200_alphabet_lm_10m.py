@@ -1249,7 +1249,7 @@ def _build(
     laplace_mamba_observers: int = 8,
     laplace_mamba_content_preserving_heads: int = 4,
     laplace_mamba_content_preserving_poles: int = 8,
-    laplace_mamba_content_preserving_width: int = 16,
+    laplace_mamba_content_preserving_width: int = 64,
     laplace_mamba_delta_hidden: int = 32,
     laplace_mamba_delta_log_bound: float = 0.6931471805599453,
     laplace_mamba_conv_width: int = 4,
@@ -1707,7 +1707,7 @@ def main() -> None:
     parser.add_argument("--laplace-mamba-observers", type=int, default=8)
     parser.add_argument("--laplace-mamba-content-preserving-heads", type=int, default=4)
     parser.add_argument("--laplace-mamba-content-preserving-poles", type=int, default=8)
-    parser.add_argument("--laplace-mamba-content-preserving-width", type=int, default=16)
+    parser.add_argument("--laplace-mamba-content-preserving-width", type=int, default=64)
     parser.add_argument("--laplace-mamba-delta-hidden", type=int, default=32)
     parser.add_argument("--laplace-mamba-delta-log-bound", type=float, default=math.log(2.0))
     parser.add_argument("--laplace-mamba-conv-width", type=int, default=4)

@@ -513,7 +513,7 @@ class LaplaceMambaLMConfig:
     observer_count: int = 8
     content_preserving_heads: int = 4
     content_preserving_poles_per_head: int = 8
-    content_preserving_width_per_head: int = 16
+    content_preserving_width_per_head: int = 64
     dynamic_delta_hidden: int = 32
     dynamic_delta_log_bound: float = math.log(2.0)
     conv_width: int = 4
@@ -3064,16 +3064,21 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
         self.total_poles = self.heads * self.poles_per_head
         self.content_width = self.heads * self.width_per_head
         self.state_modes = self.content_width * self.poles_per_head
-        self.active_width = self.content_width + 2 * self.state_modes
         if self.total_poles != config.pole_modes:
             raise ValueError(
                 "content-preserving heads x poles must match configured pole modes"
             )
-        self.reader = DenseComplexConv1dReader(
+        if self.content_width != self.complex_width:
+            raise ValueError(
+                "projection-free content width must match the complex highway width"
+            )
+        self.feature_reader = DenseComplexConv1dReader(
             self.complex_width,
-            self.active_width,
+            self.content_width,
             kernel_size=config.conv_width,
         )
+        self.write_router = nn.Linear(2 * self.content_width, self.state_modes)
+        self.read_router = PackedComplexLinear(self.content_width, self.state_modes)
         self.memory = FixedComplexPoleMemory1D(
             self.state_modes,
             context_length=config.context_length,
@@ -3093,7 +3098,7 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
 
     def reset_parameters(self) -> None:
         with torch.no_grad():
-            self.reader.input_norm.weight.fill_(math.sqrt(2.0))
+            self.feature_reader.input_norm.weight.fill_(math.sqrt(2.0))
         _scale_image_postfusion_output_(self.post_fusion, self.config.layers)
 
     def _analyze(
@@ -3101,13 +3106,10 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
         real: Tensor,
         imag: Tensor,
     ) -> tuple[ComplexField, ComplexField, ComplexField]:
-        active_real, active_imag = self.reader(real, imag)
-        content_real, write_real, read_real = active_real.split(
-            (self.content_width, self.state_modes, self.state_modes), dim=-1
-        )
-        content_imag, write_imag, read_imag = active_imag.split(
-            (self.content_width, self.state_modes, self.state_modes), dim=-1
-        )
+        content_real, content_imag = self.feature_reader(real, imag)
+        packed_content = torch.cat((content_real, content_imag), dim=-1)
+        write = self.write_router(packed_content)
+        read_real, read_imag = self.read_router(content_real, content_imag)
         batch, steps, _width = content_real.shape
         content_shape = (batch, steps, self.heads, self.width_per_head)
         route_shape = (
@@ -3119,24 +3121,18 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
         )
         return (
             (content_real.reshape(content_shape), content_imag.reshape(content_shape)),
-            (write_real.reshape(route_shape), write_imag.reshape(route_shape)),
+            write.reshape(route_shape),
             (read_real.reshape(route_shape), read_imag.reshape(route_shape)),
         )
 
     def _transport_and_read(
         self,
         content: ComplexField,
-        write: ComplexField,
+        write: Tensor,
         read: ComplexField,
     ) -> ComplexField:
-        drive_real = (
-            write[0] * content[0].unsqueeze(-1)
-            - write[1] * content[1].unsqueeze(-1)
-        ).flatten(2)
-        drive_imag = (
-            write[0] * content[1].unsqueeze(-1)
-            + write[1] * content[0].unsqueeze(-1)
-        ).flatten(2)
+        drive_real = (write * content[0].unsqueeze(-1)).flatten(2)
+        drive_imag = (write * content[1].unsqueeze(-1)).flatten(2)
         state_real, state_imag = self.memory(drive_real, drive_imag)
         state_shape = (
             *state_real.shape[:2],

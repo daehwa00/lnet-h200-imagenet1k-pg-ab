@@ -9,7 +9,7 @@ readonly OUTPUT_ROOT="${KAU_OUTPUT_ROOT:-/home/daehwa/alphabet-lm-4090-content-p
 readonly DATA_ROOT="/home/daehwa/alphabet-lm-data-fineweb-edu-v1"
 readonly TRAIN_MANIFEST="${DATA_ROOT}/tokens/train.manifest.json"
 readonly VALIDATION_MANIFEST="${DATA_ROOT}/tokens/validation.manifest.json"
-readonly LABEL="content-preserving-fullroute-h4p8k16-l19-fromscratch-100m"
+readonly LABEL="content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m"
 
 cd "${PROJECT_ROOT}"
 if [[ ! "${KAU_EXPECTED_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] \
@@ -34,7 +34,7 @@ export MKL_NUM_THREADS=8
 export WANDB_BASE_URL="https://api.wandb.ai"
 export WANDB_ENTITY="daehwa"
 export WANDB_PROJECT="alphabet-lm-viability"
-export WANDB_GROUP="ALPHABET-LM-RTX4090-ContentPreserving-FullRoute-H4P8K16-100M-S501-v2"
+export WANDB_GROUP="ALPHABET-LM-RTX4090-ContentPreserving-F256-FullRoute-H4P8K64-30M-S501-v4"
 export WANDB_CONSOLE=off
 
 timeout --signal=TERM --kill-after=5m 8h \
@@ -47,8 +47,8 @@ timeout --signal=TERM --kill-after=5m 8h \
   --laplace-mamba-conv-width 3 \
   --laplace-mamba-content-preserving-heads 4 \
   --laplace-mamba-content-preserving-poles 8 \
-  --laplace-mamba-content-preserving-width 16 \
-  --target-tokens-override 100000000 \
+  --laplace-mamba-content-preserving-width 64 \
+  --target-tokens-override 30000000 \
   --runtime "${RUNTIME}" \
   --train-manifest "${TRAIN_MANIFEST}" \
   --validation-manifest "${VALIDATION_MANIFEST}" \

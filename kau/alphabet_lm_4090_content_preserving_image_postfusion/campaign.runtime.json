@@ -4,19 +4,20 @@
     "K_real_dof": 512,
     "layers": 19,
     "variants": {
-      "content-preserving-fullroute-h4p8k16-l19-fromscratch-100m": {
-        "complex_state_per_layer": 512,
+      "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m": {
+        "complex_state_per_layer": 2048,
+        "content_feature_width": 256,
         "content_preserving_heads": 4,
         "content_preserving_poles_per_head": 8,
-        "content_preserving_width_per_head": 16,
+        "content_preserving_width_per_head": 64,
         "laplace_mamba_conv_width": 3,
         "laplace_mamba_layers": 19,
         "laplace_mamba_poles": 32
       }
     }
   },
-  "campaign_id": "kau-content-preserving-fullroute-h4p8k16-l19-100m-s501-v2",
-  "campaign_manifest_sha256": "45847560a5bf63419b464c08fc4454c2ed15718cfb78173f053fecfe6a089bde",
+  "campaign_id": "kau-content-preserving-f256-fullroute-h4p8k64-l19-30m-s501-v4",
+  "campaign_manifest_sha256": "626e5050725b6b8a6876bfa1b6eda27b5827bc68bf32f65ce43df7933b8dd457",
   "diagnostics": {
     "dense_vector_reference_parameters": 64105427,
     "dense_vector_reference_validation_loss": 4.83946,
@@ -25,50 +26,51 @@
     "mamba1_reference_validation_loss": 4.330902905240708
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-ContentPreserving-FullRoute-H4P8K16-100M-S501-v2",
+  "group": "ALPHABET-LM-RTX4090-ContentPreserving-F256-FullRoute-H4P8K64-30M-S501-v4",
   "output_namespace": "alphabet-lm-4090-content-preserving-image-postfusion-v1",
   "parameter_counts": {
-    "content-preserving-fullroute-h4p8k16-l19-fromscratch-100m": 61633299
+    "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m": 79163155
   },
   "project": "alphabet-lm-viability",
   "runs": {
-    "content-preserving-fullroute-h4p8k16-l19-fromscratch-100m": {
-      "display_name": "RTX4090-S501-ContentPreserving-FullRoute-H4P8K16-L19-100M",
-      "id": "0702b192e36588eb",
+    "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m": {
+      "display_name": "RTX4090-S501-ContentPreserving-F256-FullRoute-H4P8K64-L19-30M",
+      "id": "dae21feade64faf0",
       "tags": [
         "RTX4090",
         "ALPHABET2",
         "ContentPreserving",
         "FullRoute",
-        "H4P8K16",
+        "F256",
+        "H4P8K64",
         "FixedLaplace",
         "ImagePostFusion",
         "FromScratch",
-        "100M"
+        "30M"
       ]
     }
   },
   "schema": "lnet.kau.alphabet_lm.content_preserving_image_postfusion.runtime.v1",
   "source": {
-    "analysis": "joint_dense_strict_complex_causal_k3_X64_B512_C512",
+    "analysis": "dense_strict_complex_causal_k3_256_to_F256_with_X_equal_F",
     "checkpoint_initialization": false,
-    "content": "persistent_complex_h4k16",
+    "content": "projection_free_persistent_complex_h4k64",
     "initialization": "seed501_from_scratch",
     "memory_merge": "detached_rms_match_scalar_beta",
     "pole_palette": "independent_complete_lifetime_palette_per_content",
     "post_fusion": "image_gated_widely_linear",
-    "read": "content_specific_unnormalized_conjugate_complex_C_h4k16p8",
-    "state": "content_preserving_complex_h4_k16_p8_fullroute",
-    "synthesis": "strict_complex_h4k16_to_256",
-    "write": "content_specific_unnormalized_complex_B_h4k16p8"
+    "read": "content_specific_unnormalized_conjugate_complex_C_h4k64p8",
+    "state": "content_preserving_complex_h4_k64_p8_fullroute",
+    "synthesis": "strict_complex_h4k64_to_256",
+    "write": "content_specific_unnormalized_real_B_h4k64p8"
   },
   "total_parameter_counts": {
-    "content-preserving-fullroute-h4p8k16-l19-fromscratch-100m": 61633299
+    "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m": 79163155
   },
   "training": {
     "checkpoint_updates": 25,
     "execution": [
-      "content-preserving-fullroute-h4p8k16-l19-fromscratch-100m"
+      "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m"
     ],
     "global_sequences": 32,
     "gradient_clip": 1.0,
@@ -79,7 +81,7 @@
     "precision": "bfloat16",
     "scan_fp32": true,
     "seed": 501,
-    "target_tokens": 100000000,
+    "target_tokens": 30000000,
     "warmup_updates": 20,
     "weight_decay": 0.1
   }

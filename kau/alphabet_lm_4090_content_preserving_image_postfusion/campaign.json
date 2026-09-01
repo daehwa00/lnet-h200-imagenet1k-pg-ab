@@ -1,39 +1,40 @@
 {
   "schema": "lnet.kau.alphabet_lm.content_preserving_image_postfusion.v1",
-  "campaign_id": "kau-content-preserving-fullroute-h4p8k16-l19-100m-s501-v2",
+  "campaign_id": "kau-content-preserving-f256-fullroute-h4p8k64-l19-30m-s501-v4",
   "output_namespace": "alphabet-lm-4090-content-preserving-image-postfusion-v1",
   "architecture": {
     "K_complex": 256,
     "K_real_dof": 512,
     "layers": 19,
     "variants": {
-      "content-preserving-fullroute-h4p8k16-l19-fromscratch-100m": {
+      "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m": {
         "laplace_mamba_layers": 19,
         "laplace_mamba_poles": 32,
         "laplace_mamba_conv_width": 3,
         "content_preserving_heads": 4,
         "content_preserving_poles_per_head": 8,
-        "content_preserving_width_per_head": 16,
-        "complex_state_per_layer": 512
+        "content_preserving_width_per_head": 64,
+        "content_feature_width": 256,
+        "complex_state_per_layer": 2048
       }
     }
   },
   "source": {
     "initialization": "seed501_from_scratch",
     "checkpoint_initialization": false,
-    "analysis": "joint_dense_strict_complex_causal_k3_X64_B512_C512",
-    "content": "persistent_complex_h4k16",
-    "write": "content_specific_unnormalized_complex_B_h4k16p8",
-    "read": "content_specific_unnormalized_conjugate_complex_C_h4k16p8",
-    "state": "content_preserving_complex_h4_k16_p8_fullroute",
+    "analysis": "dense_strict_complex_causal_k3_256_to_F256_with_X_equal_F",
+    "content": "projection_free_persistent_complex_h4k64",
+    "write": "content_specific_unnormalized_real_B_h4k64p8",
+    "read": "content_specific_unnormalized_conjugate_complex_C_h4k64p8",
+    "state": "content_preserving_complex_h4_k64_p8_fullroute",
     "pole_palette": "independent_complete_lifetime_palette_per_content",
-    "synthesis": "strict_complex_h4k16_to_256",
+    "synthesis": "strict_complex_h4k64_to_256",
     "memory_merge": "detached_rms_match_scalar_beta",
     "post_fusion": "image_gated_widely_linear"
   },
   "training": {
     "seed": 501,
-    "target_tokens": 100000000,
+    "target_tokens": 30000000,
     "horizon_tokens": 300000000,
     "global_sequences": 32,
     "microbatch": 8,
@@ -46,11 +47,11 @@
     "warmup_updates": 20,
     "checkpoint_updates": 25,
     "execution": [
-      "content-preserving-fullroute-h4p8k16-l19-fromscratch-100m"
+      "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m"
     ]
   },
   "parameter_counts": {
-    "content-preserving-fullroute-h4p8k16-l19-fromscratch-100m": 61633299
+    "content-preserving-f256-fullroute-h4p8k64-l19-fromscratch-30m": 79163155
   },
   "diagnostics": {
     "final_validation_only": true,
@@ -62,6 +63,6 @@
   "wandb": {
     "entity": "daehwa",
     "project": "alphabet-lm-viability",
-    "group": "ALPHABET-LM-RTX4090-ContentPreserving-FullRoute-H4P8K16-100M-S501-v2"
+    "group": "ALPHABET-LM-RTX4090-ContentPreserving-F256-FullRoute-H4P8K64-30M-S501-v4"
   }
 }
