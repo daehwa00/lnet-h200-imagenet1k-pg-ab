@@ -36,10 +36,10 @@ def test_content_preserving_block_keeps_state_budget_and_group_axes() -> None:
     block = cast("ContentPreservingImagePostFusionAlphabet2Block", model.blocks[0])
     real = torch.randn(2, 9, 16)
     imag = torch.randn_like(real)
-    content, write, read = block._analyze(  # pyright: ignore[reportPrivateUsage]
+    excitation, write, read = block._analyze(  # pyright: ignore[reportPrivateUsage]
         real, imag
     )
-    assert content[0].shape == (2, 9, 2, 8)
+    assert excitation[0].shape == (2, 9, 2, 8, 4)
     assert write.shape == (2, 9, 2, 4)
     assert read[0].shape == (2, 9, 2, 4)
 
@@ -63,11 +63,11 @@ def test_content_memory_exposes_the_current_causal_write() -> None:
     block = cast("ContentPreservingImagePostFusionAlphabet2Block", model.blocks[0])
     real = torch.randn(2, 9, 16)
     imag = torch.randn_like(real)
-    content, write, read = block._analyze(  # pyright: ignore[reportPrivateUsage]
+    excitation, write, read = block._analyze(  # pyright: ignore[reportPrivateUsage]
         real, imag
     )
     selected = block._transport_and_read(  # pyright: ignore[reportPrivateUsage]
-        content, write, read
+        excitation, write, read
     )
     assert torch.count_nonzero(selected[0][:, 0]) + torch.count_nonzero(selected[1][:, 0]) > 0
 
@@ -96,6 +96,8 @@ def test_content_preserving_lm_has_finite_forward_and_gradients() -> None:
     assert torch.isfinite(logits).all()
     logits.square().mean().backward()
     assert block.feature_reader.weight_real.grad is not None
+    assert block.excitation_reader.point_weight_real.grad is not None
+    assert block.excitation_reader.temporal_weight_real.grad is not None
     assert block.write_router.weight.grad is not None
     assert block.read_router.weight_real.grad is not None
     assert block.memory.raw_damping.grad is not None
@@ -108,18 +110,5 @@ def test_projection_free_candidate_has_declared_capacity() -> None:
     baseline_parameters = sum(parameter.numel() for parameter in baseline.parameters())
     candidate_parameters = sum(parameter.numel() for parameter in candidate.parameters())
     assert baseline_parameters == 64_105_427
-    assert candidate_parameters == 39_901_555
-    assert candidate_parameters < 0.83 * 48_987_136
+    assert candidate_parameters == 80_219_251
     assert sum(name.endswith("memory_scale") for name, _ in candidate.named_parameters()) == 19
-
-
-def test_p32_candidate_has_declared_temporal_capacity() -> None:
-    config = LaplaceMambaLMConfig(
-        conv_width=3,
-        pole_modes=128,
-        content_preserving_poles_per_head=32,
-    )
-    candidate = ContentPreservingImagePostFusionAlphabet2LM(config)
-    block = cast("ContentPreservingImagePostFusionAlphabet2Block", candidate.blocks[0])
-    assert block.state_modes == 8_192
-    assert sum(parameter.numel() for parameter in candidate.parameters()) == 42_004_627

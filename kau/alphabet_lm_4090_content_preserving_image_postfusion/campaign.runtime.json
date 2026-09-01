@@ -4,7 +4,7 @@
     "K_real_dof": 512,
     "layers": 19,
     "variants": {
-      "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m": {
+      "content-r2k3-fullcausal-assoc-h4p8k64-l19-fromscratch-30m": {
         "complex_state_per_layer": 2048,
         "content_feature_width": 256,
         "content_preserving_heads": 4,
@@ -17,8 +17,8 @@
       }
     }
   },
-  "campaign_id": "kau-content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-30m-s501-v13",
-  "campaign_manifest_sha256": "9461187fc9deae4996c7306fd2fcacf8c8960d846faf14c56bcf92033ba66c85",
+  "campaign_id": "kau-content-r2k3-fullcausal-assoc-h4p8k64-l19-30m-s501-v14",
+  "campaign_manifest_sha256": "2de71c570b31abd06490e0780920e491e20db510f65513c46923e633d99e779e",
   "diagnostics": {
     "dense_vector_reference_parameters": 64105427,
     "dense_vector_reference_validation_loss": 4.83946,
@@ -27,20 +27,21 @@
     "mamba1_reference_validation_loss": 4.330902905240708
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-Content-FullCausal-Assoc-LearnBeta-F256-H4P8K64-30M-S501-v13",
+  "group": "ALPHABET-LM-RTX4090-Content-R2K3-FullCausal-Assoc-H4P8K64-30M-S501-v14",
   "output_namespace": "alphabet-lm-4090-content-preserving-image-postfusion-v1",
   "parameter_counts": {
-    "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m": 39901555
+    "content-r2k3-fullcausal-assoc-h4p8k64-l19-fromscratch-30m": 80219251
   },
   "project": "alphabet-lm-viability",
   "runs": {
-    "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m": {
-      "display_name": "RTX4090-S501-Content-FullCausal-Assoc-LearnBeta-F256-H4P8K64-L19-30M",
-      "id": "8ec3ab5990a83e5e",
+    "content-r2k3-fullcausal-assoc-h4p8k64-l19-fromscratch-30m": {
+      "display_name": "RTX4090-S501-Content-R2K3-FullCausal-Assoc-H4P8K64-L19-30M",
+      "id": "e203a9746212c3ee",
       "tags": [
         "RTX4090",
         "ALPHABET2",
         "ContentPreserving",
+        "PoleSpecificR2K3",
         "FullCausalState",
         "AssociativeScan",
         "LearnBeta",
@@ -58,9 +59,9 @@
   },
   "schema": "lnet.kau.alphabet_lm.content_preserving_image_postfusion.runtime.v1",
   "source": {
-    "analysis": "dense_strict_complex_causal_k3_256_to_F256_with_X_equal_F",
+    "analysis": "shared_K3_256_to256_for_BC_plus_pole_specific_R2K3_256_to2048_excitation",
     "checkpoint_initialization": false,
-    "content": "projection_free_persistent_complex_h4k64",
+    "content": "pole_specific_rank2_local_numerator_h4k64p8",
     "initialization": "seed501_from_scratch",
     "memory_merge": "detached_rms_match_layerwise_learnable_beta_init_0.01",
     "pole_palette": "independent_complete_lifetime_palette_per_content",
@@ -72,12 +73,12 @@
     "write": "head_shared_unnormalized_real_B_h4p8"
   },
   "total_parameter_counts": {
-    "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m": 39901555
+    "content-r2k3-fullcausal-assoc-h4p8k64-l19-fromscratch-30m": 80219251
   },
   "training": {
     "checkpoint_updates": 25,
     "execution": [
-      "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m"
+      "content-r2k3-fullcausal-assoc-h4p8k64-l19-fromscratch-30m"
     ],
     "global_sequences": 32,
     "gradient_clip": 1.0,

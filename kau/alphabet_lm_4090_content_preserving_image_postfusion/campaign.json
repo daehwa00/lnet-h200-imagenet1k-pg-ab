@@ -1,13 +1,13 @@
 {
   "schema": "lnet.kau.alphabet_lm.content_preserving_image_postfusion.v1",
-  "campaign_id": "kau-content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-30m-s501-v13",
+  "campaign_id": "kau-content-r2k3-fullcausal-assoc-h4p8k64-l19-30m-s501-v14",
   "output_namespace": "alphabet-lm-4090-content-preserving-image-postfusion-v1",
   "architecture": {
     "K_complex": 256,
     "K_real_dof": 512,
     "layers": 19,
     "variants": {
-      "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m": {
+      "content-r2k3-fullcausal-assoc-h4p8k64-l19-fromscratch-30m": {
         "laplace_mamba_layers": 19,
         "laplace_mamba_poles": 32,
         "laplace_mamba_conv_width": 3,
@@ -23,8 +23,8 @@
   "source": {
     "initialization": "seed501_from_scratch",
     "checkpoint_initialization": false,
-    "analysis": "dense_strict_complex_causal_k3_256_to_F256_with_X_equal_F",
-    "content": "projection_free_persistent_complex_h4k64",
+    "analysis": "shared_K3_256_to256_for_BC_plus_pole_specific_R2K3_256_to2048_excitation",
+    "content": "pole_specific_rank2_local_numerator_h4k64p8",
     "write": "head_shared_unnormalized_real_B_h4p8",
     "read": "head_shared_complex_C_h4p8_on_full_causal_state",
     "state": "content_h4_k64_p8_current_plus_history",
@@ -49,11 +49,11 @@
     "warmup_updates": 20,
     "checkpoint_updates": 25,
     "execution": [
-      "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m"
+      "content-r2k3-fullcausal-assoc-h4p8k64-l19-fromscratch-30m"
     ]
   },
   "parameter_counts": {
-    "content-fullcausal-assoc-learnbeta-f256-h4p8k64-l19-fromscratch-30m": 39901555
+    "content-r2k3-fullcausal-assoc-h4p8k64-l19-fromscratch-30m": 80219251
   },
   "diagnostics": {
     "final_validation_only": true,
@@ -65,6 +65,6 @@
   "wandb": {
     "entity": "daehwa",
     "project": "alphabet-lm-viability",
-    "group": "ALPHABET-LM-RTX4090-Content-FullCausal-Assoc-LearnBeta-F256-H4P8K64-30M-S501-v13"
+    "group": "ALPHABET-LM-RTX4090-Content-R2K3-FullCausal-Assoc-H4P8K64-30M-S501-v14"
   }
 }

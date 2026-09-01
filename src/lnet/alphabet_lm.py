@@ -3102,6 +3102,12 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
             self.content_width,
             kernel_size=config.conv_width,
         )
+        self.excitation_reader = CausalFactorizedComplexConv1dReader(
+            self.complex_width,
+            self.state_modes,
+            rank=2,
+            kernel_size=config.conv_width,
+        )
         self.write_router = nn.Linear(2 * self.content_width, self.total_poles)
         self.read_router = PackedComplexLinear(self.content_width, self.total_poles)
         self.memory = FixedComplexPoleMemory1D(
@@ -3132,27 +3138,37 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
         real: Tensor,
         imag: Tensor,
     ) -> tuple[ComplexField, Tensor, ComplexField]:
-        content_real, content_imag = self.feature_reader(real, imag)
-        packed_content = torch.cat((content_real, content_imag), dim=-1)
-        write = self.write_router(packed_content)
-        read_real, read_imag = self.read_router(content_real, content_imag)
-        batch, steps, _width = content_real.shape
-        content_shape = (batch, steps, self.heads, self.width_per_head)
+        routing_real, routing_imag = self.feature_reader(real, imag)
+        excitation_real, excitation_imag = self.excitation_reader(real, imag)
+        packed_routing = torch.cat((routing_real, routing_imag), dim=-1)
+        write = self.write_router(packed_routing)
+        read_real, read_imag = self.read_router(routing_real, routing_imag)
+        batch, steps, _width = excitation_real.shape
+        excitation_shape = (
+            batch,
+            steps,
+            self.heads,
+            self.width_per_head,
+            self.poles_per_head,
+        )
         route_shape = (batch, steps, self.heads, self.poles_per_head)
         return (
-            (content_real.reshape(content_shape), content_imag.reshape(content_shape)),
+            (
+                excitation_real.reshape(excitation_shape),
+                excitation_imag.reshape(excitation_shape),
+            ),
             write.reshape(route_shape),
             (read_real.reshape(route_shape), read_imag.reshape(route_shape)),
         )
 
     def _transport_and_read(
         self,
-        content: ComplexField,
+        excitation: ComplexField,
         write: Tensor,
         read: ComplexField,
     ) -> ComplexField:
-        drive_real = (write.unsqueeze(-2) * content[0].unsqueeze(-1)).flatten(2)
-        drive_imag = (write.unsqueeze(-2) * content[1].unsqueeze(-1)).flatten(2)
+        drive_real = (write.unsqueeze(-2) * excitation[0]).flatten(2)
+        drive_imag = (write.unsqueeze(-2) * excitation[1]).flatten(2)
         state_real, state_imag = self.memory(drive_real, drive_imag)
         state_shape = (
             *state_real.shape[:2],
@@ -3173,8 +3189,8 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
         return selected_real.flatten(-2), selected_imag.flatten(-2)
 
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
-        content, write, read = self._analyze(real, imag)
-        selected = self._transport_and_read(content, write, read)
+        excitation, write, read = self._analyze(real, imag)
+        selected = self._transport_and_read(excitation, write, read)
         memory = self.synthesis(*selected)
         merged = _rms_matched_complex_residual(
             (real, imag), memory, self.memory_scale, self.config.rms_epsilon
