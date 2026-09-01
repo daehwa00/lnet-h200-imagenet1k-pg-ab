@@ -44,11 +44,18 @@ from lnet.alphabet_lm import (
     VectorImagePostFusionAlphabet2LM,
 )
 from lnet.alphabet_lm_data import TokenBlockDataset
-from lnet.alphabet_lm_mamba import MambaLM, MambaLMConfig
+from lnet.alphabet_lm_mamba import (
+    LaplaceSSDMamba2Config,
+    LaplaceSSDMamba2LM,
+    MambaLM,
+    MambaLMConfig,
+)
 from lnet.pac_complex_layers import PackedComplexLinear
 
 
 def _build(kind: str) -> nn.Module:
+    if kind == "mamba2_laplace_ssd":
+        return LaplaceSSDMamba2LM(LaplaceSSDMamba2Config())
     if kind in {
         "laplace_mamba",
         "laplace_mamba_complex_highway",
@@ -2485,6 +2492,7 @@ def main() -> None:
             "mamba2",
             "mamba1_49m",
             "mamba2_48m",
+            "mamba2_laplace_ssd",
             "laplace_mamba",
             "laplace_mamba_complex_highway",
             "alphabet2_image_postfusion",
@@ -2599,6 +2607,7 @@ def main() -> None:
         "mamba2",
         "mamba1_49m",
         "mamba2_48m",
+        "mamba2_laplace_ssd",
         "laplace_mamba",
         "laplace_mamba_complex_highway",
         "alphabet2_image_postfusion",

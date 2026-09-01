@@ -1,0 +1,80 @@
+{
+  "architecture": {
+    "K_real": 512,
+    "layers": 18,
+    "variants": {
+      "laplace-ssd-mamba2-p8-l18-fromscratch-30m": {
+        "complex_state_per_layer": 8192,
+        "expand": 2,
+        "groups": 1,
+        "head_dim": 64,
+        "heads": 16,
+        "inner_width": 1024,
+        "laplace_mamba_conv_width": 4,
+        "laplace_mamba_layers": 18,
+        "laplace_mamba_parallel_static_scan": true,
+        "laplace_mamba_poles": 8
+      }
+    }
+  },
+  "campaign_id": "kau-laplace-ssd-mamba2-p8-l18-30m-s501-v1",
+  "campaign_manifest_sha256": "2772dbe19c1dd4d277246848431fb6bc176757c9533190359aa1104dc982c00c",
+  "diagnostics": {
+    "final_validation_only": true,
+    "mamba1_reference_parameters": 48987136,
+    "mamba1_reference_validation_loss": 4.330902905240708
+  },
+  "entity": "daehwa",
+  "group": "ALPHABET-LM-RTX4090-LaplaceSSD-Mamba2-P8-30M-S501-v1",
+  "output_namespace": "alphabet-lm-4090-laplace-ssd-mamba2-v1",
+  "parameter_counts": {
+    "laplace-ssd-mamba2-p8-l18-fromscratch-30m": 45437328
+  },
+  "project": "alphabet-lm-viability",
+  "runs": {
+    "laplace-ssd-mamba2-p8-l18-fromscratch-30m": {
+      "display_name": "RTX4090-S501-LaplaceSSD-Mamba2-P8-L18-30M",
+      "id": "83453ae80029fda8",
+      "tags": [
+        "RTX4090",
+        "ALPHABET2",
+        "Mamba2",
+        "LaplaceSSD",
+        "AssociativeScan",
+        "FromScratch",
+        "30M"
+      ]
+    }
+  },
+  "schema": "lnet.kau.alphabet_lm.laplace_ssd_mamba2.runtime.v1",
+  "source": {
+    "checkpoint_initialization": false,
+    "initialization": "seed501_from_scratch",
+    "read": "complex_C_real_output_contraction",
+    "scaffold": "official_mamba2_embedding_blocks_norm_gate_D_skip_outproj_residual_head",
+    "scan": "chunked_triton_associative_prefix_1024x2_forward_backward",
+    "transport": "fixed_learned_complex_laplace_p8_per_head_exact_gamma",
+    "write": "mamba2_shared_group_real_B_outer_value_X"
+  },
+  "total_parameter_counts": {
+    "laplace-ssd-mamba2-p8-l18-fromscratch-30m": 45437328
+  },
+  "training": {
+    "checkpoint_updates": 25,
+    "execution": [
+      "laplace-ssd-mamba2-p8-l18-fromscratch-30m"
+    ],
+    "global_sequences": 32,
+    "gradient_clip": 1.0,
+    "horizon_tokens": 300000000,
+    "learning_rate": 0.0003,
+    "microbatch": 8,
+    "optimizer": "AdamW",
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "seed": 501,
+    "target_tokens": 30000000,
+    "warmup_updates": 20,
+    "weight_decay": 0.1
+  }
+}

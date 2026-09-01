@@ -46,7 +46,12 @@ from lnet.alphabet_lm import (
     VectorImagePostFusionAlphabet2LM,
 )
 from lnet.alphabet_lm_data import TokenBlockDataset, sha256_file
-from lnet.alphabet_lm_mamba import MambaLMConfig, build_parameter_matched_mamba
+from lnet.alphabet_lm_mamba import (
+    LaplaceSSDMamba2Config,
+    LaplaceSSDMamba2LM,
+    MambaLMConfig,
+    build_parameter_matched_mamba,
+)
 
 RUNTIME_SCHEMA = "lnet.h200.alphabet_lm.viability_10m.runtime.v1"
 KAU_RUNTIME_SCHEMA = "lnet.kau.alphabet_lm.pole_init_10m.runtime.v1"
@@ -96,6 +101,9 @@ KAU_ALPHABET2_COMPLEX_VECTOR_RUNTIME_SCHEMA = (
 )
 KAU_CONTENT_PRESERVING_RUNTIME_SCHEMA = (
     "lnet.kau.alphabet_lm.content_preserving_image_postfusion.runtime.v1"
+)
+KAU_LAPLACE_SSD_MAMBA2_RUNTIME_SCHEMA = (
+    "lnet.kau.alphabet_lm.laplace_ssd_mamba2.runtime.v1"
 )
 _STOP_EVENT = threading.Event()
 
@@ -1549,6 +1557,22 @@ def _build(
             "model": "alphabet",
             "config": asdict(alphabet_config),
         }
+    if model_name == "mamba2_laplace_ssd":
+        config = LaplaceSSDMamba2Config(
+            vocab_size=vocab_size,
+            model_width=512,
+            layers=laplace_mamba_layers,
+            pole_modes=laplace_mamba_poles,
+            conv_width=laplace_mamba_conv_width,
+            head_dim=64,
+            groups=1,
+            parallel_static_scan=laplace_mamba_parallel_static_scan,
+        )
+        return LaplaceSSDMamba2LM(config), {
+            "model": model_name,
+            "config": asdict(config),
+            "official_mamba2_scaffold": True,
+        }
     target = _parameter_count(AlphabetLM(alphabet_config))
     model, parameters, relative_error = build_parameter_matched_mamba(
         target,
@@ -1696,6 +1720,7 @@ def main() -> None:
             "alphabet",
             "mamba",
             "mamba2",
+            "mamba2_laplace_ssd",
             "laplace_mamba",
             "laplace_mamba_complex_highway",
             "alphabet2_image_postfusion",
@@ -1959,6 +1984,7 @@ def main() -> None:
         KAU_ALPHABET2_VECTOR_POLE_RUNTIME_SCHEMA,
         KAU_ALPHABET2_COMPLEX_VECTOR_RUNTIME_SCHEMA,
         KAU_CONTENT_PRESERVING_RUNTIME_SCHEMA,
+        KAU_LAPLACE_SSD_MAMBA2_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
