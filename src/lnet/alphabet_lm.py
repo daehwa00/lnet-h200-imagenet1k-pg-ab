@@ -514,7 +514,6 @@ class LaplaceMambaLMConfig:
     content_preserving_heads: int = 4
     content_preserving_poles_per_head: int = 8
     content_preserving_width_per_head: int = 16
-    content_preserving_analysis_width: int = 1_024
     dynamic_delta_hidden: int = 32
     dynamic_delta_log_bound: float = math.log(2.0)
     conv_width: int = 4
@@ -538,7 +537,6 @@ class LaplaceMambaLMConfig:
             self.content_preserving_heads,
             self.content_preserving_poles_per_head,
             self.content_preserving_width_per_head,
-            self.content_preserving_analysis_width,
             self.dynamic_delta_hidden,
             self.conv_width,
             self.context_length,
@@ -3052,7 +3050,7 @@ class VectorImagePostFusionAlphabet2Block(nn.Module):
 
 
 class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
-    """Keep content coordinates intact while a grouped Laplace axis evolves."""
+    """Keep content intact while every coordinate owns its write/read/poles."""
 
     memory_scale_initial = 0.01
 
@@ -3063,29 +3061,27 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
         self.heads = config.content_preserving_heads
         self.poles_per_head = config.content_preserving_poles_per_head
         self.width_per_head = config.content_preserving_width_per_head
-        self.analysis_width = config.content_preserving_analysis_width
         self.total_poles = self.heads * self.poles_per_head
         self.content_width = self.heads * self.width_per_head
+        self.state_modes = self.content_width * self.poles_per_head
+        self.active_width = self.content_width + 2 * self.state_modes
         if self.total_poles != config.pole_modes:
             raise ValueError(
                 "content-preserving heads x poles must match configured pole modes"
             )
-        self.analysis = DenseComplexConv1dReader(
+        self.reader = DenseComplexConv1dReader(
             self.complex_width,
-            self.analysis_width,
+            self.active_width,
             kernel_size=config.conv_width,
         )
-        self.content = PackedComplexLinear(self.analysis_width, self.content_width)
-        self.write_router = nn.Linear(2 * self.analysis_width, self.total_poles)
-        self.read_router = PackedComplexLinear(self.analysis_width, self.total_poles)
         self.memory = FixedComplexPoleMemory1D(
-            self.total_poles,
+            self.state_modes,
             context_length=config.context_length,
             scan_fp32=config.scan_fp32,
             initialization="lifetime_palette",
             minimum_half_life=config.minimum_half_life,
             maximum_half_life=config.maximum_half_life,
-            banks=self.heads,
+            banks=self.content_width,
         )
         self.synthesis = PackedComplexLinear(self.content_width, self.complex_width)
         self.memory_scale = nn.Parameter(torch.tensor(self.memory_scale_initial))
@@ -3097,56 +3093,61 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
 
     def reset_parameters(self) -> None:
         with torch.no_grad():
-            self.analysis.input_norm.weight.fill_(math.sqrt(2.0))
-            self.write_router.weight.zero_()
-            self.write_router.bias.zero_()
+            self.reader.input_norm.weight.fill_(math.sqrt(2.0))
         _scale_image_postfusion_output_(self.post_fusion, self.config.layers)
 
     def _analyze(
         self,
         real: Tensor,
         imag: Tensor,
-    ) -> tuple[ComplexField, Tensor, ComplexField]:
-        feature_real, feature_imag = self.analysis(real, imag)
-        content_real, content_imag = self.content(feature_real, feature_imag)
-        packed_feature = torch.cat((feature_real, feature_imag), dim=-1)
-        write = 1.0 + self.write_router(packed_feature)
-        read_real, read_imag = self.read_router(feature_real, feature_imag)
+    ) -> tuple[ComplexField, ComplexField, ComplexField]:
+        active_real, active_imag = self.reader(real, imag)
+        content_real, write_real, read_real = active_real.split(
+            (self.content_width, self.state_modes, self.state_modes), dim=-1
+        )
+        content_imag, write_imag, read_imag = active_imag.split(
+            (self.content_width, self.state_modes, self.state_modes), dim=-1
+        )
         batch, steps, _width = content_real.shape
         content_shape = (batch, steps, self.heads, self.width_per_head)
-        route_shape = (batch, steps, self.heads, self.poles_per_head)
+        route_shape = (
+            batch,
+            steps,
+            self.heads,
+            self.width_per_head,
+            self.poles_per_head,
+        )
         return (
             (content_real.reshape(content_shape), content_imag.reshape(content_shape)),
-            write.reshape(route_shape),
+            (write_real.reshape(route_shape), write_imag.reshape(route_shape)),
             (read_real.reshape(route_shape), read_imag.reshape(route_shape)),
         )
 
     def _transport_and_read(
         self,
         content: ComplexField,
-        write: Tensor,
+        write: ComplexField,
         read: ComplexField,
     ) -> ComplexField:
-        drive_shape = (*content[0].shape[:2], self.total_poles, self.width_per_head)
-        drive_real = (write.unsqueeze(-1) * content[0].unsqueeze(-2)).reshape(drive_shape)
-        drive_imag = (write.unsqueeze(-1) * content[1].unsqueeze(-2)).reshape(drive_shape)
+        drive_real = (
+            write[0] * content[0].unsqueeze(-1)
+            - write[1] * content[1].unsqueeze(-1)
+        ).flatten(2)
+        drive_imag = (
+            write[0] * content[1].unsqueeze(-1)
+            + write[1] * content[0].unsqueeze(-1)
+        ).flatten(2)
         state_real, state_imag = self.memory(drive_real, drive_imag)
         state_shape = (
             *state_real.shape[:2],
             self.heads,
-            self.poles_per_head,
             self.width_per_head,
+            self.poles_per_head,
         )
         state_real = state_real.reshape(state_shape)
         state_imag = state_imag.reshape(state_shape)
-        selected_real = (
-            read[0].unsqueeze(-1) * state_real
-            + read[1].unsqueeze(-1) * state_imag
-        ).sum(dim=-2)
-        selected_imag = (
-            read[0].unsqueeze(-1) * state_imag
-            - read[1].unsqueeze(-1) * state_real
-        ).sum(dim=-2)
+        selected_real = (read[0] * state_real + read[1] * state_imag).sum(dim=-1)
+        selected_imag = (read[0] * state_imag - read[1] * state_real).sum(dim=-1)
         return selected_real.flatten(-2), selected_imag.flatten(-2)
 
     def forward(self, real: Tensor, imag: Tensor) -> ComplexField:

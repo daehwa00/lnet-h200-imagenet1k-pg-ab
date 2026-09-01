@@ -1250,7 +1250,6 @@ def _build(
     laplace_mamba_content_preserving_heads: int = 4,
     laplace_mamba_content_preserving_poles: int = 8,
     laplace_mamba_content_preserving_width: int = 16,
-    laplace_mamba_content_preserving_analysis_width: int = 1_024,
     laplace_mamba_delta_hidden: int = 32,
     laplace_mamba_delta_log_bound: float = 0.6931471805599453,
     laplace_mamba_conv_width: int = 4,
@@ -1381,9 +1380,6 @@ def _build(
             ),
             content_preserving_width_per_head=(
                 laplace_mamba_content_preserving_width
-            ),
-            content_preserving_analysis_width=(
-                laplace_mamba_content_preserving_analysis_width
             ),
             dynamic_delta_hidden=laplace_mamba_delta_hidden,
             dynamic_delta_log_bound=laplace_mamba_delta_log_bound,
@@ -1712,11 +1708,6 @@ def main() -> None:
     parser.add_argument("--laplace-mamba-content-preserving-heads", type=int, default=4)
     parser.add_argument("--laplace-mamba-content-preserving-poles", type=int, default=8)
     parser.add_argument("--laplace-mamba-content-preserving-width", type=int, default=16)
-    parser.add_argument(
-        "--laplace-mamba-content-preserving-analysis-width",
-        type=int,
-        default=1_024,
-    )
     parser.add_argument("--laplace-mamba-delta-hidden", type=int, default=32)
     parser.add_argument("--laplace-mamba-delta-log-bound", type=float, default=math.log(2.0))
     parser.add_argument("--laplace-mamba-conv-width", type=int, default=4)
@@ -1996,9 +1987,6 @@ def main() -> None:
         ),
         laplace_mamba_content_preserving_width=(
             args.laplace_mamba_content_preserving_width
-        ),
-        laplace_mamba_content_preserving_analysis_width=(
-            args.laplace_mamba_content_preserving_analysis_width
         ),
         laplace_mamba_delta_hidden=args.laplace_mamba_delta_hidden,
         laplace_mamba_delta_log_bound=args.laplace_mamba_delta_log_bound,

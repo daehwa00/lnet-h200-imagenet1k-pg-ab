@@ -16,7 +16,7 @@ RUNTIME = (
     ROOT
     / "kau/alphabet_lm_4090_content_preserving_image_postfusion/campaign.runtime.json"
 )
-LABEL = "content-preserving-h4p8k16-a1024-l19-fromscratch-100m"
+LABEL = "content-preserving-fullroute-h4p8k16-l19-fromscratch-100m"
 
 
 def _render() -> str:
@@ -29,9 +29,8 @@ def _render() -> str:
         or variant["content_preserving_heads"] != 4
         or variant["content_preserving_poles_per_head"] != 8
         or variant["content_preserving_width_per_head"] != 16
-        or variant["content_preserving_analysis_width"] != 1_024
         or variant["complex_state_per_layer"] != 512
-        or manifest["parameter_counts"][LABEL] != 64_728_627
+        or manifest["parameter_counts"][LABEL] != 61_633_299
     ):
         raise RuntimeError("invalid content-preserving ALPHABET campaign")
     campaign_id = manifest["campaign_id"]
@@ -54,11 +53,12 @@ def _render() -> str:
                 "id": hashlib.sha256(
                     f"{campaign_id}\0{LABEL}:seed501".encode()
                 ).hexdigest()[:16],
-                "display_name": "RTX4090-S501-ContentPreserving-H4P8K16-A1024-L19-100M",
+                "display_name": "RTX4090-S501-ContentPreserving-FullRoute-H4P8K16-L19-100M",
                 "tags": [
                     "RTX4090",
                     "ALPHABET2",
                     "ContentPreserving",
+                    "FullRoute",
                     "H4P8K16",
                     "FixedLaplace",
                     "ImagePostFusion",
