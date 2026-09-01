@@ -73,6 +73,18 @@ def test_content_memory_reads_history_before_the_current_write() -> None:
     torch.testing.assert_close(selected[1][:, 0], torch.zeros_like(selected[1][:, 0]))
 
 
+def test_history_residual_starts_at_zero_without_a_scale_parameter() -> None:
+    model = ContentPreservingImagePostFusionAlphabet2LM(_small_config())
+    block = cast("ContentPreservingImagePostFusionAlphabet2Block", model.blocks[0])
+    assert not hasattr(block, "memory_scale")
+    torch.testing.assert_close(
+        block.synthesis.weight_real, torch.zeros_like(block.synthesis.weight_real)
+    )
+    torch.testing.assert_close(
+        block.synthesis.weight_imag, torch.zeros_like(block.synthesis.weight_imag)
+    )
+
+
 def test_every_head_starts_with_the_complete_pole_palette() -> None:
     model = ContentPreservingImagePostFusionAlphabet2LM(_small_config())
     block = cast("ContentPreservingImagePostFusionAlphabet2Block", model.blocks[0])

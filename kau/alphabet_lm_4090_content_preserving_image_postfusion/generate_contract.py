@@ -16,7 +16,7 @@ RUNTIME = (
     ROOT
     / "kau/alphabet_lm_4090_content_preserving_image_postfusion/campaign.runtime.json"
 )
-LABEL = "content-historyonly-f256-h4p8k64-l19-fromscratch-30m"
+LABEL = "content-historyonly-noscale-f256-h4p8k64-l19-fromscratch-30m"
 
 
 def _render() -> str:
@@ -54,12 +54,13 @@ def _render() -> str:
                 "id": hashlib.sha256(
                     f"{campaign_id}\0{LABEL}:seed501".encode()
                 ).hexdigest()[:16],
-                "display_name": "RTX4090-S501-Content-HistoryOnly-F256-H4P8K64-L19-30M",
+                "display_name": "RTX4090-S501-Content-HistoryOnly-NoScale-F256-H4P8K64-L19-30M",
                 "tags": [
                     "RTX4090",
                     "ALPHABET2",
                     "ContentPreserving",
                     "HistoryOnly",
+                    "NoScale",
                     "F256",
                     "H4P8K64",
                     "FixedLaplace",
