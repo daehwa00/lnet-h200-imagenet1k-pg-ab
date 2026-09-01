@@ -3082,7 +3082,7 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
             self.content_width,
             kernel_size=config.conv_width,
         )
-        self.write_router = nn.Linear(2 * self.content_width, self.total_poles)
+        self.write_router = WidelyLinear(self.content_width, self.total_poles)
         self.read_router = PackedComplexLinear(self.content_width, self.total_poles)
         self.memory = FixedComplexPoleMemory1D(
             self.state_modes,
@@ -3112,26 +3112,31 @@ class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
         imag: Tensor,
     ) -> tuple[ComplexField, ComplexField, ComplexField]:
         content_real, content_imag = self.feature_reader(real, imag)
-        packed_content = torch.cat((content_real, content_imag), dim=-1)
-        write = self.write_router(packed_content)
+        write_real, write_imag = self.write_router(content_real, content_imag)
         read_real, read_imag = self.read_router(content_real, content_imag)
         batch, steps, _width = content_real.shape
         content_shape = (batch, steps, self.heads, self.width_per_head)
         route_shape = (batch, steps, self.heads, self.poles_per_head)
         return (
             (content_real.reshape(content_shape), content_imag.reshape(content_shape)),
-            write.reshape(route_shape),
+            (write_real.reshape(route_shape), write_imag.reshape(route_shape)),
             (read_real.reshape(route_shape), read_imag.reshape(route_shape)),
         )
 
     def _transport_and_read(
         self,
         content: ComplexField,
-        write: Tensor,
+        write: ComplexField,
         read: ComplexField,
     ) -> ComplexField:
-        drive_real = (write.unsqueeze(-2) * content[0].unsqueeze(-1)).flatten(2)
-        drive_imag = (write.unsqueeze(-2) * content[1].unsqueeze(-1)).flatten(2)
+        drive_real = (
+            write[0].unsqueeze(-2) * content[0].unsqueeze(-1)
+            - write[1].unsqueeze(-2) * content[1].unsqueeze(-1)
+        ).flatten(2)
+        drive_imag = (
+            write[0].unsqueeze(-2) * content[1].unsqueeze(-1)
+            + write[1].unsqueeze(-2) * content[0].unsqueeze(-1)
+        ).flatten(2)
         state_real, state_imag = self.memory(drive_real, drive_imag)
         _decay_real, _decay_imag, gamma_real, gamma_imag = self.memory.coefficients()
         gamma_real = gamma_real.to(device=drive_real.device, dtype=drive_real.dtype)

@@ -9,7 +9,7 @@ readonly OUTPUT_ROOT="${KAU_OUTPUT_ROOT:-/home/daehwa/alphabet-lm-4090-content-p
 readonly DATA_ROOT="/home/daehwa/alphabet-lm-data-fineweb-edu-v1"
 readonly TRAIN_MANIFEST="${DATA_ROOT}/tokens/train.manifest.json"
 readonly VALIDATION_MANIFEST="${DATA_ROOT}/tokens/validation.manifest.json"
-readonly LABEL="content-historyonly-learnbeta-f256-h4p8k64-l19-fromscratch-30m"
+readonly LABEL="content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m"
 
 cd "${PROJECT_ROOT}"
 if [[ ! "${KAU_EXPECTED_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] \
@@ -34,7 +34,7 @@ export MKL_NUM_THREADS=8
 export WANDB_BASE_URL="https://api.wandb.ai"
 export WANDB_ENTITY="daehwa"
 export WANDB_PROJECT="alphabet-lm-viability"
-export WANDB_GROUP="ALPHABET-LM-RTX4090-Content-HistoryOnly-LearnBeta-F256-H4P8K64-30M-S501-v9"
+export WANDB_GROUP="ALPHABET-LM-RTX4090-Content-HistoryOnly-ComplexWLB-F256-H4P8K64-30M-S501-v10"
 export WANDB_CONSOLE=off
 
 timeout --signal=TERM --kill-after=5m 8h \

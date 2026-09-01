@@ -4,7 +4,7 @@
     "K_real_dof": 512,
     "layers": 19,
     "variants": {
-      "content-historyonly-learnbeta-f256-h4p8k64-l19-fromscratch-30m": {
+      "content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m": {
         "complex_state_per_layer": 2048,
         "content_feature_width": 256,
         "content_preserving_heads": 4,
@@ -16,8 +16,8 @@
       }
     }
   },
-  "campaign_id": "kau-content-historyonly-learnbeta-f256-h4p8k64-l19-30m-s501-v9",
-  "campaign_manifest_sha256": "d81be08de8b0d5d61b010440aeb43aa90d6a73c9b32131c6fff99e8c0d40aef1",
+  "campaign_id": "kau-content-historyonly-complexwlb-f256-h4p8k64-l19-30m-s501-v10",
+  "campaign_manifest_sha256": "b98694dc1c53b90cd82aa4785a1f4d436b69979d79c37f681db4d5278febe5bc",
   "diagnostics": {
     "dense_vector_reference_parameters": 64105427,
     "dense_vector_reference_validation_loss": 4.83946,
@@ -26,22 +26,23 @@
     "mamba1_reference_validation_loss": 4.330902905240708
   },
   "entity": "daehwa",
-  "group": "ALPHABET-LM-RTX4090-Content-HistoryOnly-LearnBeta-F256-H4P8K64-30M-S501-v9",
+  "group": "ALPHABET-LM-RTX4090-Content-HistoryOnly-ComplexWLB-F256-H4P8K64-30M-S501-v10",
   "output_namespace": "alphabet-lm-4090-content-preserving-image-postfusion-v1",
   "parameter_counts": {
-    "content-historyonly-learnbeta-f256-h4p8k64-l19-fromscratch-30m": 39901555
+    "content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m": 40213459
   },
   "project": "alphabet-lm-viability",
   "runs": {
-    "content-historyonly-learnbeta-f256-h4p8k64-l19-fromscratch-30m": {
-      "display_name": "RTX4090-S501-Content-HistoryOnly-LearnBeta-F256-H4P8K64-L19-30M",
-      "id": "a290d18cca0114c3",
+    "content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m": {
+      "display_name": "RTX4090-S501-Content-HistoryOnly-ComplexWLB-F256-H4P8K64-L19-30M",
+      "id": "8d90cbeb7c0b627a",
       "tags": [
         "RTX4090",
         "ALPHABET2",
         "ContentPreserving",
         "HistoryOnly",
         "LearnBeta",
+        "ComplexWLB",
         "F256",
         "H4P8K64",
         "FixedLaplace",
@@ -63,15 +64,15 @@
     "read": "head_shared_complex_C_h4p8_on_prewrite_history_state",
     "state": "content_h4_k64_p8_exact_history_only",
     "synthesis": "strict_complex_256_to256",
-    "write": "head_shared_unnormalized_real_B_h4p8"
+    "write": "head_shared_unnormalized_complex_WL_B_h4p8"
   },
   "total_parameter_counts": {
-    "content-historyonly-learnbeta-f256-h4p8k64-l19-fromscratch-30m": 39901555
+    "content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m": 40213459
   },
   "training": {
     "checkpoint_updates": 25,
     "execution": [
-      "content-historyonly-learnbeta-f256-h4p8k64-l19-fromscratch-30m"
+      "content-historyonly-complexwlb-f256-h4p8k64-l19-fromscratch-30m"
     ],
     "global_sequences": 32,
     "gradient_clip": 1.0,
