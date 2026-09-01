@@ -21,6 +21,7 @@ from lnet.alphabet_lm import (
     ChunkedSemanticPoleMemory,
     ComplexHighwayLaplaceMambaLM,
     ContentAlignedImagePostFusionAlphabet2LM,
+    ContentPreservingImagePostFusionAlphabet2LM,
     DynamicDeltaImagePostFusionAlphabet2LM,
     DynamicLowRankWrite,
     FactorizedTokenRateVectorPoleBlock,
@@ -53,6 +54,7 @@ def _build(kind: str) -> nn.Module:
         "alphabet2_image_postfusion",
         "alphabet2_vector_image_postfusion",
         "alphabet2_content_aligned_image_postfusion",
+        "alphabet2_content_preserving_image_postfusion",
         "alphabet2_content_aligned_j2",
         "alphabet2_content_aligned_j4",
         "alphabet2_content_aligned_j2_r32",
@@ -77,6 +79,8 @@ def _build(kind: str) -> nn.Module:
             "alphabet2_content_aligned_j2_r64",
         }:
             model_type = ContentAlignedImagePostFusionAlphabet2LM
+        elif kind == "alphabet2_content_preserving_image_postfusion":
+            model_type = ContentPreservingImagePostFusionAlphabet2LM
         elif kind == "alphabet2_multi_observer_image_postfusion":
             model_type = MultiObserverImagePostFusionAlphabet2LM
         elif kind == "alphabet2_read_adapter_image_postfusion":
@@ -93,6 +97,7 @@ def _build(kind: str) -> nn.Module:
             in {
                 "alphabet2_vector_image_postfusion",
                 "alphabet2_content_aligned_image_postfusion",
+                "alphabet2_content_preserving_image_postfusion",
                 "alphabet2_content_aligned_j2",
                 "alphabet2_content_aligned_j4",
                 "alphabet2_multi_observer_image_postfusion",
@@ -2471,6 +2476,7 @@ def main() -> None:
             "alphabet2_image_postfusion",
             "alphabet2_vector_image_postfusion",
             "alphabet2_content_aligned_image_postfusion",
+            "alphabet2_content_preserving_image_postfusion",
             "alphabet2_content_aligned_j2",
             "alphabet2_content_aligned_j4",
             "alphabet2_content_aligned_j2_r32",
@@ -2583,6 +2589,7 @@ def main() -> None:
         "alphabet2_image_postfusion",
         "alphabet2_vector_image_postfusion",
         "alphabet2_content_aligned_image_postfusion",
+        "alphabet2_content_preserving_image_postfusion",
         "alphabet2_content_aligned_j2",
         "alphabet2_content_aligned_j4",
         "alphabet2_content_aligned_j2_r32",

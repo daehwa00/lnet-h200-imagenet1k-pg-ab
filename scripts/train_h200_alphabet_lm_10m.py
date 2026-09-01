@@ -28,6 +28,7 @@ from lnet.alphabet_lm import (
     CausalCNNPoleMemory,
     ComplexHighwayLaplaceMambaLM,
     ContentAlignedImagePostFusionAlphabet2LM,
+    ContentPreservingImagePostFusionAlphabet2LM,
     DynamicDeltaImagePostFusionAlphabet2LM,
     DynamicLowRankWrite,
     FactorizedTokenRateVectorPoleBlock,
@@ -91,6 +92,9 @@ KAU_ALPHABET2_VECTOR_POLE_RUNTIME_SCHEMA = (
 )
 KAU_ALPHABET2_COMPLEX_VECTOR_RUNTIME_SCHEMA = (
     "lnet.kau.alphabet_lm.alphabet2_complex_vector.runtime.v1"
+)
+KAU_CONTENT_PRESERVING_RUNTIME_SCHEMA = (
+    "lnet.kau.alphabet_lm.content_preserving_image_postfusion.runtime.v1"
 )
 _STOP_EVENT = threading.Event()
 
@@ -1243,6 +1247,10 @@ def _build(
     laplace_mamba_head_width: int = 16,
     laplace_mamba_content_rank: int = 1,
     laplace_mamba_observers: int = 8,
+    laplace_mamba_content_preserving_heads: int = 4,
+    laplace_mamba_content_preserving_poles: int = 8,
+    laplace_mamba_content_preserving_width: int = 16,
+    laplace_mamba_content_preserving_analysis_width: int = 1_024,
     laplace_mamba_delta_hidden: int = 32,
     laplace_mamba_delta_log_bound: float = 0.6931471805599453,
     laplace_mamba_conv_width: int = 4,
@@ -1353,6 +1361,7 @@ def _build(
         "alphabet2_image_postfusion",
         "alphabet2_vector_image_postfusion",
         "alphabet2_content_aligned_image_postfusion",
+        "alphabet2_content_preserving_image_postfusion",
         "alphabet2_multi_observer_image_postfusion",
         "alphabet2_read_adapter_image_postfusion",
         "alphabet2_temporal_whitening_image_postfusion",
@@ -1366,6 +1375,16 @@ def _build(
             head_width=laplace_mamba_head_width,
             aligned_content_rank=laplace_mamba_content_rank,
             observer_count=laplace_mamba_observers,
+            content_preserving_heads=laplace_mamba_content_preserving_heads,
+            content_preserving_poles_per_head=(
+                laplace_mamba_content_preserving_poles
+            ),
+            content_preserving_width_per_head=(
+                laplace_mamba_content_preserving_width
+            ),
+            content_preserving_analysis_width=(
+                laplace_mamba_content_preserving_analysis_width
+            ),
             dynamic_delta_hidden=laplace_mamba_delta_hidden,
             dynamic_delta_log_bound=laplace_mamba_delta_log_bound,
             conv_width=laplace_mamba_conv_width,
@@ -1379,6 +1398,8 @@ def _build(
             model_type = VectorImagePostFusionAlphabet2LM
         elif model_name == "alphabet2_content_aligned_image_postfusion":
             model_type = ContentAlignedImagePostFusionAlphabet2LM
+        elif model_name == "alphabet2_content_preserving_image_postfusion":
+            model_type = ContentPreservingImagePostFusionAlphabet2LM
         elif model_name == "alphabet2_multi_observer_image_postfusion":
             model_type = MultiObserverImagePostFusionAlphabet2LM
         elif model_name == "alphabet2_read_adapter_image_postfusion":
@@ -1674,6 +1695,7 @@ def main() -> None:
             "alphabet2_image_postfusion",
             "alphabet2_vector_image_postfusion",
             "alphabet2_content_aligned_image_postfusion",
+            "alphabet2_content_preserving_image_postfusion",
             "alphabet2_multi_observer_image_postfusion",
             "alphabet2_read_adapter_image_postfusion",
             "alphabet2_temporal_whitening_image_postfusion",
@@ -1687,6 +1709,14 @@ def main() -> None:
     parser.add_argument("--laplace-mamba-head-width", type=int, default=16)
     parser.add_argument("--laplace-mamba-content-rank", type=int, default=1)
     parser.add_argument("--laplace-mamba-observers", type=int, default=8)
+    parser.add_argument("--laplace-mamba-content-preserving-heads", type=int, default=4)
+    parser.add_argument("--laplace-mamba-content-preserving-poles", type=int, default=8)
+    parser.add_argument("--laplace-mamba-content-preserving-width", type=int, default=16)
+    parser.add_argument(
+        "--laplace-mamba-content-preserving-analysis-width",
+        type=int,
+        default=1_024,
+    )
     parser.add_argument("--laplace-mamba-delta-hidden", type=int, default=32)
     parser.add_argument("--laplace-mamba-delta-log-bound", type=float, default=math.log(2.0))
     parser.add_argument("--laplace-mamba-conv-width", type=int, default=4)
@@ -1923,6 +1953,7 @@ def main() -> None:
         KAU_ALPHABET2_NONSEPARABLE_RUNTIME_SCHEMA,
         KAU_ALPHABET2_VECTOR_POLE_RUNTIME_SCHEMA,
         KAU_ALPHABET2_COMPLEX_VECTOR_RUNTIME_SCHEMA,
+        KAU_CONTENT_PRESERVING_RUNTIME_SCHEMA,
     }:
         raise RuntimeError("invalid H200/KAU LM training runtime")
     if runtime["training"]["scan_fp32"] is not True:
@@ -1957,6 +1988,18 @@ def main() -> None:
         laplace_mamba_head_width=args.laplace_mamba_head_width,
         laplace_mamba_content_rank=args.laplace_mamba_content_rank,
         laplace_mamba_observers=args.laplace_mamba_observers,
+        laplace_mamba_content_preserving_heads=(
+            args.laplace_mamba_content_preserving_heads
+        ),
+        laplace_mamba_content_preserving_poles=(
+            args.laplace_mamba_content_preserving_poles
+        ),
+        laplace_mamba_content_preserving_width=(
+            args.laplace_mamba_content_preserving_width
+        ),
+        laplace_mamba_content_preserving_analysis_width=(
+            args.laplace_mamba_content_preserving_analysis_width
+        ),
         laplace_mamba_delta_hidden=args.laplace_mamba_delta_hidden,
         laplace_mamba_delta_log_bound=args.laplace_mamba_delta_log_bound,
         laplace_mamba_conv_width=args.laplace_mamba_conv_width,

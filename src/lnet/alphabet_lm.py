@@ -511,6 +511,10 @@ class LaplaceMambaLMConfig:
     head_width: int = 16
     aligned_content_rank: int = 1
     observer_count: int = 8
+    content_preserving_heads: int = 4
+    content_preserving_poles_per_head: int = 8
+    content_preserving_width_per_head: int = 16
+    content_preserving_analysis_width: int = 1_024
     dynamic_delta_hidden: int = 32
     dynamic_delta_log_bound: float = math.log(2.0)
     conv_width: int = 4
@@ -531,6 +535,10 @@ class LaplaceMambaLMConfig:
             self.head_width,
             self.aligned_content_rank,
             self.observer_count,
+            self.content_preserving_heads,
+            self.content_preserving_poles_per_head,
+            self.content_preserving_width_per_head,
+            self.content_preserving_analysis_width,
             self.dynamic_delta_hidden,
             self.conv_width,
             self.context_length,
@@ -551,6 +559,14 @@ class LaplaceMambaLMConfig:
     @property
     def inner_real_width(self) -> int:
         return 2 * self.inner_complex_width
+
+    @property
+    def content_preserving_width(self) -> int:
+        return self.content_preserving_heads * self.content_preserving_width_per_head
+
+    @property
+    def content_preserving_poles(self) -> int:
+        return self.content_preserving_heads * self.content_preserving_poles_per_head
 
 
 class CausalFactorizedComplexConv1dReader(nn.Module):
@@ -3035,6 +3051,117 @@ class VectorImagePostFusionAlphabet2Block(nn.Module):
         return self.post_fusion(*merged)
 
 
+class ContentPreservingImagePostFusionAlphabet2Block(nn.Module):
+    """Keep content coordinates intact while a grouped Laplace axis evolves."""
+
+    memory_scale_initial = 0.01
+
+    def __init__(self, config: LaplaceMambaLMConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.complex_width = config.model_width // 2
+        self.heads = config.content_preserving_heads
+        self.poles_per_head = config.content_preserving_poles_per_head
+        self.width_per_head = config.content_preserving_width_per_head
+        self.analysis_width = config.content_preserving_analysis_width
+        self.total_poles = self.heads * self.poles_per_head
+        self.content_width = self.heads * self.width_per_head
+        if self.total_poles != config.pole_modes:
+            raise ValueError(
+                "content-preserving heads x poles must match configured pole modes"
+            )
+        self.analysis = DenseComplexConv1dReader(
+            self.complex_width,
+            self.analysis_width,
+            kernel_size=config.conv_width,
+        )
+        self.content = PackedComplexLinear(self.analysis_width, self.content_width)
+        self.write_router = nn.Linear(2 * self.analysis_width, self.total_poles)
+        self.read_router = PackedComplexLinear(self.analysis_width, self.total_poles)
+        self.memory = FixedComplexPoleMemory1D(
+            self.total_poles,
+            context_length=config.context_length,
+            scan_fp32=config.scan_fp32,
+            initialization="lifetime_palette",
+            minimum_half_life=config.minimum_half_life,
+            maximum_half_life=config.maximum_half_life,
+            banks=self.heads,
+        )
+        self.synthesis = PackedComplexLinear(self.content_width, self.complex_width)
+        self.memory_scale = nn.Parameter(torch.tensor(self.memory_scale_initial))
+        self.post_fusion = GatedComplexPostFusion(
+            self.complex_width,
+            self.complex_width,
+        )
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        with torch.no_grad():
+            self.analysis.input_norm.weight.fill_(math.sqrt(2.0))
+            self.write_router.weight.zero_()
+            self.write_router.bias.zero_()
+        _scale_image_postfusion_output_(self.post_fusion, self.config.layers)
+
+    def _analyze(
+        self,
+        real: Tensor,
+        imag: Tensor,
+    ) -> tuple[ComplexField, Tensor, ComplexField]:
+        feature_real, feature_imag = self.analysis(real, imag)
+        content_real, content_imag = self.content(feature_real, feature_imag)
+        packed_feature = torch.cat((feature_real, feature_imag), dim=-1)
+        write = 1.0 + self.write_router(packed_feature)
+        read_real, read_imag = self.read_router(feature_real, feature_imag)
+        batch, steps, _width = content_real.shape
+        content_shape = (batch, steps, self.heads, self.width_per_head)
+        route_shape = (batch, steps, self.heads, self.poles_per_head)
+        return (
+            (content_real.reshape(content_shape), content_imag.reshape(content_shape)),
+            write.reshape(route_shape),
+            (read_real.reshape(route_shape), read_imag.reshape(route_shape)),
+        )
+
+    def _transport_and_read(
+        self,
+        content: ComplexField,
+        write: Tensor,
+        read: ComplexField,
+    ) -> ComplexField:
+        drive_shape = (*content[0].shape[:2], self.total_poles, self.width_per_head)
+        drive_real = (write.unsqueeze(-1) * content[0].unsqueeze(-2)).reshape(drive_shape)
+        drive_imag = (write.unsqueeze(-1) * content[1].unsqueeze(-2)).reshape(drive_shape)
+        state_real, state_imag = self.memory(drive_real, drive_imag)
+        state_shape = (
+            *state_real.shape[:2],
+            self.heads,
+            self.poles_per_head,
+            self.width_per_head,
+        )
+        state_real = state_real.reshape(state_shape)
+        state_imag = state_imag.reshape(state_shape)
+        selected_real = (
+            read[0].unsqueeze(-1) * state_real
+            + read[1].unsqueeze(-1) * state_imag
+        ).sum(dim=-2)
+        selected_imag = (
+            read[0].unsqueeze(-1) * state_imag
+            - read[1].unsqueeze(-1) * state_real
+        ).sum(dim=-2)
+        return selected_real.flatten(-2), selected_imag.flatten(-2)
+
+    def forward(self, real: Tensor, imag: Tensor) -> ComplexField:
+        content, write, read = self._analyze(real, imag)
+        selected = self._transport_and_read(content, write, read)
+        memory = self.synthesis(*selected)
+        merged = _rms_matched_complex_residual(
+            (real, imag),
+            memory,
+            self.memory_scale,
+            self.config.rms_epsilon,
+        )
+        return self.post_fusion(*merged)
+
+
 class ContentAlignedImagePostFusionAlphabet2Block(nn.Module):
     """Transport one shared semantic basis through pole-specific temporal filters."""
 
@@ -3512,6 +3639,12 @@ class ContentAlignedImagePostFusionAlphabet2LM(VectorImagePostFusionAlphabet2LM)
     """Vector ALPHABET with a shared content basis across fixed temporal modes."""
 
     block_type = ContentAlignedImagePostFusionAlphabet2Block
+
+
+class ContentPreservingImagePostFusionAlphabet2LM(VectorImagePostFusionAlphabet2LM):
+    """ALPHABET with a persistent content axis and grouped fixed-pole workspaces."""
+
+    block_type = ContentPreservingImagePostFusionAlphabet2Block
 
 
 class MultiObserverImagePostFusionAlphabet2LM(VectorImagePostFusionAlphabet2LM):
@@ -4789,6 +4922,8 @@ __all__ = [
     "ComplexMultiObserverRead",
     "ContentAlignedImagePostFusionAlphabet2Block",
     "ContentAlignedImagePostFusionAlphabet2LM",
+    "ContentPreservingImagePostFusionAlphabet2Block",
+    "ContentPreservingImagePostFusionAlphabet2LM",
     "DenseComplexConv1dReader",
     "DynamicDeltaImagePostFusionAlphabet2Block",
     "DynamicDeltaImagePostFusionAlphabet2LM",

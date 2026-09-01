@@ -1,0 +1,68 @@
+{
+  "schema": "lnet.kau.alphabet_lm.content_preserving_image_postfusion.v1",
+  "campaign_id": "kau-content-preserving-h4p8k16-l19-100m-s501-v1",
+  "output_namespace": "alphabet-lm-4090-content-preserving-image-postfusion-v1",
+  "architecture": {
+    "K_complex": 256,
+    "K_real_dof": 512,
+    "layers": 19,
+    "variants": {
+      "content-preserving-h4p8k16-a1024-l19-fromscratch-100m": {
+        "laplace_mamba_layers": 19,
+        "laplace_mamba_poles": 32,
+        "laplace_mamba_conv_width": 3,
+        "content_preserving_heads": 4,
+        "content_preserving_poles_per_head": 8,
+        "content_preserving_width_per_head": 16,
+        "content_preserving_analysis_width": 1024,
+        "complex_state_per_layer": 512
+      }
+    }
+  },
+  "source": {
+    "initialization": "seed501_from_scratch",
+    "checkpoint_initialization": false,
+    "analysis": "shared_dense_strict_complex_causal_k3_256_to_1024",
+    "content": "strict_complex_1024_to_h4k16",
+    "write": "unnormalized_real_B_h4p8_identity_initialized",
+    "read": "unnormalized_conjugate_complex_C_h4p8",
+    "state": "content_preserving_complex_h4_k16_p8",
+    "pole_palette": "complete_lifetime_palette_repeated_per_head",
+    "synthesis": "strict_complex_h4k16_to_256",
+    "memory_merge": "detached_rms_match_scalar_beta",
+    "post_fusion": "image_gated_widely_linear"
+  },
+  "training": {
+    "seed": 501,
+    "target_tokens": 100000000,
+    "horizon_tokens": 300000000,
+    "global_sequences": 32,
+    "microbatch": 8,
+    "precision": "bfloat16",
+    "scan_fp32": true,
+    "optimizer": "AdamW",
+    "weight_decay": 0.1,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.0003,
+    "warmup_updates": 20,
+    "checkpoint_updates": 25,
+    "execution": [
+      "content-preserving-h4p8k16-a1024-l19-fromscratch-100m"
+    ]
+  },
+  "parameter_counts": {
+    "content-preserving-h4p8k16-a1024-l19-fromscratch-100m": 64728627
+  },
+  "diagnostics": {
+    "final_validation_only": true,
+    "dense_vector_reference_parameters": 64105427,
+    "dense_vector_reference_validation_loss": 4.83946,
+    "mamba1_reference_parameters": 48987136,
+    "mamba1_reference_validation_loss": 4.330902905240708
+  },
+  "wandb": {
+    "entity": "daehwa",
+    "project": "alphabet-lm-viability",
+    "group": "ALPHABET-LM-RTX4090-ContentPreserving-H4P8K16-100M-S501-v1"
+  }
+}
