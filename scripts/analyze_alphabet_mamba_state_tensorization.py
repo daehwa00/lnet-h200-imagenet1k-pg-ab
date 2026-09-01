@@ -279,6 +279,8 @@ def _fit_probe(
     batch_size: int,
     seed: int,
     device: torch.device,
+    initial_weight: Tensor | None = None,
+    initial_bias: Tensor | None = None,
 ) -> tuple[TensorAxisProbe, dict[str, float]]:
     temporal, content = train_states.shape[1:]
     generator = torch.Generator(device="cpu").manual_seed(seed)
@@ -290,6 +292,8 @@ def _fit_probe(
         mode=cast("Any", mode),
         probe_rank=probe_rank,
     ).to(device)
+    if initial_weight is not None:
+        _initialize_probe(probe, initial_weight.to(device), initial_bias)
     optimizer = torch.optim.AdamW(probe.parameters(), lr=learning_rate, weight_decay=1.0e-4)
     probe.train()
     for _step in range(steps):
@@ -321,6 +325,29 @@ def _fit_probe(
     metrics["state_rms"] = float(scale.item())
     metrics["parameters"] = float(sum(parameter.numel() for parameter in probe.parameters()))
     return probe, metrics
+
+
+@torch.no_grad()
+def _initialize_probe(
+    probe: TensorAxisProbe,
+    effective_weight: Tensor,
+    effective_bias: Tensor | None,
+) -> None:
+    """Initialize a full probe from a nested axis-probe solution."""
+
+    matrix = effective_weight.flatten(0, 1).float()
+    if isinstance(probe.projection, nn.Linear):
+        rank = min(probe.projection.out_features, matrix.shape[0], matrix.shape[1])
+        u, singular, v = torch.svd_lowrank(matrix, q=rank, niter=6)
+        root = singular.sqrt()
+        probe.projection.weight.zero_()
+        probe.output.weight.zero_()
+        probe.projection.weight[:rank].copy_((u[:, :rank] * root[:rank]).t())
+        probe.output.weight[:, :rank].copy_(v[:, :rank] * root[:rank])
+    else:
+        probe.output.weight.copy_(matrix.t())
+    if effective_bias is not None and probe.output.bias is not None:
+        probe.output.bias.copy_(effective_bias.to(probe.output.bias))
 
 
 @torch.no_grad()
@@ -372,8 +399,8 @@ def _analyze_model(
     layer_rows: dict[str, object] = {}
     for layer in layers:
         row: dict[str, object] = {}
-        full_probe: TensorAxisProbe | None = None
-        for offset, mode in enumerate(("temporal", "content", "full")):
+        fitted: dict[str, TensorAxisProbe] = {}
+        for offset, mode in enumerate(("temporal", "content")):
             probe, metrics = _fit_probe(
                 train_states[layer],
                 train_targets,
@@ -390,16 +417,36 @@ def _analyze_model(
                 device=device,
             )
             row[mode] = metrics
-            if mode == "full":
-                full_probe = probe
-        if full_probe is None:
-            raise AssertionError("full tensor probe was not fitted")
+            fitted[mode] = probe
+        best_mode = min(
+            fitted,
+            key=lambda active: cast("dict[str, float]", row[active])["hidden_mse"],
+        )
+        source_probe = fitted[best_mode]
+        full_probe, full_metrics = _fit_probe(
+            train_states[layer],
+            train_targets,
+            eval_states[layer],
+            eval_targets,
+            eval_labels,
+            head_weight,
+            mode="full",
+            probe_rank=args.probe_rank,
+            steps=args.probe_steps,
+            learning_rate=args.probe_learning_rate,
+            batch_size=args.probe_batch_size,
+            seed=args.seed + 100 * layer + 2,
+            device=device,
+            initial_weight=source_probe.weight_tensor(),
+            initial_bias=source_probe.output.bias.detach(),
+        )
+        row["full"] = full_metrics
+        row["full_initialization"] = best_mode
         weight = full_probe.weight_tensor().detach()
         spectra = {
             "temporal": axis_spectrum_metrics(weight, axis=0),
             "content": axis_spectrum_metrics(weight, axis=1),
         }
-        full_metrics = cast("dict[str, float]", row["full"])
         rank_one: dict[str, object] = {}
         for axis_name, axis in (("temporal", 0), ("content", 1)):
             predictions = _rank_one_predictions(
