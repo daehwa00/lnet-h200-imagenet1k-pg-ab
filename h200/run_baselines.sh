@@ -453,6 +453,19 @@ else
   echo "H200_BASELINE_UNICONV_DISABLED=source_checkout_unavailable" >&2
 fi
 
+if [[ "${H200_LNET_K96_ONLY:-0}" == "1" ]]; then
+  "${ENV_ROOT}/bin/python" scripts/run_lnet_k96_imagenet1k_queue.py \
+    --data-root "${DATA_ROOT}" \
+    --output-root "${RUN_ROOT}/lnet-k96-p128x4-d2262-3seed" \
+    --python "${ENV_ROOT}/bin/python" \
+    --runner "${PROJECT_ROOT}/scripts/run_lnet_k96_p128_d2262_imagenet1k.py" \
+    --batch-size 128 \
+    --workers 8 \
+    --wandb-mode online
+  echo "H200_LNET_K96_CAMPAIGN_COMPLETE=${RUN_ROOT}/lnet-k96-p128x4-d2262-3seed/queue-status.json"
+  exit 0
+fi
+
 QUEUE_SCRIPT="scripts/run_h200_baseline_queue.py"
 if [[ "${H200_BASELINE_BACKLOG_ONLY:-0}" == "1" ]]; then
   QUEUE_SCRIPT="scripts/run_h200_baseline_backlog.py"
