@@ -264,6 +264,53 @@
         }
       }
     },
+    "lnet_k96_p128x4_d2262": {
+      "display_name": "LNet-K96-P128x4-D2262",
+      "seeds": {
+        "501": {
+          "display_name": "H200-LNet-I1K-K96-P128x4-s501",
+          "id": "bc122d7017591938",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "LNet",
+            "K96",
+            "P128x4",
+            "D2262",
+            "100ep",
+            "seed501"
+          ]
+        },
+        "509": {
+          "display_name": "H200-LNet-I1K-K96-P128x4-s509",
+          "id": "d58d8fd4ea43bf79",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "LNet",
+            "K96",
+            "P128x4",
+            "D2262",
+            "100ep",
+            "seed509"
+          ]
+        },
+        "521": {
+          "display_name": "H200-LNet-I1K-K96-P128x4-s521",
+          "id": "075983eb6c8b36b6",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "LNet",
+            "K96",
+            "P128x4",
+            "D2262",
+            "100ep",
+            "seed521"
+          ]
+        }
+      }
+    },
     "mobileone_s0": {
       "display_name": "MobileOne-S0",
       "seeds": {

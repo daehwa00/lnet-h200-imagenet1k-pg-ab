@@ -28,7 +28,7 @@ EPOCHS = 100
 EXPECTED_PARAMETERS = 3_253_224
 WANDB_ENTITY = "daehwa"
 WANDB_PROJECT = "alphabet2d-imagenet1k-h200-baselines"
-WANDB_GROUP = "lnet-k96-p128x4-d2262-imagenet1k-3seed-h200-v1"
+WANDB_GROUP = "h200-imagenet1k-moga-emo-100ep-s501-v2"
 
 
 class PrimaryLogitsAdapter(nn.Module):

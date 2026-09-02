@@ -17,7 +17,7 @@ def test_baseline_generated_wandb_contract_has_no_drift() -> None:
     )
 
 
-def test_baseline_runtime_contains_exact_sixty_distinct_runs() -> None:
+def test_baseline_runtime_contains_baselines_and_lnet_k96_runs() -> None:
     campaign_path = ROOT / "h200" / "baselines" / "campaign.json"
     campaign = json.loads(campaign_path.read_text())
     runtime = json.loads((ROOT / "h200/baselines/wandb.runtime.json").read_text())
@@ -31,7 +31,12 @@ def test_baseline_runtime_contains_exact_sixty_distinct_runs() -> None:
         for model in runtime["runs"].values()
         for record in model["seeds"].values()
     }
-    assert len(run_ids) == 60
+    assert len(run_ids) == 63
+    assert set(runtime["runs"]["lnet_k96_p128x4_d2262"]["seeds"]) == {
+        "501",
+        "509",
+        "521",
+    }
     assert runtime["canary"]["id"] not in run_ids
     generated = (ROOT / "cloudflare/baseline-relay/src/campaign.generated.ts").read_text()
     for model in runtime["runs"].values():

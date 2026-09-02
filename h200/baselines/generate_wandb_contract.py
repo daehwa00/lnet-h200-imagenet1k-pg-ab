@@ -1,9 +1,8 @@
-"""Generate the 60-run W&B contract and its dedicated Cloudflare Worker files."""
+"""Generate the baseline and internal-control W&B relay contract."""
 
 from __future__ import annotations
 
 # pyright: reportAny=false, reportExplicitAny=false
-# ruff: noqa: EM101, EM102, TRY003
 import argparse
 import hashlib
 import json
@@ -26,6 +25,8 @@ WORKER_NAME = "lnet-h200-baseline-relay-v1"
 RELAY_URL = f"https://{WORKER_NAME}.gpupulse-monitor.workers.dev"
 PROTOCOL_VERSION = "wandb-0.22.3-h200-baselines-v1"
 CANARY_KEY = "relay_canary"
+LNET_K96_MODEL_KEY = "lnet_k96_p128x4_d2262"
+LNET_K96_SEEDS = (501, 509, 521)
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -87,6 +88,32 @@ def _records(campaign: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
             "display_name": display_name,
             "seeds": by_seed,
         }
+    lnet_by_seed: dict[str, Any] = {}
+    for seed in LNET_K96_SEEDS:
+        run_id = _sha256(f"{campaign_id}:{LNET_K96_MODEL_KEY}:seed{seed}")[:16]
+        run = {
+            "id": run_id,
+            "display_name": f"H200-LNet-I1K-K96-P128x4-s{seed}",
+            "tags": [
+                "H200",
+                "ImageNet-1K",
+                "LNet",
+                "K96",
+                "P128x4",
+                "D2262",
+                "100ep",
+                f"seed{seed}",
+            ],
+        }
+        lnet_by_seed[str(seed)] = run
+        relay_runs[run_id] = {
+            "displayName": run["display_name"],
+            "tags": run["tags"],
+        }
+    runtime_runs[LNET_K96_MODEL_KEY] = {
+        "display_name": "LNet-K96-P128x4-D2262",
+        "seeds": lnet_by_seed,
+    }
     canary_id = _sha256(f"{campaign_id}::{CANARY_KEY}")[:16]
     canary = {
         "id": canary_id,

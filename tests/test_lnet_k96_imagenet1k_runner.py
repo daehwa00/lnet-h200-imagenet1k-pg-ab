@@ -16,6 +16,7 @@ def test_lnet_k96_imagenet1k_contract_is_frozen() -> None:
     assert runner.EPOCHS == 100
     assert runner.LEARNING_RATE == 3.0e-3
     assert runner.EXPECTED_PARAMETERS == 3_253_224
+    assert runner.WANDB_GROUP == "h200-imagenet1k-moga-emo-100ep-s501-v2"
     assert queue.SEEDS == runner.SEEDS
 
 
