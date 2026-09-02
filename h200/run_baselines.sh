@@ -12,6 +12,8 @@ readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-a
 CONTROL_REF="refs/heads/control/imagenet1k-baselines"
 if [[ "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" ]]; then
   CONTROL_REF="refs/heads/control/imagenet1k-baselines-followup"
+elif [[ "${H200_LNET_K96_ONLY:-0}" == "1" ]]; then
+  CONTROL_REF="refs/heads/control/imagenet1k-lnet-k96"
 fi
 readonly CONTROL_REF
 readonly CONTROL_PATH="h200/baselines/control.json"

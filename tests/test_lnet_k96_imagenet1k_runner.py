@@ -57,5 +57,6 @@ def test_h200_entrypoint_selects_only_lnet_k96_queue() -> None:
     assert "H200_LNET_K96_ONLY:-0" in source
     assert "scripts/run_lnet_k96_imagenet1k_queue.py" in source
     assert "scripts/run_lnet_k96_p128_d2262_imagenet1k.py" in source
+    assert "refs/heads/control/imagenet1k-lnet-k96" in source
     assert "--batch-size 128" in source
     assert "--workers 8" in source
