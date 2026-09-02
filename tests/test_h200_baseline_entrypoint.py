@@ -32,7 +32,7 @@ def test_baseline_runtime_contains_baselines_and_lnet_k96_runs() -> None:
         for record in model["seeds"].values()
     }
     assert len(run_ids) == 63
-    assert set(runtime["runs"]["lnet_k96_p128x4_d2262"]["seeds"]) == {
+    assert set(runtime["runs"]["lnet_k96_p128x4_d2262_optimized_v2"]["seeds"]) == {
         "501",
         "509",
         "521",

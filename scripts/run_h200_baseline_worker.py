@@ -29,7 +29,7 @@ from torch import Tensor, nn
 from torch.utils.data import DataLoader
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
 
 NUM_CLASSES = 1000
@@ -247,7 +247,12 @@ def _contract(task: BaselineTask) -> dict[str, Any]:
             "batch_size": task.batch_size,
             "gradient_accumulation_steps": task.gradient_accumulation_steps,
             "effective_batch_size": EFFECTIVE_BATCH_SIZE,
-            "persistent_workers": False,
+            "persistent_workers": task.workers > 0,
+            "validation_persistent_workers": False,
+            "loader_prefetch_factor": 2,
+            "device_prefetch_stream": True,
+            "device_prefetch_scope": "copy_only",
+            "fused_h2d_channels_last": True,
             "validation": "streaming full validation set",
             "resume": (
                 "epoch-boundary RNG continuity; bitwise CUDA kernel determinism "
@@ -444,10 +449,9 @@ def _build_loaders(task: BaselineTask, device: torch.device) -> LoaderBundle:
         "batch_size": task.batch_size,
         "num_workers": task.workers,
         "pin_memory": device.type == "cuda",
-        "persistent_workers": False,
     }
     if task.workers:
-        common["prefetch_factor"] = 1
+        common["prefetch_factor"] = 2
     train = DataLoader(
         train_dataset,
         shuffle=True,
@@ -455,6 +459,7 @@ def _build_loaders(task: BaselineTask, device: torch.device) -> LoaderBundle:
         # partial batch at effective batch 256.
         drop_last=True,
         generator=train_generator,
+        persistent_workers=task.workers > 0,
         **common,
     )
     validation = DataLoader(
@@ -462,6 +467,7 @@ def _build_loaders(task: BaselineTask, device: torch.device) -> LoaderBundle:
         shuffle=False,
         drop_last=False,
         generator=validation_generator,
+        persistent_workers=False,
         **common,
     )
     return LoaderBundle(train, validation, train_generator, validation_generator)
@@ -479,6 +485,106 @@ def _make_mixup() -> _Mixup:
         label_smoothing=LABEL_SMOOTHING,
         num_classes=NUM_CLASSES,
     )
+
+
+def _move_training_batch(
+    inputs: Tensor,
+    hard_targets: Tensor,
+    mixup: _Mixup,
+    device: torch.device,
+) -> tuple[Tensor, Tensor, Tensor]:
+    mixed_inputs, soft_targets = mixup(inputs, hard_targets)
+    return (
+        mixed_inputs.to(
+            device=device,
+            non_blocking=True,
+            memory_format=torch.channels_last,
+        ),
+        hard_targets.to(device=device, non_blocking=True),
+        soft_targets.to(device=device, non_blocking=True),
+    )
+
+
+def _training_batches(
+    loader: DataLoader[Any],
+    mixup: _Mixup,
+    device: torch.device,
+) -> Iterator[tuple[Tensor, Tensor, Tensor]]:
+    if device.type != "cuda":
+        for inputs, hard_targets in loader:
+            yield _move_training_batch(inputs, hard_targets, mixup, device)
+        return
+    stream = torch.cuda.Stream(device=device)
+    iterator = iter(loader)
+    try:
+        inputs, hard_targets = next(iterator)
+    except StopIteration:
+        return
+    with torch.cuda.stream(stream):
+        pending = _move_training_batch(inputs, hard_targets, mixup, device)
+    while True:
+        current = torch.cuda.current_stream(device=device)
+        current.wait_stream(stream)
+        active = pending
+        for tensor in active:
+            tensor.record_stream(current)
+        try:
+            inputs, hard_targets = next(iterator)
+        except StopIteration:
+            has_next = False
+        else:
+            has_next = True
+            with torch.cuda.stream(stream):
+                pending = _move_training_batch(inputs, hard_targets, mixup, device)
+        yield active
+        if not has_next:
+            break
+
+
+def _validation_batches(
+    loader: DataLoader[Any],
+    device: torch.device,
+) -> Iterator[tuple[Tensor, Tensor]]:
+    if device.type != "cuda":
+        for inputs, targets in loader:
+            yield inputs.to(device), targets.to(device)
+        return
+    stream = torch.cuda.Stream(device=device)
+    iterator = iter(loader)
+    try:
+        inputs, targets = next(iterator)
+    except StopIteration:
+        return
+
+    def move(batch_inputs: Tensor, batch_targets: Tensor) -> tuple[Tensor, Tensor]:
+        return (
+            batch_inputs.to(
+                device=device,
+                non_blocking=True,
+                memory_format=torch.channels_last,
+            ),
+            batch_targets.to(device=device, non_blocking=True),
+        )
+
+    with torch.cuda.stream(stream):
+        pending = move(inputs, targets)
+    while True:
+        current = torch.cuda.current_stream(device=device)
+        current.wait_stream(stream)
+        active = pending
+        active[0].record_stream(current)
+        active[1].record_stream(current)
+        try:
+            inputs, targets = next(iterator)
+        except StopIteration:
+            has_next = False
+        else:
+            has_next = True
+            with torch.cuda.stream(stream):
+                pending = move(inputs, targets)
+        yield active
+        if not has_next:
+            break
 
 
 def _validation_uses_bfloat16(model_key: str) -> bool:
@@ -587,15 +693,10 @@ def _train_one_epoch(
     window_start = 0
     use_bfloat16 = registry.model_spec(task.model_key).precision == "bfloat16"
 
-    for batch_index, (inputs, hard_targets) in enumerate(loader):
+    batches = _training_batches(loader, mixup, device)
+    for batch_index, (inputs, hard_targets, soft_targets) in enumerate(batches):
         if batch_index == window_start:
             window_size = min(accumulation, len(loader) - window_start)
-        inputs, soft_targets = mixup(inputs, hard_targets)
-        inputs = inputs.to(device, non_blocking=True)
-        hard_targets = hard_targets.to(device, non_blocking=True)
-        soft_targets = soft_targets.to(device, non_blocking=True)
-        if inputs.ndim == 4:
-            inputs = inputs.contiguous(memory_format=torch.channels_last)
         with torch.autocast(
             device_type=device.type,
             dtype=torch.bfloat16,
@@ -665,11 +766,7 @@ def _evaluate_streaming(
     top1_terms: list[Tensor] = []
     top5_terms: list[Tensor] = []
     with torch.inference_mode():
-        for inputs, targets in loader:
-            inputs = inputs.to(device, non_blocking=True)
-            targets = targets.to(device, non_blocking=True)
-            if inputs.ndim == 4:
-                inputs = inputs.contiguous(memory_format=torch.channels_last)
+        for inputs, targets in _validation_batches(loader, device):
             with torch.autocast(
                 device_type=device.type,
                 dtype=torch.bfloat16,

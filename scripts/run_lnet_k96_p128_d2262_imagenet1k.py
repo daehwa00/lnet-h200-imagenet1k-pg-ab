@@ -19,8 +19,8 @@ import run_a2d_r2k3_k_family_wave_a_imagenet100 as family
 import run_h200_baseline_worker as worker
 from torch import Tensor, nn
 
-MODEL_KEY = "lnet_k96_p128x4_d2262"
-DISPLAY_NAME = "LNet-K96-P128x4-D2262"
+MODEL_KEY = "lnet_k96_p128x4_d2262_optimized_v2"
+DISPLAY_NAME = "LNet-K96-P128x4-D2262-OptimizedV2"
 VARIANT = "XL-K96-U125"
 SEEDS = (501, 509, 521)
 LEARNING_RATE = 3.0e-3

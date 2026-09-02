@@ -25,7 +25,7 @@ WORKER_NAME = "lnet-h200-baseline-relay-v1"
 RELAY_URL = f"https://{WORKER_NAME}.gpupulse-monitor.workers.dev"
 PROTOCOL_VERSION = "wandb-0.22.3-h200-baselines-v1"
 CANARY_KEY = "relay_canary"
-LNET_K96_MODEL_KEY = "lnet_k96_p128x4_d2262"
+LNET_K96_MODEL_KEY = "lnet_k96_p128x4_d2262_optimized_v2"
 LNET_K96_SEEDS = (501, 509, 521)
 
 

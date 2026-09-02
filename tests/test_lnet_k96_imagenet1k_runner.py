@@ -12,6 +12,7 @@ from scripts import run_lnet_k96_p128_d2262_imagenet1k as runner
 
 def test_lnet_k96_imagenet1k_contract_is_frozen() -> None:
     assert runner.VARIANT == "XL-K96-U125"
+    assert runner.MODEL_KEY == "lnet_k96_p128x4_d2262_optimized_v2"
     assert runner.SEEDS == (501, 509, 521)
     assert runner.EPOCHS == 100
     assert runner.LEARNING_RATE == 3.0e-3

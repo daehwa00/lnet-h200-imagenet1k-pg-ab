@@ -77,19 +77,6 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
-    "075983eb6c8b36b6": {
-      "displayName": "H200-LNet-I1K-K96-P128x4-s521",
-      "tags": [
-        "H200",
-        "ImageNet-1K",
-        "LNet",
-        "K96",
-        "P128x4",
-        "D2262",
-        "100ep",
-        "seed521"
-      ]
-    },
     "0a6dc2239978bca5": {
       "displayName": "H200-BL-mobileone_s1-s521",
       "tags": [
@@ -244,6 +231,19 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
+    "4466b7509edbf9a5": {
+      "displayName": "H200-LNet-I1K-K96-P128x4-s501",
+      "tags": [
+        "H200",
+        "ImageNet-1K",
+        "LNet",
+        "K96",
+        "P128x4",
+        "D2262",
+        "100ep",
+        "seed501"
+      ]
+    },
     "462b0560fd64a95d": {
       "displayName": "H200-BL-emov2_1m-s521",
       "tags": [
@@ -264,6 +264,19 @@ export const CAMPAIGN = {
         "100ep",
         "three-seed",
         "ip-scoped-untrusted"
+      ]
+    },
+    "4a18ad3870534f82": {
+      "displayName": "H200-LNet-I1K-K96-P128x4-s509",
+      "tags": [
+        "H200",
+        "ImageNet-1K",
+        "LNet",
+        "K96",
+        "P128x4",
+        "D2262",
+        "100ep",
+        "seed509"
       ]
     },
     "4a8d135549aa68a9": {
@@ -561,19 +574,6 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
-    "bc122d7017591938": {
-      "displayName": "H200-LNet-I1K-K96-P128x4-s501",
-      "tags": [
-        "H200",
-        "ImageNet-1K",
-        "LNet",
-        "K96",
-        "P128x4",
-        "D2262",
-        "100ep",
-        "seed501"
-      ]
-    },
     "bc4b91c4837d1eac": {
       "displayName": "H200-BL-mobilevitv2_100-s509",
       "tags": [
@@ -618,8 +618,8 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
-    "d58d8fd4ea43bf79": {
-      "displayName": "H200-LNet-I1K-K96-P128x4-s509",
+    "d0215caa4da00b69": {
+      "displayName": "H200-LNet-I1K-K96-P128x4-s521",
       "tags": [
         "H200",
         "ImageNet-1K",
@@ -628,7 +628,7 @@ export const CAMPAIGN = {
         "P128x4",
         "D2262",
         "100ep",
-        "seed509"
+        "seed521"
       ]
     },
     "d8a0e86658d1e5fa": {
