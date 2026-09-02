@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
-  "target_commit": "d4836bf7d818e02849bd519003972d71c55f8dea",
-  "generation": 2,
-  "action": "stop",
-  "updated_at": "2026-09-02T14:18:01+09:00",
-  "reason": "replace the initial K96 request with physical batch256 and compiled optimized execution"
+  "target_commit": "158a4f9896698c7273516f474c89d35b37692210",
+  "generation": 3,
+  "action": "run",
+  "updated_at": "2026-09-02T14:23:36+09:00",
+  "reason": "run the replacement K96 three-seed campaign with physical batch256 and compiled optimized execution"
 }
