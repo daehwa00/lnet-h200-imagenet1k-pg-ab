@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
-  "target_commit": "158a4f9896698c7273516f474c89d35b37692210",
-  "generation": 4,
-  "action": "stop",
-  "updated_at": "2026-09-02T15:55:34+09:00",
-  "reason": "replace the generic ImageNet-1K loader with the full persistent CUDA-prefetch pipeline"
+  "target_commit": "f361b248aeb1627b01d5d9eba3da78223a35330c",
+  "generation": 5,
+  "action": "run",
+  "updated_at": "2026-09-02T16:00:23+09:00",
+  "reason": "run K96 batch256 with persistent workers, prefetch factor two, and CUDA copy-stream overlap"
 }
