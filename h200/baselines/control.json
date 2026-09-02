@@ -2,8 +2,8 @@
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
   "target_commit": "789063db149b67f2665d99d3cb2506876982eece",
-  "generation": 2,
-  "action": "run",
-  "updated_at": "2026-08-31T09:59:26+09:00",
-  "reason": "arm the balanced remaining-seed follow-up after issue 375 completes"
+  "generation": 3,
+  "action": "stop",
+  "updated_at": "2026-09-02T14:06:50+09:00",
+  "reason": "preserve completed TinyNeXt-T seed509 and release H200 before the LNet K96 three-seed campaign"
 }
