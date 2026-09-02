@@ -59,6 +59,28 @@ class _RandomMixup:
         return mixed_inputs, mixed_labels
 
 
+def test_compiled_runtime_is_explicit_and_fixed_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _TinyClassifier(worker.NUM_CLASSES)
+    captured: dict[str, object] = {}
+
+    def compile_model(source: nn.Module, **kwargs: object) -> nn.Module:
+        captured["source"] = source
+        captured.update(kwargs)
+        return source
+
+    monkeypatch.setenv("H200_BASELINE_TORCH_COMPILE_MODE", "default")
+    monkeypatch.setattr(worker.torch, "compile", compile_model)
+    assert worker._compiled_runtime(model, torch.device("cuda")) is model
+    assert captured == {
+        "source": model,
+        "mode": "default",
+        "fullgraph": False,
+        "dynamic": False,
+    }
+
+
 def _model_builder(_key: str, _source_root: str | Path | None, classes: int) -> nn.Module:
     return _TinyClassifier(classes)
 

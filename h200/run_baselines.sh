@@ -456,12 +456,13 @@ else
 fi
 
 if [[ "${H200_LNET_K96_ONLY:-0}" == "1" ]]; then
+  export H200_BASELINE_TORCH_COMPILE_MODE=default
   "${ENV_ROOT}/bin/python" scripts/run_lnet_k96_imagenet1k_queue.py \
     --data-root "${DATA_ROOT}" \
     --output-root "${RUN_ROOT}/lnet-k96-p128x4-d2262-3seed" \
     --python "${ENV_ROOT}/bin/python" \
     --runner "${PROJECT_ROOT}/scripts/run_lnet_k96_p128_d2262_imagenet1k.py" \
-    --batch-size 128 \
+    --batch-size 256 \
     --workers 8 \
     --wandb-mode online
   echo "H200_LNET_K96_CAMPAIGN_COMPLETE=${RUN_ROOT}/lnet-k96-p128x4-d2262-3seed/queue-status.json"

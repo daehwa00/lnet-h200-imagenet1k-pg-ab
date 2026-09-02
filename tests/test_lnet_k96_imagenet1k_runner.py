@@ -25,14 +25,14 @@ def test_lnet_k96_imagenet1k_uses_matched_baseline_task(tmp_path: Path) -> None:
         output_root=tmp_path / "output",
         data_root=tmp_path / "imagenet",
         seed=509,
-        batch_size=128,
+        batch_size=256,
         workers=8,
         wandb_mode="disabled",
     )
     task = runner._task(args)
     assert task.epochs == 100
-    assert task.batch_size == 128
-    assert task.gradient_accumulation_steps == 2
+    assert task.batch_size == 256
+    assert task.gradient_accumulation_steps == 1
     assert task.workers == 8
     assert task.learning_rate == 3.0e-3
     assert task.seed == 509
@@ -58,5 +58,6 @@ def test_h200_entrypoint_selects_only_lnet_k96_queue() -> None:
     assert "scripts/run_lnet_k96_imagenet1k_queue.py" in source
     assert "scripts/run_lnet_k96_p128_d2262_imagenet1k.py" in source
     assert "refs/heads/control/imagenet1k-lnet-k96" in source
-    assert "--batch-size 128" in source
+    assert "--batch-size 256" in source
     assert "--workers 8" in source
+    assert "H200_BASELINE_TORCH_COMPILE_MODE=default" in source

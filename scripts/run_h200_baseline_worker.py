@@ -264,6 +264,9 @@ def _contract(task: BaselineTask) -> dict[str, Any]:
         "external_source_provenance": external_provenance,
         "native_extension": native_extension,
         "runtime": {
+            "torch_compile_mode": os.environ.get("H200_BASELINE_TORCH_COMPILE_MODE"),
+            "torch_compile_dynamic": False,
+            "torch_compile_fullgraph": False,
             "gpu_memory_fraction": os.environ.get("H200_GPU_MEMORY_FRACTION"),
             "mps_active": os.environ.get("H200_BASELINE_MPS_ACTIVE"),
             "mps_active_thread_percentage": os.environ.get(
@@ -700,6 +703,21 @@ def _evaluate_streaming(
     }
 
 
+def _compiled_runtime(model: nn.Module, device: torch.device) -> nn.Module:
+    mode = os.environ.get("H200_BASELINE_TORCH_COMPILE_MODE", "").strip()
+    if not mode or device.type != "cuda":
+        return model
+    return cast(
+        "nn.Module",
+        torch.compile(
+            model,
+            mode=mode,
+            fullgraph=False,
+            dynamic=False,
+        ),
+    )
+
+
 def _capture_rng(bundle: LoaderBundle) -> dict[str, Any]:
     numpy_state = np.random.get_state()
     return {
@@ -1113,12 +1131,13 @@ def run_task(
         _restore_rng(checkpoint["rng"], loaders)
         _backfill_telemetry(task, history)
 
+    active_model = _compiled_runtime(model, resolved_device)
     started = time.monotonic()
     stopped_at_max_steps = False
     for epoch in range(completed_epochs + 1, task.epochs + 1):
         train_started = time.monotonic()
         train_metrics, global_step, stopped = _train_one_epoch(
-            model,
+            active_model,
             loaders.train,
             optimizer,
             mixup,
@@ -1132,7 +1151,7 @@ def run_task(
         train_seconds = time.monotonic() - train_started
         train_metrics["images_per_second"] = train_metrics["examples"] / max(train_seconds, 1.0e-12)
         validation_metrics = _evaluate_streaming(
-            model,
+            active_model,
             loaders.validation,
             resolved_device,
             use_bfloat16=_validation_uses_bfloat16(task.model_key),
