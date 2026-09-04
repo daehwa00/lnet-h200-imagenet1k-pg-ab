@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
-  "target_commit": "2e4ef7fc2c675ff50aa742a98915606ef5adc898",
-  "generation": 14,
+  "target_commit": "17e0ad410448e13049df7ec6af5f27ceb5bcd9c0",
+  "generation": 15,
   "action": "run",
-  "updated_at": "2026-09-04T12:51:46+09:00",
-  "reason": "resume K96 sequentially with strict source checkpoint validation"
+  "updated_at": "2026-09-04T13:14:26+09:00",
+  "reason": "train K96 seed509 and seed521 from scratch under the simplified optimized contract"
 }
