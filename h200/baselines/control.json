@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
-  "target_commit": "f361b248aeb1627b01d5d9eba3da78223a35330c",
-  "generation": 6,
-  "action": "stop",
-  "updated_at": "2026-09-04T10:53:35+09:00",
-  "reason": "resume K96 from its checkpoint with state-compatible compiled-training preparation"
+  "target_commit": "ec9a22ecc66508c56e8a142c76d5ee7d2b64d8a7",
+  "generation": 7,
+  "action": "run",
+  "updated_at": "2026-09-04T11:09:04+09:00",
+  "reason": "resume K96 seed509 from its validated checkpoint with compiled-training preparation"
 }
