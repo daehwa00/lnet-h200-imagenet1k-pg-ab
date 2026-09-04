@@ -1,0 +1,9 @@
+{
+  "schema": "lnet.remote_run_control.v1",
+  "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
+  "target_commit": "0794fe540eca763a8caad4f4d7b5a26ca2048324",
+  "generation": 1,
+  "action": "run",
+  "updated_at": "2026-09-04T17:06:36+09:00",
+  "reason": "run TinyViM-S, EfficientViM-M1, and MambaOut-Femto on the isolated MIG1 lane"
+}
