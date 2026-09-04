@@ -10,7 +10,9 @@ readonly WANDB_RUNTIME="${PROJECT_ROOT}/h200/baselines/wandb.runtime.json"
 readonly REQUIREMENTS_LOCK="${PROJECT_ROOT}/h200/baselines/requirements.lock"
 readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab.git"
 CONTROL_REF="refs/heads/control/imagenet1k-baselines"
-if [[ "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" ]]; then
+if [[ "${H200_LNET_K128_ONLY:-0}" == "1" ]]; then
+  CONTROL_REF="refs/heads/control/imagenet1k-lnet-k128"
+elif [[ "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" ]]; then
   CONTROL_REF="refs/heads/control/imagenet1k-baselines-followup"
 elif [[ "${H200_LNET_K96_ONLY:-0}" == "1" ]]; then
   CONTROL_REF="refs/heads/control/imagenet1k-lnet-k96"
@@ -470,6 +472,20 @@ if [[ "${H200_LNET_K96_ONLY:-0}" == "1" ]]; then
     --wandb-mode online \
     --max-parallel 1
   echo "H200_LNET_K96_CAMPAIGN_COMPLETE=${RUN_ROOT}/lnet-k96-p128x4-d2262-3seed/queue-status.json"
+  exit 0
+fi
+
+if [[ "${H200_LNET_K128_ONLY:-0}" == "1" ]]; then
+  export H200_BASELINE_TORCH_COMPILE_MODE=reduce-overhead
+  export H200_BASELINE_COMPILED_TRAINING_PREPARATION=1
+  "${ENV_ROOT}/bin/python" scripts/run_lnet_k128_h200_imagenet1k_queue.py \
+    --data-root "${DATA_ROOT}" \
+    --output-root "${RUN_ROOT}/lnet-k128-h200-s509-521" \
+    --python "${ENV_ROOT}/bin/python" \
+    --runner "${PROJECT_ROOT}/scripts/run_lnet_k128_p160_160_160_128_d2262_h200_imagenet1k.py" \
+    --batch-size 256 \
+    --workers 8
+  echo "H200_LNET_K128_CAMPAIGN_COMPLETE=${RUN_ROOT}/lnet-k128-h200-s509-521/queue-status.json"
   exit 0
 fi
 

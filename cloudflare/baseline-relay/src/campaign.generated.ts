@@ -189,6 +189,18 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
+    "29e99c66410f58fd": {
+      "displayName": "H200-LNet-I1K-K128-s521",
+      "tags": [
+        "H200",
+        "ImageNet-1K",
+        "LNet",
+        "K128",
+        "D2262",
+        "100ep",
+        "seed521"
+      ]
+    },
     "2f2f995922b5c122": {
       "displayName": "H200-BL-emov2_1m-s501",
       "tags": [
@@ -616,6 +628,18 @@ export const CAMPAIGN = {
         "100ep",
         "three-seed",
         "ip-scoped-untrusted"
+      ]
+    },
+    "d0bcc9be18143fd2": {
+      "displayName": "H200-LNet-I1K-K128-s509",
+      "tags": [
+        "H200",
+        "ImageNet-1K",
+        "LNet",
+        "K128",
+        "D2262",
+        "100ep",
+        "seed509"
       ]
     },
     "d8a0e86658d1e5fa": {

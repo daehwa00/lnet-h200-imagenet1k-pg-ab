@@ -27,6 +27,8 @@ PROTOCOL_VERSION = "wandb-0.22.3-h200-baselines-v1"
 CANARY_KEY = "relay_canary"
 LNET_K96_MODEL_KEY = "lnet_k96_p128x4_d2262_clean_restart_v3"
 LNET_K96_SEEDS = (509, 521)
+LNET_K128_MODEL_KEY = "lnet_k128_p160_160_160_128_d2262_h200_v1"
+LNET_K128_SEEDS = (509, 521)
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -113,6 +115,22 @@ def _records(campaign: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     runtime_runs[LNET_K96_MODEL_KEY] = {
         "display_name": "LNet-K96-P128x4-D2262",
         "seeds": lnet_by_seed,
+    }
+    k128_by_seed: dict[str, Any] = {}
+    for seed in LNET_K128_SEEDS:
+        run_id = _sha256(f"{campaign_id}:{LNET_K128_MODEL_KEY}:seed{seed}")[:16]
+        run = {
+            "id": run_id,
+            "display_name": f"H200-LNet-I1K-K128-s{seed}",
+            "tags": [
+                "H200", "ImageNet-1K", "LNet", "K128", "D2262", "100ep", f"seed{seed}",
+            ],
+        }
+        k128_by_seed[str(seed)] = run
+        relay_runs[run_id] = {"displayName": run["display_name"], "tags": run["tags"]}
+    runtime_runs[LNET_K128_MODEL_KEY] = {
+        "display_name": "LNet-K128-P160-160-160-128-D2262-H200",
+        "seeds": k128_by_seed,
     }
     canary_id = _sha256(f"{campaign_id}::{CANARY_KEY}")[:16]
     canary = {
