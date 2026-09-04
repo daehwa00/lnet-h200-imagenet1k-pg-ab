@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
-  "target_commit": "3609c81748279d5e92dcbe857c0fa0d70598815d",
-  "generation": 13,
-  "action": "stop",
-  "updated_at": "2026-09-04T12:48:27+09:00",
-  "reason": "stop issue 382 because its submitted resume root omitted the output directory"
+  "target_commit": "2e4ef7fc2c675ff50aa742a98915606ef5adc898",
+  "generation": 14,
+  "action": "run",
+  "updated_at": "2026-09-04T12:51:46+09:00",
+  "reason": "resume K96 sequentially with strict source checkpoint validation"
 }
