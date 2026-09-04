@@ -64,6 +64,7 @@ def test_h200_entrypoint_selects_only_lnet_k96_queue() -> None:
     assert "H200_BASELINE_TORCH_COMPILE_MODE=default" in source
     assert "H200_BASELINE_COMPILED_TRAINING_PREPARATION=1" in source
     assert "H200_LNET_K96_RESUME_ROOT" in source
+    assert "resume root lacks the completed seed501 result or seed509 checkpoint" in source
     assert "H200_ALLOW_PERFORMANCE_ONLY_CHECKPOINT_MIGRATION=1" in source
     assert "nvidia-cuda-mps-control" not in source
     assert "--max-parallel 1" in source
