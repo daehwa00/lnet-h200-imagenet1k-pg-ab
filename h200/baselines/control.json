@@ -1,0 +1,9 @@
+{
+  "schema": "lnet.remote_run_control.v1",
+  "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
+  "target_commit": "107e2e9242c165112d9db87996f457ea4e7abeb0",
+  "generation": 1,
+  "action": "run",
+  "updated_at": "2026-09-04T17:10:49+09:00",
+  "reason": "run a clean TinyNeXt-T seed521 on the isolated secondary-account MIG1 lane"
+}
