@@ -2,8 +2,8 @@
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
   "target_commit": "4b9be6a9b3c70193cca6a674e83d3cc6714a52c4",
-  "generation": 9,
-  "action": "run",
-  "updated_at": "2026-09-04T11:14:13+09:00",
-  "reason": "resume K96 with compiled preparation and direct raw-blob owner control polling"
+  "generation": 10,
+  "action": "stop",
+  "updated_at": "2026-09-04T11:26:37+09:00",
+  "reason": "replace sequential K96 resume with two-process MPS parallel execution"
 }
