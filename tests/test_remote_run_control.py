@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # ruff: noqa: FBT001, PT011, SLF001, TC003
+import io
 import json
 import subprocess
 import time
@@ -175,26 +176,31 @@ def test_previous_stop_requires_a_strictly_newer_run_generation(
     assert resumed.require_start(attempts=1)["generation"] == 5
 
 
-def test_git_blob_is_refetched_only_when_remote_sha_changes(
+def test_control_blob_is_fetched_directly_only_when_remote_sha_changes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sha = "b" * 40
     calls: list[list[str]] = []
+    raw_urls: list[str] = []
 
     def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[object]:
         calls.append(command)
         if command[1] == "ls-remote":
             return subprocess.CompletedProcess(command, 0, f"{sha}\t{REF}\n", "")
-        if "show" in command:
-            return subprocess.CompletedProcess(command, 0, json.dumps(_payload()).encode(), b"")
         return subprocess.CompletedProcess(command, 0, b"", b"")
 
+    def urlopen(request: object, **_kwargs: object) -> io.BytesIO:
+        raw_urls.append(request.full_url)  # type: ignore[attr-defined]
+        return io.BytesIO(json.dumps(_payload()).encode())
+
     monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(control.urllib.request, "urlopen", urlopen)
     switch = _switch(tmp_path)
 
     assert switch.poll(force=True) == _payload()
     assert switch.poll(force=True) == _payload()
-    assert sum(len(command) > 3 and command[3] == "fetch" for command in calls) == 1
-    assert sum(len(command) > 3 and command[3] == "show" for command in calls) == 1
     assert sum(command[1] == "ls-remote" for command in calls) == 2
+    assert raw_urls == [
+        f"https://raw.githubusercontent.com/owner/repo/{sha}/h200/control.json"
+    ]

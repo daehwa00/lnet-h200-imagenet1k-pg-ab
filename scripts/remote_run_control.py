@@ -10,6 +10,7 @@ import subprocess
 import threading
 import time
 import urllib.parse
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -223,36 +224,23 @@ class GitHubRunControl:
         remote_sha = self._remote_sha()
         if remote_sha == self.last_remote_sha and self.last_record is not None:
             return self.last_record
-        subprocess.run(
-            [
-                "git",
-                "-C",
-                str(self.repo_root),
-                "fetch",
-                "--quiet",
-                "--depth=1",
-                self.repo_url,
-                remote_sha,
-            ],
-            check=True,
-            capture_output=True,
-            timeout=self.timeout_seconds,
+        repository = urllib.parse.urlsplit(self.repo_url).path.removesuffix(".git").lstrip("/")
+        control_path = urllib.parse.quote(self.control_path, safe="/")
+        raw_url = (
+            f"https://raw.githubusercontent.com/{repository}/{remote_sha}/{control_path}"
         )
-        completed = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(self.repo_root),
-                "show",
-                f"{remote_sha}:{self.control_path}",
-            ],
-            check=True,
-            capture_output=True,
-            timeout=self.timeout_seconds,
+        request = urllib.request.Request(  # noqa: S310 -- host and commit are validated.
+            raw_url,
+            headers={"Cache-Control": "no-cache", "User-Agent": "lnet-owner-control/1"},
         )
-        if len(completed.stdout) > MAX_BODY_BYTES:
+        with urllib.request.urlopen(  # noqa: S310 -- request URL is constructed above.
+            request,
+            timeout=self.timeout_seconds,
+        ) as response:
+            body = response.read(MAX_BODY_BYTES + 1)
+        if len(body) > MAX_BODY_BYTES:
             raise ValueError("run-control document is too large")
-        payload = json.loads(completed.stdout)
+        payload = json.loads(body)
         record = self._validate_payload(payload)
         self.last_remote_sha = remote_sha
         return record
