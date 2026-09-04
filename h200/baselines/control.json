@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
-  "target_commit": "2c1ebfd9d6e12f5d563cb4fafaacfb64c09c36ff",
-  "generation": 11,
+  "target_commit": "3609c81748279d5e92dcbe857c0fa0d70598815d",
+  "generation": 12,
   "action": "run",
-  "updated_at": "2026-09-04T11:30:40+09:00",
-  "reason": "resume seed509 and start seed521 concurrently under isolated CUDA MPS"
+  "updated_at": "2026-09-04T11:42:06+09:00",
+  "reason": "resume seed509 then seed521 sequentially with the full optimized runtime"
 }
