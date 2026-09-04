@@ -473,6 +473,20 @@ if [[ "${H200_LNET_K96_ONLY:-0}" == "1" ]]; then
     done
     export H200_ALLOW_PERFORMANCE_ONLY_CHECKPOINT_MIGRATION=1
   fi
+  readonly CUDA_MPS_PIPE_DIRECTORY="${OUTPUT_BASE}/mps-pipe-${H200_EXPECTED_COMMIT:0:12}"
+  readonly CUDA_MPS_LOG_DIRECTORY="${OUTPUT_BASE}/mps-log-${H200_EXPECTED_COMMIT:0:12}"
+  export CUDA_MPS_PIPE_DIRECTORY CUDA_MPS_LOG_DIRECTORY
+  mkdir -p "${CUDA_MPS_PIPE_DIRECTORY}" "${CUDA_MPS_LOG_DIRECTORY}"
+  if ! command -v nvidia-cuda-mps-control >/dev/null 2>&1; then
+    echo "ERROR: K96 parallel queue requires nvidia-cuda-mps-control" >&2
+    exit 2
+  fi
+  nvidia-cuda-mps-control -d
+  stop_mps() {
+    echo quit | nvidia-cuda-mps-control >/dev/null 2>&1 || true
+  }
+  trap stop_mps EXIT
+  echo "H200_LNET_K96_MPS_ACTIVE=1 max_parallel=2"
   "${ENV_ROOT}/bin/python" scripts/run_lnet_k96_imagenet1k_queue.py \
     --data-root "${DATA_ROOT}" \
     --output-root "${LNET_K96_OUTPUT_ROOT}" \
@@ -480,7 +494,9 @@ if [[ "${H200_LNET_K96_ONLY:-0}" == "1" ]]; then
     --runner "${PROJECT_ROOT}/scripts/run_lnet_k96_p128_d2262_imagenet1k.py" \
     --batch-size 256 \
     --workers 8 \
-    --wandb-mode online
+    --wandb-mode online \
+    --max-parallel 2 \
+    --launch-stagger-seconds 180
   echo "H200_LNET_K96_CAMPAIGN_COMPLETE=${RUN_ROOT}/lnet-k96-p128x4-d2262-3seed/queue-status.json"
   exit 0
 fi
