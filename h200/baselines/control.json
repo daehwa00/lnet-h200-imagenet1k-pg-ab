@@ -1,9 +1,9 @@
 {
   "schema": "lnet.remote_run_control.v1",
   "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
-  "target_commit": "f361b248aeb1627b01d5d9eba3da78223a35330c",
-  "generation": 8,
-  "action": "stop",
-  "updated_at": "2026-09-04T11:11:19+09:00",
-  "reason": "hold the active K96 execution stopped until managed resource return is confirmed"
+  "target_commit": "4b9be6a9b3c70193cca6a674e83d3cc6714a52c4",
+  "generation": 9,
+  "action": "run",
+  "updated_at": "2026-09-04T11:14:13+09:00",
+  "reason": "resume K96 with compiled preparation and direct raw-blob owner control polling"
 }
