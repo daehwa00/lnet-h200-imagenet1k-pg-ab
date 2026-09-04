@@ -141,6 +141,47 @@
         }
       }
     },
+    "efficientvim_m1": {
+      "display_name": "EfficientViM-M1",
+      "seeds": {
+        "501": {
+          "display_name": "H200-MIG1-BL-efficientvim_m1-s501",
+          "id": "748c7a87ef0b5c7a",
+          "tags": [
+            "H200",
+            "MIG-1g.18gb",
+            "ImageNet-1K",
+            "matched-baseline",
+            "100ep",
+            "seed501"
+          ]
+        },
+        "509": {
+          "display_name": "H200-MIG1-BL-efficientvim_m1-s509",
+          "id": "ad90c8e9fa1ccb52",
+          "tags": [
+            "H200",
+            "MIG-1g.18gb",
+            "ImageNet-1K",
+            "matched-baseline",
+            "100ep",
+            "seed509"
+          ]
+        },
+        "521": {
+          "display_name": "H200-MIG1-BL-efficientvim_m1-s521",
+          "id": "e37d6d78476d5ca5",
+          "tags": [
+            "H200",
+            "MIG-1g.18gb",
+            "ImageNet-1K",
+            "matched-baseline",
+            "100ep",
+            "seed521"
+          ]
+        }
+      }
+    },
     "emov2_1m": {
       "display_name": "EMOv2-1M",
       "seeds": {
@@ -291,6 +332,47 @@
             "K96",
             "P128x4",
             "D2262",
+            "100ep",
+            "seed521"
+          ]
+        }
+      }
+    },
+    "mambaout_femto": {
+      "display_name": "MambaOut-Femto",
+      "seeds": {
+        "501": {
+          "display_name": "H200-MIG1-BL-mambaout_femto-s501",
+          "id": "28fdca0ac0c09d0c",
+          "tags": [
+            "H200",
+            "MIG-1g.18gb",
+            "ImageNet-1K",
+            "matched-baseline",
+            "100ep",
+            "seed501"
+          ]
+        },
+        "509": {
+          "display_name": "H200-MIG1-BL-mambaout_femto-s509",
+          "id": "25108d1c01557396",
+          "tags": [
+            "H200",
+            "MIG-1g.18gb",
+            "ImageNet-1K",
+            "matched-baseline",
+            "100ep",
+            "seed509"
+          ]
+        },
+        "521": {
+          "display_name": "H200-MIG1-BL-mambaout_femto-s521",
+          "id": "32cf8d845e17e2fb",
+          "tags": [
+            "H200",
+            "MIG-1g.18gb",
+            "ImageNet-1K",
+            "matched-baseline",
             "100ep",
             "seed521"
           ]
@@ -826,6 +908,47 @@
             "100ep",
             "three-seed",
             "ip-scoped-untrusted"
+          ]
+        }
+      }
+    },
+    "tinyvim_s": {
+      "display_name": "TinyViM-S",
+      "seeds": {
+        "501": {
+          "display_name": "H200-MIG1-BL-tinyvim_s-s501",
+          "id": "c8d39bbc7fa870d0",
+          "tags": [
+            "H200",
+            "MIG-1g.18gb",
+            "ImageNet-1K",
+            "matched-baseline",
+            "100ep",
+            "seed501"
+          ]
+        },
+        "509": {
+          "display_name": "H200-MIG1-BL-tinyvim_s-s509",
+          "id": "2916bac3cc133f3f",
+          "tags": [
+            "H200",
+            "MIG-1g.18gb",
+            "ImageNet-1K",
+            "matched-baseline",
+            "100ep",
+            "seed509"
+          ]
+        },
+        "521": {
+          "display_name": "H200-MIG1-BL-tinyvim_s-s521",
+          "id": "e339a3d0ac3f739e",
+          "tags": [
+            "H200",
+            "MIG-1g.18gb",
+            "ImageNet-1K",
+            "matched-baseline",
+            "100ep",
+            "seed521"
           ]
         }
       }

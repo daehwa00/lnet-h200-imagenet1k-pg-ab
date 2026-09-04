@@ -59,6 +59,31 @@
       "license_file": "LICENSE",
       "redistribution_allowed": true,
       "models": ["tinynext_t", "tinynext_s", "tinynext_m"]
+    },
+    "tinyvim": {
+      "repository": "https://github.com/xwmaxwma/TinyViM.git",
+      "commit": "cff64524117b1439becf89827a3428a288677b95",
+      "license": "NOASSERTION",
+      "license_file": null,
+      "redistribution_allowed": false,
+      "models": ["tinyvim_s"],
+      "native_extension": "selective_scan_cuda"
+    },
+    "efficientvim": {
+      "repository": "https://github.com/mlvlab/EfficientViM.git",
+      "commit": "304340cb9c339b61669250d058525c9cdadd5e93",
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "redistribution_allowed": true,
+      "models": ["efficientvim_m1"]
+    },
+    "mambaout": {
+      "repository": "https://github.com/yuweihao/MambaOut.git",
+      "commit": "9f2f2343eb0f99f2cf3ba6b92290b5a81be2bad1",
+      "license": "Apache-2.0",
+      "license_file": "LICENSE",
+      "redistribution_allowed": true,
+      "models": ["mambaout_femto"]
     }
   }
 }

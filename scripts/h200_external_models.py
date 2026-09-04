@@ -37,11 +37,19 @@ MODEL_SOURCES = {
     "tinynext_t": "tinynext",
     "tinynext_s": "tinynext",
     "tinynext_m": "tinynext",
+    "tinyvim_s": "tinyvim",
+    "efficientvim_m1": "efficientvim",
+    "mambaout_femto": "mambaout",
 }
 
 _IMPORT_LOCK = threading.RLock()
 _MODULE_CACHE: dict[tuple[Path, str], types.ModuleType] = {}
 _DCNV3_PROBES: set[tuple[Path, str, str | None]] = set()
+EXPECTED_MODEL_PARAMETERS = {
+    "tinyvim_s": 5_684_084,
+    "efficientvim_m1": 6_679_458,
+    "mambaout_femto": 7_304_536,
+}
 
 
 class _LogitsAdapter(nn.Module):
@@ -305,6 +313,58 @@ def _build_model(key: str, checkout: Path, num_classes: int) -> nn.Module:  # no
         module = _external_module(classification, "models.tinynext", ("models",))
         constructor = getattr(module, key)
         return constructor(pretrained=False, num_classes=num_classes, distillation=False)
+    if key == "tinyvim_s":
+        if importlib.util.find_spec("selective_scan_cuda") is None:
+            msg = "TinyViM-S requires the pinned selective_scan_cuda compatibility wheel"
+            raise RuntimeError(msg)
+        helper_name = "timm.models.layers.helpers"
+        saved_helper = sys.modules.get(helper_name)
+        helper = types.ModuleType(helper_name)
+        from timm.layers import to_2tuple
+
+        helper.to_2tuple = to_2tuple  # type: ignore[attr-defined]
+        sys.modules[helper_name] = helper
+        try:
+            module = _external_module(checkout, "model.tinyvim", ("model",))
+        finally:
+            if saved_helper is None:
+                sys.modules.pop(helper_name, None)
+            else:
+                sys.modules[helper_name] = saved_helper
+        return module.TinyViM_S(
+            pretrained=False,
+            num_classes=num_classes,
+            distillation=False,
+        )
+    if key == "efficientvim_m1":
+        classification = checkout / "classification"
+        saved_fvcore = {name: sys.modules.get(name) for name in ("fvcore", "fvcore.nn")}
+        fvcore = types.ModuleType("fvcore")
+        fvcore_nn = types.ModuleType("fvcore.nn")
+        fvcore_nn.flop_count = lambda *_args, **_kwargs: ({}, {})  # type: ignore[attr-defined]
+        fvcore.nn = fvcore_nn  # type: ignore[attr-defined]
+        sys.modules["fvcore"] = fvcore
+        sys.modules["fvcore.nn"] = fvcore_nn
+        try:
+            module = _external_module(
+                classification,
+                "models.EfficientViM",
+                ("models",),
+            )
+        finally:
+            for name, saved in saved_fvcore.items():
+                if saved is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = saved
+        return module.EfficientViM_M1(
+            pretrained=False,
+            num_classes=num_classes,
+            distillation=False,
+        )
+    if key == "mambaout_femto":
+        module = _external_module(checkout, "models.mambaout", ("models",))
+        return module.mambaout_femto(pretrained=False, num_classes=num_classes)
     msg = f"no external model builder for {key!r}"
     raise ValueError(msg)
 
@@ -323,6 +383,15 @@ def build_external_model(
     if not isinstance(model, nn.Module):
         msg = f"external constructor for {key!r} did not return torch.nn.Module"
         raise TypeError(msg)
+    expected_parameters = EXPECTED_MODEL_PARAMETERS.get(key)
+    if expected_parameters is not None:
+        actual_parameters = sum(parameter.numel() for parameter in model.parameters())
+        if actual_parameters != expected_parameters:
+            msg = (
+                f"parameter count changed for {key}: "
+                f"{actual_parameters} != {expected_parameters}"
+            )
+            raise RuntimeError(msg)
     return _LogitsAdapter(model)
 
 

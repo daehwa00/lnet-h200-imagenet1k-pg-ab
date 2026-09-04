@@ -143,6 +143,17 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
+    "25108d1c01557396": {
+      "displayName": "H200-MIG1-BL-mambaout_femto-s509",
+      "tags": [
+        "H200",
+        "MIG-1g.18gb",
+        "ImageNet-1K",
+        "matched-baseline",
+        "100ep",
+        "seed509"
+      ]
+    },
     "26f109ae80471f86": {
       "displayName": "H200-LNet-I1K-K96-P128x4-s521",
       "tags": [
@@ -154,6 +165,28 @@ export const CAMPAIGN = {
         "D2262",
         "100ep",
         "seed521"
+      ]
+    },
+    "28fdca0ac0c09d0c": {
+      "displayName": "H200-MIG1-BL-mambaout_femto-s501",
+      "tags": [
+        "H200",
+        "MIG-1g.18gb",
+        "ImageNet-1K",
+        "matched-baseline",
+        "100ep",
+        "seed501"
+      ]
+    },
+    "2916bac3cc133f3f": {
+      "displayName": "H200-MIG1-BL-tinyvim_s-s509",
+      "tags": [
+        "H200",
+        "MIG-1g.18gb",
+        "ImageNet-1K",
+        "matched-baseline",
+        "100ep",
+        "seed509"
       ]
     },
     "291db6703a93660c": {
@@ -220,6 +253,17 @@ export const CAMPAIGN = {
         "100ep",
         "three-seed",
         "ip-scoped-untrusted"
+      ]
+    },
+    "32cf8d845e17e2fb": {
+      "displayName": "H200-MIG1-BL-mambaout_femto-s521",
+      "tags": [
+        "H200",
+        "MIG-1g.18gb",
+        "ImageNet-1K",
+        "matched-baseline",
+        "100ep",
+        "seed521"
       ]
     },
     "3a8ade548d469ee1": {
@@ -328,6 +372,17 @@ export const CAMPAIGN = {
         "100ep",
         "three-seed",
         "ip-scoped-untrusted"
+      ]
+    },
+    "748c7a87ef0b5c7a": {
+      "displayName": "H200-MIG1-BL-efficientvim_m1-s501",
+      "tags": [
+        "H200",
+        "MIG-1g.18gb",
+        "ImageNet-1K",
+        "matched-baseline",
+        "100ep",
+        "seed501"
       ]
     },
     "762c311e1e37a309": {
@@ -539,6 +594,17 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
+    "ad90c8e9fa1ccb52": {
+      "displayName": "H200-MIG1-BL-efficientvim_m1-s509",
+      "tags": [
+        "H200",
+        "MIG-1g.18gb",
+        "ImageNet-1K",
+        "matched-baseline",
+        "100ep",
+        "seed509"
+      ]
+    },
     "ae0737afed233e48": {
       "displayName": "H200-BL-moganet_xt-s521",
       "tags": [
@@ -618,6 +684,17 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
+    "c8d39bbc7fa870d0": {
+      "displayName": "H200-MIG1-BL-tinyvim_s-s501",
+      "tags": [
+        "H200",
+        "MIG-1g.18gb",
+        "ImageNet-1K",
+        "matched-baseline",
+        "100ep",
+        "seed501"
+      ]
+    },
     "d8a0e86658d1e5fa": {
       "displayName": "H200-BL-moganet_xt-s501",
       "tags": [
@@ -649,6 +726,28 @@ export const CAMPAIGN = {
         "100ep",
         "three-seed",
         "ip-scoped-untrusted"
+      ]
+    },
+    "e339a3d0ac3f739e": {
+      "displayName": "H200-MIG1-BL-tinyvim_s-s521",
+      "tags": [
+        "H200",
+        "MIG-1g.18gb",
+        "ImageNet-1K",
+        "matched-baseline",
+        "100ep",
+        "seed521"
+      ]
+    },
+    "e37d6d78476d5ca5": {
+      "displayName": "H200-MIG1-BL-efficientvim_m1-s521",
+      "tags": [
+        "H200",
+        "MIG-1g.18gb",
+        "ImageNet-1K",
+        "matched-baseline",
+        "100ep",
+        "seed521"
       ]
     },
     "e611233788333433": {

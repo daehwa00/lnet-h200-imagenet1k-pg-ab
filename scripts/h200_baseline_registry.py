@@ -34,6 +34,9 @@ PUBLIC_MODEL_KEYS = (
     "tinynext_t",
     "tinynext_s",
     "tinynext_m",
+    "tinyvim_s",
+    "efficientvim_m1",
+    "mambaout_femto",
 )
 
 
@@ -102,6 +105,9 @@ _DISPLAY_NAMES = {
     "tinynext_t": "TinyNeXt-T",
     "tinynext_s": "TinyNeXt-S",
     "tinynext_m": "TinyNeXt-M",
+    "tinyvim_s": "TinyViM-S",
+    "efficientvim_m1": "EfficientViM-M1",
+    "mambaout_femto": "MambaOut-Femto",
 }
 
 MODEL_SPECS = {

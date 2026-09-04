@@ -37,6 +37,9 @@ EXPECTED_KEYS = (
     "tinynext_t",
     "tinynext_s",
     "tinynext_m",
+    "tinyvim_s",
+    "efficientvim_m1",
+    "mambaout_femto",
 )
 
 

@@ -10,7 +10,9 @@ readonly WANDB_RUNTIME="${PROJECT_ROOT}/h200/baselines/wandb.runtime.json"
 readonly REQUIREMENTS_LOCK="${PROJECT_ROOT}/h200/baselines/requirements.lock"
 readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab.git"
 CONTROL_REF="refs/heads/control/imagenet1k-baselines"
-if [[ "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" ]]; then
+if [[ "${H200_MIG1_MISSING_ONLY:-0}" == "1" ]]; then
+  CONTROL_REF="refs/heads/control/imagenet1k-mig1-missing"
+elif [[ "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" ]]; then
   CONTROL_REF="refs/heads/control/imagenet1k-baselines-followup"
 elif [[ "${H200_LNET_K96_ONLY:-0}" == "1" ]]; then
   CONTROL_REF="refs/heads/control/imagenet1k-lnet-k96"
@@ -150,7 +152,13 @@ readonly CAMPAIGN_GROUP="${CAMPAIGN_VALUES[7]}"
 readonly CAMPAIGN_CONSOLE="${CAMPAIGN_VALUES[8]}"
 readonly RELAY_PROTOCOL_VERSION="${CAMPAIGN_VALUES[9]}"
 
-readonly OUTPUT_BASE="/app/output/daehwa00/lnet-h200-imagenet1k-baselines-v1-${CAMPAIGN_SHA256:0:12}-${ACTUAL_COMMIT:0:12}"
+OUTPUT_USER="${H200_OUTPUT_USER:-daehwa00}"
+if [[ ! "${OUTPUT_USER}" =~ ^[A-Za-z0-9-]+$ ]]; then
+  echo "ERROR: invalid H200_OUTPUT_USER" >&2
+  exit 2
+fi
+readonly OUTPUT_USER
+readonly OUTPUT_BASE="/app/output/${OUTPUT_USER}/lnet-h200-imagenet1k-baselines-v1-${CAMPAIGN_SHA256:0:12}-${ACTUAL_COMMIT:0:12}"
 readonly CACHE_ROOT="${OUTPUT_BASE}/cache"
 readonly SOURCE_ROOT="/app/scratch/input/lnet-h200-baseline-sources-${CAMPAIGN_SHA256:0:12}-${ACTUAL_COMMIT:0:12}"
 readonly DATASET_MANIFEST="${OUTPUT_BASE}/dataset_manifest.json"
@@ -341,9 +349,13 @@ mkdir -p "${RUN_ROOT}"
 export WANDB_DIR="${RUN_ROOT}/wandb"
 
 BASELINE_SOURCES_READY=0
+SOURCE_SELECTION=()
+if [[ "${H200_MIG1_MISSING_ONLY:-0}" == "1" ]]; then
+  SOURCE_SELECTION=(--source tinyvim --source efficientvim --source mambaout)
+fi
 for bootstrap_attempt in 1 2 3; do
   if "${ENV_ROOT}/bin/python" scripts/bootstrap_h200_baseline_sources.py \
-    --source-root "${SOURCE_ROOT}"; then
+    --source-root "${SOURCE_ROOT}" "${SOURCE_SELECTION[@]}"; then
     BASELINE_SOURCES_READY=1
     break
   fi
@@ -355,7 +367,9 @@ fi
 
 # UniConvNet-A is the only native-extension lane. Build from a disposable MIT
 # source copy so the pinned official checkout remains clean and verifiable.
-if [[ "${H200_BASELINE_BACKLOG_ONLY:-0}" == "1" || "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" ]]; then
+if [[ "${H200_BASELINE_BACKLOG_ONLY:-0}" == "1" \
+   || "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" \
+   || "${H200_MIG1_MISSING_ONLY:-0}" == "1" ]]; then
 echo "H200_BASELINE_UNICONV_DISABLED=not_requested_by_backlog"
 elif [[ -d "${SOURCE_ROOT}/uniconvnet/ops_dcnv3" ]]; then
 UNICONV_COMMIT="$(
@@ -470,6 +484,36 @@ if [[ "${H200_LNET_K96_ONLY:-0}" == "1" ]]; then
     --wandb-mode online \
     --max-parallel 1
   echo "H200_LNET_K96_CAMPAIGN_COMPLETE=${RUN_ROOT}/lnet-k96-p128x4-d2262-3seed/queue-status.json"
+  exit 0
+fi
+
+if [[ "${H200_MIG1_MISSING_ONLY:-0}" == "1" ]]; then
+  readonly SELECTIVE_SCAN_WHEEL="mamba_ssm-2.3.2.post1-cp313-cp313-linux_x86_64.whl"
+  readonly SELECTIVE_SCAN_SHA256="7201849146fb3b517e1a89741c4042596652dea24f44a94e4a83e6246353f49e"
+  readonly SELECTIVE_SCAN_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab/releases/download/h200-selective-scan-torch291-cu128-v1/${SELECTIVE_SCAN_WHEEL}"
+  readonly SELECTIVE_SCAN_PATH="${OUTPUT_BASE}/external-wheels/${SELECTIVE_SCAN_WHEEL}"
+  mkdir -p "$(dirname "${SELECTIVE_SCAN_PATH}")"
+  if [[ ! -f "${SELECTIVE_SCAN_PATH}" \
+     || "$(sha256sum "${SELECTIVE_SCAN_PATH}" | cut -d' ' -f1)" != "${SELECTIVE_SCAN_SHA256}" ]]; then
+    curl --fail --location --retry 3 --output "${SELECTIVE_SCAN_PATH}.tmp" "${SELECTIVE_SCAN_URL}"
+    if [[ "$(sha256sum "${SELECTIVE_SCAN_PATH}.tmp" | cut -d' ' -f1)" != "${SELECTIVE_SCAN_SHA256}" ]]; then
+      echo "ERROR: selective-scan compatibility wheel digest mismatch" >&2
+      exit 2
+    fi
+    mv "${SELECTIVE_SCAN_PATH}.tmp" "${SELECTIVE_SCAN_PATH}"
+  fi
+  uv_command pip install --python "${ENV_ROOT}/bin/python" --no-deps "${SELECTIVE_SCAN_PATH}"
+  "${ENV_ROOT}/bin/python" -c 'import selective_scan_cuda'
+  export H200_GPU_MEMORY_FRACTION=1.0
+  "${ENV_ROOT}/bin/python" scripts/run_imagenet1k_mig1_missing_queue.py \
+    --data-root "${DATA_ROOT}" \
+    --output-root "${RUN_ROOT}/mig1-missing-models" \
+    --source-root "${SOURCE_ROOT}" \
+    --worker "${PROJECT_ROOT}/scripts/run_h200_baseline_worker.py" \
+    --python "${ENV_ROOT}/bin/python" \
+    --batch-size 64 \
+    --workers 8
+  echo "H200_MIG1_MISSING_CAMPAIGN_COMPLETE=${RUN_ROOT}/mig1-missing-models/queue-status.json"
   exit 0
 fi
 

@@ -27,6 +27,12 @@ PROTOCOL_VERSION = "wandb-0.22.3-h200-baselines-v1"
 CANARY_KEY = "relay_canary"
 LNET_K96_MODEL_KEY = "lnet_k96_p128x4_d2262_clean_restart_v3"
 LNET_K96_SEEDS = (509, 521)
+MIG1_MODELS = {
+    "tinyvim_s": "TinyViM-S",
+    "efficientvim_m1": "EfficientViM-M1",
+    "mambaout_femto": "MambaOut-Femto",
+}
+MIG1_SEEDS = (501, 509, 521)
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -114,6 +120,31 @@ def _records(campaign: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         "display_name": "LNet-K96-P128x4-D2262",
         "seeds": lnet_by_seed,
     }
+    for model_key, display_name in MIG1_MODELS.items():
+        by_seed = {}
+        for seed in MIG1_SEEDS:
+            run_id = _sha256(f"{campaign_id}:mig1:{model_key}:seed{seed}")[:16]
+            run = {
+                "id": run_id,
+                "display_name": f"H200-MIG1-BL-{model_key}-s{seed}",
+                "tags": [
+                    "H200",
+                    "MIG-1g.18gb",
+                    "ImageNet-1K",
+                    "matched-baseline",
+                    "100ep",
+                    f"seed{seed}",
+                ],
+            }
+            by_seed[str(seed)] = run
+            relay_runs[run_id] = {
+                "displayName": run["display_name"],
+                "tags": run["tags"],
+            }
+        runtime_runs[model_key] = {
+            "display_name": display_name,
+            "seeds": by_seed,
+        }
     canary_id = _sha256(f"{campaign_id}::{CANARY_KEY}")[:16]
     canary = {
         "id": canary_id,

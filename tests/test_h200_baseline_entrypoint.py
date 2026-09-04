@@ -31,11 +31,13 @@ def test_baseline_runtime_contains_baselines_and_lnet_k96_runs() -> None:
         for model in runtime["runs"].values()
         for record in model["seeds"].values()
     }
-    assert len(run_ids) == 62
+    assert len(run_ids) == 71
     assert set(runtime["runs"]["lnet_k96_p128x4_d2262_clean_restart_v3"]["seeds"]) == {
         "509",
         "521",
     }
+    for model_key in ("tinyvim_s", "efficientvim_m1", "mambaout_femto"):
+        assert set(runtime["runs"][model_key]["seeds"]) == {"501", "509", "521"}
     assert runtime["canary"]["id"] not in run_ids
     generated = (ROOT / "cloudflare/baseline-relay/src/campaign.generated.ts").read_text()
     for model in runtime["runs"].values():
