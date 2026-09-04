@@ -1,0 +1,9 @@
+{
+  "schema": "lnet.remote_run_control.v1",
+  "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
+  "target_commit": "8604e696846288bf7e3e3e12d23abb9a4b2a96cc",
+  "generation": 1,
+  "action": "stop",
+  "updated_at": "2026-09-04T21:50:19+09:00",
+  "reason": "keep the K128 H200 confirmation queue dormant until the active K96 campaign completes"
+}
