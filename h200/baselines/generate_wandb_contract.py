@@ -33,6 +33,7 @@ MIG1_MODELS = {
     "mambaout_femto": "MambaOut-Femto",
 }
 MIG1_SEEDS = (501, 509, 521)
+MIG1_TINYNEXT_KEY = "tinynext_t_mig1_clean"
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -145,6 +146,28 @@ def _records(campaign: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
             "display_name": display_name,
             "seeds": by_seed,
         }
+    run_id = _sha256(f"{campaign_id}:mig1:{MIG1_TINYNEXT_KEY}:seed521")[:16]
+    tiny_run = {
+        "id": run_id,
+        "display_name": "H200-MIG1-BL-tinynext_t-clean-s521",
+        "tags": [
+            "H200",
+            "MIG-1g.18gb",
+            "ImageNet-1K",
+            "matched-baseline",
+            "100ep",
+            "seed521",
+            "clean-restart",
+        ],
+    }
+    runtime_runs[MIG1_TINYNEXT_KEY] = {
+        "display_name": "TinyNeXt-T (MIG1 clean seed521)",
+        "seeds": {"521": tiny_run},
+    }
+    relay_runs[run_id] = {
+        "displayName": tiny_run["display_name"],
+        "tags": tiny_run["tags"],
+    }
     canary_id = _sha256(f"{campaign_id}::{CANARY_KEY}")[:16]
     canary = {
         "id": canary_id,

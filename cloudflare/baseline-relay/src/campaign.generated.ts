@@ -728,6 +728,18 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
+    "ddda5b826305f9ee": {
+      "displayName": "H200-MIG1-BL-tinynext_t-clean-s521",
+      "tags": [
+        "H200",
+        "MIG-1g.18gb",
+        "ImageNet-1K",
+        "matched-baseline",
+        "100ep",
+        "seed521",
+        "clean-restart"
+      ]
+    },
     "e339a3d0ac3f739e": {
       "displayName": "H200-MIG1-BL-tinyvim_s-s521",
       "tags": [

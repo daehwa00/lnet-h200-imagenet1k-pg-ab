@@ -58,7 +58,7 @@
       "license": "MIT",
       "license_file": "LICENSE",
       "redistribution_allowed": true,
-      "models": ["tinynext_t", "tinynext_s", "tinynext_m"]
+      "models": ["tinynext_t", "tinynext_s", "tinynext_m", "tinynext_t_mig1_clean"]
     },
     "tinyvim": {
       "repository": "https://github.com/xwmaxwma/TinyViM.git",

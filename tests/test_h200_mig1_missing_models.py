@@ -5,6 +5,7 @@ from pathlib import Path
 
 from scripts import h200_external_models as external
 from scripts import run_imagenet1k_mig1_missing_queue as queue
+from scripts import run_imagenet1k_mig1_tinynext_t as tinynext
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,3 +38,13 @@ def test_mig1_entrypoint_is_isolated_and_memory_safe() -> None:
     assert "--batch-size 64" in source
     assert "H200_GPU_MEMORY_FRACTION=1.0" in source
     assert "7201849146fb3b517e1a89741c4042596652dea24f44a94e4a83e6246353f49e" in source
+
+
+def test_tinynext_first_lane_is_single_clean_seed() -> None:
+    assert tinynext.MODEL == "tinynext_t_mig1_clean"
+    assert tinynext.SEED == 521
+    source = (ROOT / "h200/run_baselines.sh").read_text()
+    assert "refs/heads/control/imagenet1k-mig1-tinynext" in source
+    assert "H200_MIG1_TINYNEXT_ONLY" in source
+    assert "run_imagenet1k_mig1_tinynext_t.py" in source
+    assert "--batch-size 256" in source

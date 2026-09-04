@@ -37,6 +37,7 @@ MODEL_SOURCES = {
     "tinynext_t": "tinynext",
     "tinynext_s": "tinynext",
     "tinynext_m": "tinynext",
+    "tinynext_t_mig1_clean": "tinynext",
     "tinyvim_s": "tinyvim",
     "efficientvim_m1": "efficientvim",
     "mambaout_femto": "mambaout",
@@ -311,7 +312,8 @@ def _build_model(key: str, checkout: Path, num_classes: int) -> nn.Module:  # no
     if key.startswith("tinynext_"):
         classification = checkout / "classification"
         module = _external_module(classification, "models.tinynext", ("models",))
-        constructor = getattr(module, key)
+        constructor_key = "tinynext_t" if key == "tinynext_t_mig1_clean" else key
+        constructor = getattr(module, constructor_key)
         return constructor(pretrained=False, num_classes=num_classes, distillation=False)
     if key == "tinyvim_s":
         if importlib.util.find_spec("selective_scan_cuda") is None:

@@ -912,6 +912,24 @@
         }
       }
     },
+    "tinynext_t_mig1_clean": {
+      "display_name": "TinyNeXt-T (MIG1 clean seed521)",
+      "seeds": {
+        "521": {
+          "display_name": "H200-MIG1-BL-tinynext_t-clean-s521",
+          "id": "ddda5b826305f9ee",
+          "tags": [
+            "H200",
+            "MIG-1g.18gb",
+            "ImageNet-1K",
+            "matched-baseline",
+            "100ep",
+            "seed521",
+            "clean-restart"
+          ]
+        }
+      }
+    },
     "tinyvim_s": {
       "display_name": "TinyViM-S",
       "seeds": {

@@ -37,6 +37,7 @@ EXPECTED_KEYS = (
     "tinynext_t",
     "tinynext_s",
     "tinynext_m",
+    "tinynext_t_mig1_clean",
     "tinyvim_s",
     "efficientvim_m1",
     "mambaout_femto",

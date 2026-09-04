@@ -10,7 +10,9 @@ readonly WANDB_RUNTIME="${PROJECT_ROOT}/h200/baselines/wandb.runtime.json"
 readonly REQUIREMENTS_LOCK="${PROJECT_ROOT}/h200/baselines/requirements.lock"
 readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab.git"
 CONTROL_REF="refs/heads/control/imagenet1k-baselines"
-if [[ "${H200_MIG1_MISSING_ONLY:-0}" == "1" ]]; then
+if [[ "${H200_MIG1_TINYNEXT_ONLY:-0}" == "1" ]]; then
+  CONTROL_REF="refs/heads/control/imagenet1k-mig1-tinynext"
+elif [[ "${H200_MIG1_MISSING_ONLY:-0}" == "1" ]]; then
   CONTROL_REF="refs/heads/control/imagenet1k-mig1-missing"
 elif [[ "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" ]]; then
   CONTROL_REF="refs/heads/control/imagenet1k-baselines-followup"
@@ -350,7 +352,9 @@ export WANDB_DIR="${RUN_ROOT}/wandb"
 
 BASELINE_SOURCES_READY=0
 SOURCE_SELECTION=()
-if [[ "${H200_MIG1_MISSING_ONLY:-0}" == "1" ]]; then
+if [[ "${H200_MIG1_TINYNEXT_ONLY:-0}" == "1" ]]; then
+  SOURCE_SELECTION=(--source tinynext)
+elif [[ "${H200_MIG1_MISSING_ONLY:-0}" == "1" ]]; then
   SOURCE_SELECTION=(--source tinyvim --source efficientvim --source mambaout)
 fi
 for bootstrap_attempt in 1 2 3; do
@@ -369,6 +373,7 @@ fi
 # source copy so the pinned official checkout remains clean and verifiable.
 if [[ "${H200_BASELINE_BACKLOG_ONLY:-0}" == "1" \
    || "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" \
+   || "${H200_MIG1_TINYNEXT_ONLY:-0}" == "1" \
    || "${H200_MIG1_MISSING_ONLY:-0}" == "1" ]]; then
 echo "H200_BASELINE_UNICONV_DISABLED=not_requested_by_backlog"
 elif [[ -d "${SOURCE_ROOT}/uniconvnet/ops_dcnv3" ]]; then
@@ -484,6 +489,20 @@ if [[ "${H200_LNET_K96_ONLY:-0}" == "1" ]]; then
     --wandb-mode online \
     --max-parallel 1
   echo "H200_LNET_K96_CAMPAIGN_COMPLETE=${RUN_ROOT}/lnet-k96-p128x4-d2262-3seed/queue-status.json"
+  exit 0
+fi
+
+if [[ "${H200_MIG1_TINYNEXT_ONLY:-0}" == "1" ]]; then
+  export H200_GPU_MEMORY_FRACTION=1.0
+  "${ENV_ROOT}/bin/python" scripts/run_imagenet1k_mig1_tinynext_t.py \
+    --data-root "${DATA_ROOT}" \
+    --output-root "${RUN_ROOT}/mig1-tinynext-t-clean-s521" \
+    --source-root "${SOURCE_ROOT}" \
+    --worker "${PROJECT_ROOT}/scripts/run_h200_baseline_worker.py" \
+    --python "${ENV_ROOT}/bin/python" \
+    --batch-size 256 \
+    --workers 8
+  echo "H200_MIG1_TINYNEXT_COMPLETE=${RUN_ROOT}/mig1-tinynext-t-clean-s521"
   exit 0
 fi
 
