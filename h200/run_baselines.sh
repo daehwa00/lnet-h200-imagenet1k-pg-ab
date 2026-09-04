@@ -460,29 +460,6 @@ if [[ "${H200_LNET_K96_ONLY:-0}" == "1" ]]; then
   export H200_BASELINE_COMPILED_TRAINING_PREPARATION=1
   LNET_K96_OUTPUT_ROOT="${RUN_ROOT}/lnet-k96-p128x4-d2262-3seed"
   readonly LNET_K96_OUTPUT_ROOT
-  if [[ -n "${H200_LNET_K96_RESUME_ROOT:-}" ]]; then
-    readonly LNET_K96_RESUME_MODEL_ROOT="${H200_LNET_K96_RESUME_ROOT}/lnet_k96_p128x4_d2262_optimized_v2"
-    readonly LNET_K96_DESTINATION_MODEL_ROOT="${LNET_K96_OUTPUT_ROOT}/lnet_k96_p128x4_d2262_optimized_v2"
-    if [[ ! -f "${LNET_K96_RESUME_MODEL_ROOT}/seed_501/result.json" \
-       || ! -f "${LNET_K96_RESUME_MODEL_ROOT}/seed_509/checkpoint.pt" ]]; then
-      echo "ERROR: K96 resume root lacks the completed seed501 result or seed509 checkpoint" >&2
-      exit 2
-    fi
-    mkdir -p "${LNET_K96_DESTINATION_MODEL_ROOT}"
-    for seed in 501 509 521; do
-      source_seed="${LNET_K96_RESUME_MODEL_ROOT}/seed_${seed}"
-      destination_seed="${LNET_K96_DESTINATION_MODEL_ROOT}/seed_${seed}"
-      if [[ -d "${source_seed}" && ! -e "${destination_seed}" ]]; then
-        cp -a "${source_seed}" "${destination_seed}"
-      fi
-    done
-    if [[ ! -f "${LNET_K96_DESTINATION_MODEL_ROOT}/seed_501/result.json" \
-       || ! -f "${LNET_K96_DESTINATION_MODEL_ROOT}/seed_509/checkpoint.pt" ]]; then
-      echo "ERROR: K96 resume artifacts were not copied into the new output root" >&2
-      exit 2
-    fi
-    export H200_ALLOW_PERFORMANCE_ONLY_CHECKPOINT_MIGRATION=1
-  fi
   "${ENV_ROOT}/bin/python" scripts/run_lnet_k96_imagenet1k_queue.py \
     --data-root "${DATA_ROOT}" \
     --output-root "${LNET_K96_OUTPUT_ROOT}" \

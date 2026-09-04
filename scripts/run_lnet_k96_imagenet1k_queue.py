@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import BinaryIO
 
-SEEDS = (501, 509, 521)
-MODEL_KEY = "lnet_k96_p128x4_d2262_optimized_v2"
-SCHEMA = "lnet.imagenet1k.lnet_k96_3seed_queue.v1"
+SEEDS = (509, 521)
+MODEL_KEY = "lnet_k96_p128x4_d2262_clean_restart_v3"
+SCHEMA = "lnet.imagenet1k.lnet_k96_remaining_seed_queue.v2"
 
 
 def _arguments() -> argparse.Namespace:

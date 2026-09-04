@@ -264,26 +264,12 @@
         }
       }
     },
-    "lnet_k96_p128x4_d2262_optimized_v2": {
+    "lnet_k96_p128x4_d2262_clean_restart_v3": {
       "display_name": "LNet-K96-P128x4-D2262",
       "seeds": {
-        "501": {
-          "display_name": "H200-LNet-I1K-K96-P128x4-s501",
-          "id": "4466b7509edbf9a5",
-          "tags": [
-            "H200",
-            "ImageNet-1K",
-            "LNet",
-            "K96",
-            "P128x4",
-            "D2262",
-            "100ep",
-            "seed501"
-          ]
-        },
         "509": {
           "display_name": "H200-LNet-I1K-K96-P128x4-s509",
-          "id": "4a18ad3870534f82",
+          "id": "c5b7d5aa7630d287",
           "tags": [
             "H200",
             "ImageNet-1K",
@@ -297,7 +283,7 @@
         },
         "521": {
           "display_name": "H200-LNet-I1K-K96-P128x4-s521",
-          "id": "d0215caa4da00b69",
+          "id": "26f109ae80471f86",
           "tags": [
             "H200",
             "ImageNet-1K",

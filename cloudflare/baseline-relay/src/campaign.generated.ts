@@ -143,6 +143,19 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
+    "26f109ae80471f86": {
+      "displayName": "H200-LNet-I1K-K96-P128x4-s521",
+      "tags": [
+        "H200",
+        "ImageNet-1K",
+        "LNet",
+        "K96",
+        "P128x4",
+        "D2262",
+        "100ep",
+        "seed521"
+      ]
+    },
     "291db6703a93660c": {
       "displayName": "H200-BL-parc_net_s-s521",
       "tags": [
@@ -231,19 +244,6 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
-    "4466b7509edbf9a5": {
-      "displayName": "H200-LNet-I1K-K96-P128x4-s501",
-      "tags": [
-        "H200",
-        "ImageNet-1K",
-        "LNet",
-        "K96",
-        "P128x4",
-        "D2262",
-        "100ep",
-        "seed501"
-      ]
-    },
     "462b0560fd64a95d": {
       "displayName": "H200-BL-emov2_1m-s521",
       "tags": [
@@ -264,19 +264,6 @@ export const CAMPAIGN = {
         "100ep",
         "three-seed",
         "ip-scoped-untrusted"
-      ]
-    },
-    "4a18ad3870534f82": {
-      "displayName": "H200-LNet-I1K-K96-P128x4-s509",
-      "tags": [
-        "H200",
-        "ImageNet-1K",
-        "LNet",
-        "K96",
-        "P128x4",
-        "D2262",
-        "100ep",
-        "seed509"
       ]
     },
     "4a8d135549aa68a9": {
@@ -596,6 +583,19 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
+    "c5b7d5aa7630d287": {
+      "displayName": "H200-LNet-I1K-K96-P128x4-s509",
+      "tags": [
+        "H200",
+        "ImageNet-1K",
+        "LNet",
+        "K96",
+        "P128x4",
+        "D2262",
+        "100ep",
+        "seed509"
+      ]
+    },
     "c5fabb6cf5fc193b": {
       "displayName": "H200-BL-mobileone_s1-s501",
       "tags": [
@@ -616,19 +616,6 @@ export const CAMPAIGN = {
         "100ep",
         "three-seed",
         "ip-scoped-untrusted"
-      ]
-    },
-    "d0215caa4da00b69": {
-      "displayName": "H200-LNet-I1K-K96-P128x4-s521",
-      "tags": [
-        "H200",
-        "ImageNet-1K",
-        "LNet",
-        "K96",
-        "P128x4",
-        "D2262",
-        "100ep",
-        "seed521"
       ]
     },
     "d8a0e86658d1e5fa": {
