@@ -82,7 +82,8 @@ def _build_model(
         raise RuntimeError(
             f"LNet ImageNet-1K parameter count changed: {parameters} != {EXPECTED_PARAMETERS}"
         )
-    return PrimaryLogitsAdapter(model)
+    prepared = model.prepare_for_compiled_training_()
+    return PrimaryLogitsAdapter(prepared)
 
 
 def _source_fingerprint() -> str:

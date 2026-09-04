@@ -81,6 +81,35 @@ def test_compiled_runtime_is_explicit_and_fixed_shape(
     }
 
 
+def test_performance_migration_allows_only_runtime_recipe_keys() -> None:
+    task = {
+        "phase": "full",
+        "model_key": "model",
+        "seed": 501,
+        "learning_rate": 3.0e-3,
+        "epochs": 100,
+        "batch_size": 256,
+    }
+    model = {"key": "model", "num_classes": 1000}
+    recipe = {"optimizer": "AdamW", "batch_size": 256, "persistent_workers": False}
+    previous = {"task": task, "model": model, "recipe": recipe}
+    current = {
+        "task": dict(task),
+        "model": dict(model),
+        "recipe": {
+            "optimizer": "AdamW",
+            "batch_size": 256,
+            "persistent_workers": True,
+            "device_prefetch_stream": True,
+            "compiled_training_preparation": True,
+        },
+    }
+    worker._validate_performance_only_migration(previous, current)
+    current["recipe"]["optimizer"] = "SGD"
+    with pytest.raises(RuntimeError, match="training recipe"):
+        worker._validate_performance_only_migration(previous, current)
+
+
 def _model_builder(_key: str, _source_root: str | Path | None, classes: int) -> nn.Module:
     return _TinyClassifier(classes)
 

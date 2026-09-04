@@ -62,3 +62,6 @@ def test_h200_entrypoint_selects_only_lnet_k96_queue() -> None:
     assert "--batch-size 256" in source
     assert "--workers 8" in source
     assert "H200_BASELINE_TORCH_COMPILE_MODE=default" in source
+    assert "H200_BASELINE_COMPILED_TRAINING_PREPARATION=1" in source
+    assert "H200_LNET_K96_RESUME_ROOT" in source
+    assert "H200_ALLOW_PERFORMANCE_ONLY_CHECKPOINT_MIGRATION=1" in source

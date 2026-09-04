@@ -457,9 +457,25 @@ fi
 
 if [[ "${H200_LNET_K96_ONLY:-0}" == "1" ]]; then
   export H200_BASELINE_TORCH_COMPILE_MODE=default
+  export H200_BASELINE_COMPILED_TRAINING_PREPARATION=1
+  LNET_K96_OUTPUT_ROOT="${RUN_ROOT}/lnet-k96-p128x4-d2262-3seed"
+  readonly LNET_K96_OUTPUT_ROOT
+  if [[ -n "${H200_LNET_K96_RESUME_ROOT:-}" ]]; then
+    readonly LNET_K96_RESUME_MODEL_ROOT="${H200_LNET_K96_RESUME_ROOT}/lnet_k96_p128x4_d2262_optimized_v2"
+    readonly LNET_K96_DESTINATION_MODEL_ROOT="${LNET_K96_OUTPUT_ROOT}/lnet_k96_p128x4_d2262_optimized_v2"
+    mkdir -p "${LNET_K96_DESTINATION_MODEL_ROOT}"
+    for seed in 501 509 521; do
+      source_seed="${LNET_K96_RESUME_MODEL_ROOT}/seed_${seed}"
+      destination_seed="${LNET_K96_DESTINATION_MODEL_ROOT}/seed_${seed}"
+      if [[ -d "${source_seed}" && ! -e "${destination_seed}" ]]; then
+        cp -a "${source_seed}" "${destination_seed}"
+      fi
+    done
+    export H200_ALLOW_PERFORMANCE_ONLY_CHECKPOINT_MIGRATION=1
+  fi
   "${ENV_ROOT}/bin/python" scripts/run_lnet_k96_imagenet1k_queue.py \
     --data-root "${DATA_ROOT}" \
-    --output-root "${RUN_ROOT}/lnet-k96-p128x4-d2262-3seed" \
+    --output-root "${LNET_K96_OUTPUT_ROOT}" \
     --python "${ENV_ROOT}/bin/python" \
     --runner "${PROJECT_ROOT}/scripts/run_lnet_k96_p128_d2262_imagenet1k.py" \
     --batch-size 256 \

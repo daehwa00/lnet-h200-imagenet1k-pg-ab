@@ -41,6 +41,7 @@ LABEL_SMOOTHING = 0.1
 MIXUP_ALPHA = 0.8
 RANDOM_ERASING_PROBABILITY = 0.25
 SCHEMA = "lnet.h200.imagenet1k.matched_baseline.worker.v1"
+PERFORMANCE_RESUME_ENV = "H200_ALLOW_PERFORMANCE_ONLY_CHECKPOINT_MIGRATION"
 PROGRESS_PREFIX = "H200_BASELINE_PROGRESS_JSON="
 RESULT_PREFIX = "H200_BASELINE_RESULT_JSON="
 WANDB_DEGRADED_PREFIX = "H200_BASELINE_WANDB_DEGRADED_JSON="
@@ -253,6 +254,10 @@ def _contract(task: BaselineTask) -> dict[str, Any]:
             "device_prefetch_stream": True,
             "device_prefetch_scope": "copy_only",
             "fused_h2d_channels_last": True,
+            "compiled_training_preparation": os.environ.get(
+                "H200_BASELINE_COMPILED_TRAINING_PREPARATION"
+            )
+            == "1",
             "validation": "streaming full validation set",
             "resume": (
                 "epoch-boundary RNG continuity; bitwise CUDA kernel determinism "
@@ -868,6 +873,57 @@ def _validate_binding(payload: dict[str, Any], contract: dict[str, Any]) -> None
         raise RuntimeError(message)
 
 
+def _validate_performance_only_migration(
+    previous: dict[str, Any],
+    current: dict[str, Any],
+) -> None:
+    previous_task = previous.get("task")
+    current_task = current.get("task")
+    if not isinstance(previous_task, dict) or not isinstance(current_task, dict):
+        raise TypeError("performance migration requires task contracts")
+    invariant_task_keys = (
+        "phase",
+        "model_key",
+        "seed",
+        "learning_rate",
+        "epochs",
+        "batch_size",
+    )
+    changed_task = {
+        key: {"previous": previous_task.get(key), "current": current_task.get(key)}
+        for key in invariant_task_keys
+        if previous_task.get(key) != current_task.get(key)
+    }
+    if changed_task:
+        raise RuntimeError(
+            "performance migration changed task semantics: "
+            + json.dumps(changed_task, sort_keys=True)
+        )
+    if previous.get("model") != current.get("model"):
+        raise RuntimeError("performance migration changed the model contract")
+    previous_recipe = previous.get("recipe")
+    current_recipe = current.get("recipe")
+    if not isinstance(previous_recipe, dict) or not isinstance(current_recipe, dict):
+        raise TypeError("performance migration requires recipe contracts")
+    performance_keys = {
+        "persistent_workers",
+        "validation_persistent_workers",
+        "loader_prefetch_factor",
+        "device_prefetch_stream",
+        "device_prefetch_scope",
+        "fused_h2d_channels_last",
+        "compiled_training_preparation",
+    }
+    previous_math = {
+        key: value for key, value in previous_recipe.items() if key not in performance_keys
+    }
+    current_math = {
+        key: value for key, value in current_recipe.items() if key not in performance_keys
+    }
+    if previous_math != current_math:
+        raise RuntimeError("performance migration changed the training recipe")
+
+
 def _progress_path(task: BaselineTask) -> Path:
     return task.output_dir / "progress" / f"{task.task_name}.json"
 
@@ -1169,11 +1225,19 @@ def run_task(
     contract = _contract(task)
     contract_sha256 = _sha256_payload(contract)
     contract_path = task.output_dir / "contracts" / f"{task.task_name}.json"
+    resume_contract: dict[str, Any] | None = None
     if contract_path.exists():
         existing_contract = json.loads(contract_path.read_text(encoding="utf-8"))
         if _sha256_payload(existing_contract) != contract_sha256:
-            message = f"existing contract changed for {task.task_name}"
-            raise RuntimeError(message)
+            if os.environ.get(PERFORMANCE_RESUME_ENV) != "1" or not task.resume:
+                message = f"existing contract changed for {task.task_name}"
+                raise RuntimeError(message)
+            _validate_performance_only_migration(existing_contract, contract)
+            resume_contract = existing_contract
+            archived = contract_path.with_suffix(".pre-performance-migration.json")
+            if not archived.exists():
+                _atomic_json(archived, existing_contract)
+            _atomic_json(contract_path, contract)
     else:
         _atomic_json(contract_path, contract)
     mirror = _WandbMirror(task, contract)
@@ -1218,7 +1282,7 @@ def run_task(
         if not isinstance(checkpoint, dict):
             message = "checkpoint payload is not an object"
             raise RuntimeError(message)
-        _validate_binding(checkpoint, contract)
+        _validate_binding(checkpoint, resume_contract or contract)
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         history = cast("list[dict[str, Any]]", checkpoint["history"])
