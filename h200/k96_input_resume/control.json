@@ -1,7 +1,7 @@
 {
   "schema":"lnet.remote_run_control.v1",
   "campaign_id":"h200-k96-s521-input-resume-v1",
-  "target_commit":"0000000000000000000000000000000000000000",
+  "target_commit":"956d92a6450ac163682c7be0d2548d90ebad6497",
   "generation":1,
   "action":"stop",
   "updated_at":"2026-09-06T14:30:00+09:00",
