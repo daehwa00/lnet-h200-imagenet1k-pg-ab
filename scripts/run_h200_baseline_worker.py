@@ -251,7 +251,9 @@ def _contract(task: BaselineTask) -> dict[str, Any]:
             "validation_persistent_workers": False,
             "loader_prefetch_factor": 2,
             "device_prefetch_stream": True,
-            "device_prefetch_scope": "copy_only",
+            "device_prefetch_scope": "copy_and_mixup" if os.environ.get("LNET_GPU_MIXUP") == "1" else "copy_only",
+            "gpu_mixup": os.environ.get("LNET_GPU_MIXUP") == "1",
+            "yield_before_fetch": os.environ.get("LNET_YIELD_BEFORE_FETCH") == "1",
             "fused_h2d_channels_last": True,
             "compiled_training_preparation": os.environ.get(
                 "H200_BASELINE_COMPILED_TRAINING_PREPARATION"
@@ -497,6 +499,11 @@ def _move_training_batch(
     mixup: _Mixup,
     device: torch.device,
 ) -> tuple[Tensor, Tensor, Tensor]:
+    if device.type == "cuda" and os.environ.get("LNET_GPU_MIXUP") == "1":
+        inputs = inputs.to(device=device, non_blocking=True, memory_format=torch.channels_last)
+        hard_targets = hard_targets.to(device=device, non_blocking=True)
+        mixed_inputs, soft_targets = mixup(inputs, hard_targets)
+        return mixed_inputs, hard_targets, soft_targets
     mixed_inputs, soft_targets = mixup(inputs, hard_targets)
     return (
         mixed_inputs.to(
@@ -526,12 +533,15 @@ def _training_batches(
         return
     with torch.cuda.stream(stream):
         pending = _move_training_batch(inputs, hard_targets, mixup, device)
+    early = os.environ.get("LNET_YIELD_BEFORE_FETCH") == "1"
     while True:
         current = torch.cuda.current_stream(device=device)
         current.wait_stream(stream)
         active = pending
         for tensor in active:
             tensor.record_stream(current)
+        if early:
+            yield active
         try:
             inputs, hard_targets = next(iterator)
         except StopIteration:
@@ -540,7 +550,8 @@ def _training_batches(
             has_next = True
             with torch.cuda.stream(stream):
                 pending = _move_training_batch(inputs, hard_targets, mixup, device)
-        yield active
+        if not early:
+            yield active
         if not has_next:
             break
 
@@ -1161,23 +1172,49 @@ def _configure_cuda_memory_limit(device: torch.device) -> float | None:
     return fraction
 
 
+def validate_input_migration(previous: dict[str, Any], current: dict[str, Any]) -> None:
+    """The caller separately verifies the pinned source revision and checkpoint."""
+    for key in ("model", "dataset"):
+        if previous[key] != current[key]:
+            raise RuntimeError(f"input migration changed {key}")
+    for key in ("model_key", "phase", "seed", "epochs", "batch_size", "workers", "learning_rate"):
+        if previous["task"][key] != current["task"][key]:
+            raise RuntimeError(f"input migration changed task {key}")
+    allowed = {"gpu_mixup", "yield_before_fetch", "device_prefetch_scope"}
+    old_recipe = {k:v for k,v in previous["recipe"].items() if k not in allowed}
+    new_recipe = {k:v for k,v in current["recipe"].items() if k not in allowed}
+    if old_recipe != new_recipe:
+        raise RuntimeError("input migration changed scientific recipe")
+    for key in ("torch", "cuda_runtime", "torch_compile_mode"):
+        if previous["runtime"].get(key) != current["runtime"].get(key):
+            raise RuntimeError(f"input migration changed runtime {key}")
+
+
 def run_task(
     task: BaselineTask,
     *,
     device: torch.device | None = None,
     model_builder: Callable[[str, str | Path | None, int], nn.Module] = registry.build_model,
     loader_builder: Callable[[BaselineTask, torch.device], LoaderBundle] = _build_loaders,
+    previous_contract: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Execute or RNG-continuously resume one task; local artifacts are authoritative."""
     _validate_task(task)
     contract = _contract(task)
     contract_sha256 = _sha256_payload(contract)
+    if previous_contract is not None:
+        if not task.resume:
+            raise RuntimeError("input migration requires a checkpoint")
+        validate_input_migration(previous_contract, contract)
     contract_path = task.output_dir / "contracts" / f"{task.task_name}.json"
     if contract_path.exists():
         existing_contract = json.loads(contract_path.read_text(encoding="utf-8"))
         if _sha256_payload(existing_contract) != contract_sha256:
-            message = f"existing contract changed for {task.task_name}"
-            raise RuntimeError(message)
+            if previous_contract is None or existing_contract != previous_contract:
+                message = f"existing contract changed for {task.task_name}"
+                raise RuntimeError(message)
+            _atomic_json(contract_path.with_suffix('.before-input-upgrade.json'), previous_contract)
+            _atomic_json(contract_path, contract)
     else:
         _atomic_json(contract_path, contract)
     mirror = _WandbMirror(task, contract)
@@ -1222,7 +1259,10 @@ def run_task(
         if not isinstance(checkpoint, dict):
             message = "checkpoint payload is not an object"
             raise RuntimeError(message)
-        _validate_binding(checkpoint, contract)
+        binding = contract
+        if previous_contract is not None and checkpoint.get('contract_sha256') == _sha256_payload(previous_contract):
+            binding = previous_contract
+        _validate_binding(checkpoint, binding)
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         history = cast("list[dict[str, Any]]", checkpoint["history"])
@@ -1303,6 +1343,12 @@ def run_task(
             "contract_sha256": contract_sha256,
         }
         _emit_progress(task, progress)
+        stop_marker = os.environ.get('LNET_EPOCH_STOP_MARKER')
+        if stop_marker and Path(stop_marker).exists():
+            _append_telemetry(task, {'id':f'paused:{epoch}', 'kind':'lifecycle','step':global_step,
+                'metrics':{'lifecycle/paused_after_epoch':epoch}})
+            mirror.sync()
+            return {'status':'paused','completed_epochs':epoch,'checkpoint_path':str(task.checkpoint_path)}
         if stopped:
             stopped_at_max_steps = True
             break
