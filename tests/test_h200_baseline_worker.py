@@ -193,6 +193,19 @@ def test_cli_accepts_inline_task_json_and_queue_contract(tmp_path: Path) -> None
     assert task.result_path == tmp_path / "result.json"
 
 
+def test_contract_records_optional_gpu_input_optimizations(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("LNET_GPU_MIXUP", "1")
+    monkeypatch.setenv("LNET_YIELD_BEFORE_FETCH", "1")
+    monkeypatch.setattr(worker.torch.cuda, "is_available", lambda: False)
+    recipe = worker._contract(_task(tmp_path))["recipe"]
+    assert recipe["device_prefetch_scope"] == "copy_and_mixup"
+    assert recipe["mixup_device"] == "cuda"
+    assert recipe["yield_before_fetch"] is True
+
+
 @pytest.mark.parametrize(
     ("device", "current_device", "expected_index"),
     [

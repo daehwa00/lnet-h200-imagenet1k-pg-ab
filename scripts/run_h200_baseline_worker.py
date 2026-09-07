@@ -248,10 +248,15 @@ def _contract(task: BaselineTask) -> dict[str, Any]:
             "gradient_accumulation_steps": task.gradient_accumulation_steps,
             "effective_batch_size": EFFECTIVE_BATCH_SIZE,
             "persistent_workers": task.workers > 0,
-            "validation_persistent_workers": False,
+            "validation_persistent_workers": task.workers > 0 and os.environ.get('LNET_VALIDATION_PERSISTENT') == '1',
+            "loader_process_context": os.environ.get('LNET_LOADER_CONTEXT') if task.workers else None,
             "loader_prefetch_factor": 2,
             "device_prefetch_stream": True,
-            "device_prefetch_scope": "copy_only",
+            "device_prefetch_scope": (
+                "copy_and_mixup" if os.environ.get("LNET_GPU_MIXUP") == "1" else "copy_only"
+            ),
+            "mixup_device": "cuda" if os.environ.get("LNET_GPU_MIXUP") == "1" else "cpu",
+            "yield_before_fetch": os.environ.get("LNET_YIELD_BEFORE_FETCH") == "1",
             "fused_h2d_channels_last": True,
             "compiled_training_preparation": os.environ.get(
                 "H200_BASELINE_COMPILED_TRAINING_PREPARATION"
@@ -454,8 +459,12 @@ def _build_loaders(task: BaselineTask, device: torch.device) -> LoaderBundle:
         "num_workers": task.workers,
         "pin_memory": device.type == "cuda",
     }
+    context=os.environ.get('LNET_LOADER_CONTEXT','').strip()
+    if context and context not in {'spawn','forkserver'}:
+        raise ValueError('LNET_LOADER_CONTEXT must be spawn or forkserver')
     if task.workers:
         common["prefetch_factor"] = 2
+        if context: common['multiprocessing_context']=context
     train = DataLoader(
         train_dataset,
         shuffle=True,
@@ -471,7 +480,7 @@ def _build_loaders(task: BaselineTask, device: torch.device) -> LoaderBundle:
         shuffle=False,
         drop_last=False,
         generator=validation_generator,
-        persistent_workers=False,
+        persistent_workers=task.workers > 0 and os.environ.get('LNET_VALIDATION_PERSISTENT') == '1',
         **common,
     )
     return LoaderBundle(train, validation, train_generator, validation_generator)
@@ -497,6 +506,13 @@ def _move_training_batch(
     mixup: _Mixup,
     device: torch.device,
 ) -> tuple[Tensor, Tensor, Tensor]:
+    if device.type == "cuda" and os.environ.get("LNET_GPU_MIXUP") == "1":
+        inputs = inputs.to(
+            device=device, non_blocking=True, memory_format=torch.channels_last
+        )
+        hard_targets = hard_targets.to(device=device, non_blocking=True)
+        mixed_inputs, soft_targets = mixup(inputs, hard_targets)
+        return mixed_inputs, hard_targets, soft_targets
     mixed_inputs, soft_targets = mixup(inputs, hard_targets)
     return (
         mixed_inputs.to(
@@ -526,12 +542,16 @@ def _training_batches(
         return
     with torch.cuda.stream(stream):
         pending = _move_training_batch(inputs, hard_targets, mixup, device)
+    yield_before_fetch = os.environ.get("LNET_YIELD_BEFORE_FETCH") == "1"
     while True:
         current = torch.cuda.current_stream(device=device)
         current.wait_stream(stream)
         active = pending
         for tensor in active:
             tensor.record_stream(current)
+        # Submit this batch's GPU work before potentially blocking in next(loader).
+        if yield_before_fetch:
+            yield active
         try:
             inputs, hard_targets = next(iterator)
         except StopIteration:
@@ -540,7 +560,8 @@ def _training_batches(
             has_next = True
             with torch.cuda.stream(stream):
                 pending = _move_training_batch(inputs, hard_targets, mixup, device)
-        yield active
+        if not yield_before_fetch:
+            yield active
         if not has_next:
             break
 
@@ -1371,6 +1392,9 @@ def run_task(
     _emit_progress(task, final_progress)
     print(f"{RESULT_PREFIX}{json.dumps(result, sort_keys=True)}", flush=True)
     mirror.finish(result)
+    for loader in (loaders.train, loaders.validation):
+        iterator=getattr(loader,'_iterator',None)
+        if iterator is not None: iterator._shutdown_workers()
     return result
 
 

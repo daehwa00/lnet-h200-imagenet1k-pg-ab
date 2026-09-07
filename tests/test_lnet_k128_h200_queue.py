@@ -49,4 +49,6 @@ def test_h200_entrypoint_uses_reduce_overhead() -> None:
     assert "H200_LNET_K128_ONLY" in source
     assert "H200_BASELINE_TORCH_COMPILE_MODE=reduce-overhead" in source
     assert "H200_BASELINE_COMPILED_TRAINING_PREPARATION=1" in source
+    assert "export LNET_GPU_MIXUP=1" in source
+    assert "export LNET_YIELD_BEFORE_FETCH=1" in source
     assert "--batch-size 256" in source

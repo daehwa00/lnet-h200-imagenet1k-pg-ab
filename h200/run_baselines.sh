@@ -478,6 +478,10 @@ fi
 if [[ "${H200_LNET_K128_ONLY:-0}" == "1" ]]; then
   export H200_BASELINE_TORCH_COMPILE_MODE=reduce-overhead
   export H200_BASELINE_COMPILED_TRAINING_PREPARATION=1
+  export LNET_GPU_MIXUP=1
+  export LNET_YIELD_BEFORE_FETCH=1
+  export LNET_LOADER_CONTEXT=spawn
+  export LNET_VALIDATION_PERSISTENT=1
   "${ENV_ROOT}/bin/python" scripts/run_lnet_k128_h200_imagenet1k_queue.py \
     --data-root "${DATA_ROOT}" \
     --output-root "${RUN_ROOT}/lnet-k128-h200-s509-521" \
