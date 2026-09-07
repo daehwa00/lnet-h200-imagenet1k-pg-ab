@@ -295,6 +295,53 @@
         }
       }
     },
+    "lnet_k64_p80x4_d2262_mig1_lee_v1": {
+      "display_name": "LNet-K64-P80x4-D2262-MIG1-Lee",
+      "seeds": {
+        "501": {
+          "display_name": "H200-LNet-I1K-K64-P80x4-s501",
+          "id": "c2cc300f2d9d071f",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "LNet",
+            "K64",
+            "P80x4",
+            "D2262",
+            "100ep",
+            "seed501"
+          ]
+        },
+        "509": {
+          "display_name": "H200-LNet-I1K-K64-P80x4-s509",
+          "id": "d2c1d02492c55a67",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "LNet",
+            "K64",
+            "P80x4",
+            "D2262",
+            "100ep",
+            "seed509"
+          ]
+        },
+        "521": {
+          "display_name": "H200-LNet-I1K-K64-P80x4-s521",
+          "id": "1f3ce0fe9eaface1",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "LNet",
+            "K64",
+            "P80x4",
+            "D2262",
+            "100ep",
+            "seed521"
+          ]
+        }
+      }
+    },
     "lnet_k96_p128x4_d2262_clean_restart_v3": {
       "display_name": "LNet-K96-P128x4-D2262",
       "seeds": {

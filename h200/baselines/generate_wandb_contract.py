@@ -29,6 +29,8 @@ LNET_K96_MODEL_KEY = "lnet_k96_p128x4_d2262_clean_restart_v3"
 LNET_K96_SEEDS = (509, 521)
 LNET_K128_MODEL_KEY = "lnet_k128_p160_160_160_128_d2262_h200_v1"
 LNET_K128_SEEDS = (509, 521)
+LNET_K64_MODEL_KEY = "lnet_k64_p80x4_d2262_mig1_lee_v1"
+LNET_K64_SEEDS = (501, 509, 521)
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -131,6 +133,22 @@ def _records(campaign: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     runtime_runs[LNET_K128_MODEL_KEY] = {
         "display_name": "LNet-K128-P160-160-160-128-D2262-H200",
         "seeds": k128_by_seed,
+    }
+    k64_by_seed: dict[str, Any] = {}
+    for seed in LNET_K64_SEEDS:
+        run_id = _sha256(f"{campaign_id}:{LNET_K64_MODEL_KEY}:seed{seed}")[:16]
+        run = {
+            "id": run_id,
+            "display_name": f"H200-LNet-I1K-K64-P80x4-s{seed}",
+            "tags": [
+                "H200", "ImageNet-1K", "LNet", "K64", "P80x4", "D2262", "100ep", f"seed{seed}",
+            ],
+        }
+        k64_by_seed[str(seed)] = run
+        relay_runs[run_id] = {"displayName": run["display_name"], "tags": run["tags"]}
+    runtime_runs[LNET_K64_MODEL_KEY] = {
+        "display_name": "LNet-K64-P80x4-D2262-MIG1-Lee",
+        "seeds": k64_by_seed,
     }
     canary_id = _sha256(f"{campaign_id}::{CANARY_KEY}")[:16]
     canary = {

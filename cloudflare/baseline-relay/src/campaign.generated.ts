@@ -121,6 +121,19 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
+    "1f3ce0fe9eaface1": {
+      "displayName": "H200-LNet-I1K-K64-P80x4-s521",
+      "tags": [
+        "H200",
+        "ImageNet-1K",
+        "LNet",
+        "K64",
+        "P80x4",
+        "D2262",
+        "100ep",
+        "seed521"
+      ]
+    },
     "1f72c4a0503849cb": {
       "displayName": "H200-BL-mobilevitv2_100-s521",
       "tags": [
@@ -584,6 +597,19 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
+    "c2cc300f2d9d071f": {
+      "displayName": "H200-LNet-I1K-K64-P80x4-s501",
+      "tags": [
+        "H200",
+        "ImageNet-1K",
+        "LNet",
+        "K64",
+        "P80x4",
+        "D2262",
+        "100ep",
+        "seed501"
+      ]
+    },
     "c461a36a830b448d": {
       "displayName": "H200-BL-mobilevitv2_075-s501",
       "tags": [
@@ -637,6 +663,19 @@ export const CAMPAIGN = {
         "ImageNet-1K",
         "LNet",
         "K128",
+        "D2262",
+        "100ep",
+        "seed509"
+      ]
+    },
+    "d2c1d02492c55a67": {
+      "displayName": "H200-LNet-I1K-K64-P80x4-s509",
+      "tags": [
+        "H200",
+        "ImageNet-1K",
+        "LNet",
+        "K64",
+        "P80x4",
         "D2262",
         "100ep",
         "seed509"

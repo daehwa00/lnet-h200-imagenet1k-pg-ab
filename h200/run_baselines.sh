@@ -10,7 +10,9 @@ readonly WANDB_RUNTIME="${PROJECT_ROOT}/h200/baselines/wandb.runtime.json"
 readonly REQUIREMENTS_LOCK="${PROJECT_ROOT}/h200/baselines/requirements.lock"
 readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab.git"
 CONTROL_REF="refs/heads/control/imagenet1k-baselines"
-if [[ "${H200_LNET_K128_ONLY:-0}" == "1" ]]; then
+if [[ "${H200_LNET_K64_ONLY:-0}" == "1" ]]; then
+  CONTROL_REF="refs/heads/control/imagenet1k-k64-mig1-lee"
+elif [[ "${H200_LNET_K128_ONLY:-0}" == "1" ]]; then
   CONTROL_REF="refs/heads/control/imagenet1k-lnet-k128"
 elif [[ "${H200_BASELINE_FOLLOWUP_ONLY:-0}" == "1" ]]; then
   CONTROL_REF="refs/heads/control/imagenet1k-baselines-followup"
@@ -22,6 +24,16 @@ readonly CONTROL_PATH="h200/baselines/control.json"
 readonly PYTHON_VERSION="3.13.11"
 readonly UV_VERSION="0.9.26"
 readonly DUMMY_WANDB_API_KEY="0000000000000000000000000000000000000000"
+OUTPUT_USER="${H200_OUTPUT_USER:-daehwa00}"
+if [[ ! "${OUTPUT_USER}" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]]; then
+  echo "ERROR: invalid H200_OUTPUT_USER" >&2
+  exit 2
+fi
+if [[ "${H200_LNET_K64_ONLY:-0}" == "1" && "${OUTPUT_USER}" != "Lee-Wonwoo1" ]]; then
+  echo "ERROR: K64 MIG1 campaign requires H200_OUTPUT_USER=Lee-Wonwoo1" >&2
+  exit 2
+fi
+readonly OUTPUT_USER
 
 cd "${PROJECT_ROOT}"
 if [[ ! "${H200_EXPECTED_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]]; then
@@ -43,7 +55,7 @@ print(value)
 PY
   )"
   readonly CONTROL_CAMPAIGN_ID
-  readonly CONTROL_STATE_ROOT="/app/output/daehwa00/run-control/${CONTROL_CAMPAIGN_ID}/${H200_EXPECTED_COMMIT}"
+  readonly CONTROL_STATE_ROOT="/app/output/${OUTPUT_USER}/run-control/${CONTROL_CAMPAIGN_ID}/${H200_EXPECTED_COMMIT}"
   readonly CONTROL_STOP_MARKER="${CONTROL_STATE_ROOT}/stopped.json"
   readonly CONTROL_FAST_STOP_MARKER="/dev/shm/lnet-owner-stop-${CONTROL_CAMPAIGN_ID}-${H200_EXPECTED_COMMIT}.json"
   exec python3 scripts/run_h200_owner_controlled.py \
@@ -152,7 +164,7 @@ readonly CAMPAIGN_GROUP="${CAMPAIGN_VALUES[7]}"
 readonly CAMPAIGN_CONSOLE="${CAMPAIGN_VALUES[8]}"
 readonly RELAY_PROTOCOL_VERSION="${CAMPAIGN_VALUES[9]}"
 
-readonly OUTPUT_BASE="/app/output/daehwa00/lnet-h200-imagenet1k-baselines-v1-${CAMPAIGN_SHA256:0:12}-${ACTUAL_COMMIT:0:12}"
+readonly OUTPUT_BASE="/app/output/${OUTPUT_USER}/lnet-h200-imagenet1k-baselines-v1-${CAMPAIGN_SHA256:0:12}-${ACTUAL_COMMIT:0:12}"
 readonly CACHE_ROOT="${OUTPUT_BASE}/cache"
 readonly SOURCE_ROOT="/app/scratch/input/lnet-h200-baseline-sources-${CAMPAIGN_SHA256:0:12}-${ACTUAL_COMMIT:0:12}"
 readonly DATASET_MANIFEST="${OUTPUT_BASE}/dataset_manifest.json"
@@ -455,6 +467,26 @@ else
 fi
 else
   echo "H200_BASELINE_UNICONV_DISABLED=source_checkout_unavailable" >&2
+fi
+
+if [[ "${H200_LNET_K64_ONLY:-0}" == "1" ]]; then
+  export H200_BASELINE_TORCH_COMPILE_MODE=default
+  export H200_BASELINE_COMPILED_TRAINING_PREPARATION=1
+  export LNET_GPU_MIXUP=1
+  export LNET_YIELD_BEFORE_FETCH=1
+  export LNET_LOADER_CONTEXT=spawn
+  export LNET_VALIDATION_PERSISTENT=1
+  "${ENV_ROOT}/bin/python" -u scripts/smoke_lnet_k64_mig1.py --batch-size 256 \
+    | tee "${RUN_ROOT}/k64-mig1-smoke.log"
+  "${ENV_ROOT}/bin/python" scripts/run_lnet_k64_mig1_imagenet1k_queue.py \
+    --data-root "${DATA_ROOT}" \
+    --output-root "${RUN_ROOT}/lnet-k64-p80x4-d2262-mig1-lee" \
+    --python "${ENV_ROOT}/bin/python" \
+    --runner "${PROJECT_ROOT}/scripts/run_lnet_k64_p80_d2262_imagenet1k.py" \
+    --batch-size 256 \
+    --workers 8
+  echo "H200_LNET_K64_CAMPAIGN_COMPLETE=${RUN_ROOT}/lnet-k64-p80x4-d2262-mig1-lee/queue-status.json"
+  exit 0
 fi
 
 if [[ "${H200_LNET_K96_ONLY:-0}" == "1" ]]; then

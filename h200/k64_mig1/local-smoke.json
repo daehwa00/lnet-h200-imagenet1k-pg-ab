@@ -1,0 +1,15 @@
+{
+  "date": "2026-09-07",
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "torch": "2.9.1+cu128",
+  "batch_size": 256,
+  "parameters": 1562760,
+  "compile": true,
+  "memory_cap_gib": 16.0,
+  "peak_allocated_gib": 7.716275215148926,
+  "peak_reserved_gib": 9.087890625,
+  "seconds": 372.5527558219619,
+  "losses": [7.060288906097412, 6.826746940612793],
+  "finite": true,
+  "h200_mig_verified": false
+}
