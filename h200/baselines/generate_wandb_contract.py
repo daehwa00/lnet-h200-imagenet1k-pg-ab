@@ -150,6 +150,12 @@ def _records(campaign: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         "display_name": "LNet-K64-P80x4-D2262-MIG1-Lee",
         "seeds": k64_by_seed,
     }
+    vim_key='vision_mamba_tiny'
+    vim_id=_sha256(f'{campaign_id}:{vim_key}:seed521')[:16]
+    vim={'id':vim_id,'display_name':'H200-Vim-Tiny-s521',
+         'tags':['H200','ImageNet-1K','Vim-Tiny','100ep','seed521']}
+    runtime_runs[vim_key]={'display_name':'Vision Mamba (Vim-Tiny)','seeds':{'521':vim}}
+    relay_runs[vim_id]={'displayName':vim['display_name'],'tags':vim['tags']}
     canary_id = _sha256(f"{campaign_id}::{CANARY_KEY}")[:16]
     canary = {
         "id": canary_id,

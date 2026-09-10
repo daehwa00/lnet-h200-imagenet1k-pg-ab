@@ -34,6 +34,7 @@ PUBLIC_MODEL_KEYS = (
     "tinynext_t",
     "tinynext_s",
     "tinynext_m",
+    "vision_mamba_tiny",
 )
 
 
@@ -102,6 +103,7 @@ _DISPLAY_NAMES = {
     "tinynext_t": "TinyNeXt-T",
     "tinynext_s": "TinyNeXt-S",
     "tinynext_m": "TinyNeXt-M",
+    "vision_mamba_tiny": "Vision Mamba (Vim-Tiny)",
 }
 
 MODEL_SPECS = {

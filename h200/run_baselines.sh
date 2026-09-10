@@ -7,10 +7,16 @@ readonly CAMPAIGN_MANIFEST="${PROJECT_ROOT}/h200/baselines/campaign.json"
 readonly SOURCE_MANIFEST="${PROJECT_ROOT}/h200/baselines/sources.json"
 readonly UNICONV_PATCH="${PROJECT_ROOT}/h200/baselines/patches/uniconvnet-dcnv3-torch29.patch"
 readonly WANDB_RUNTIME="${PROJECT_ROOT}/h200/baselines/wandb.runtime.json"
-readonly REQUIREMENTS_LOCK="${PROJECT_ROOT}/h200/baselines/requirements.lock"
+REQUIREMENTS_LOCK="${PROJECT_ROOT}/h200/baselines/requirements.lock"
+if [[ "${H200_VIM_TINY_ONLY:-0}" == "1" ]]; then
+  REQUIREMENTS_LOCK="${PROJECT_ROOT}/h200/vim/requirements.lock"
+fi
+readonly REQUIREMENTS_LOCK
 readonly CONTROL_REPO_URL="https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab.git"
 CONTROL_REF="refs/heads/control/imagenet1k-baselines"
-if [[ "${H200_LNET_K64_ONLY:-0}" == "1" ]]; then
+if [[ "${H200_VIM_TINY_ONLY:-0}" == "1" ]]; then
+  CONTROL_REF="refs/heads/control/imagenet1k-vim-tiny-s521"
+elif [[ "${H200_LNET_K64_ONLY:-0}" == "1" ]]; then
   CONTROL_REF="refs/heads/control/imagenet1k-k64-mig1-lee"
 elif [[ "${H200_LNET_K128_ONLY:-0}" == "1" ]]; then
   CONTROL_REF="refs/heads/control/imagenet1k-lnet-k128"
@@ -355,9 +361,13 @@ mkdir -p "${RUN_ROOT}"
 export WANDB_DIR="${RUN_ROOT}/wandb"
 
 BASELINE_SOURCES_READY=0
+SOURCE_ARGS=(--source-root "${SOURCE_ROOT}")
+if [[ "${H200_VIM_TINY_ONLY:-0}" == "1" ]]; then
+  SOURCE_ARGS+=(--source vision_mamba)
+fi
 for bootstrap_attempt in 1 2 3; do
   if "${ENV_ROOT}/bin/python" scripts/bootstrap_h200_baseline_sources.py \
-    --source-root "${SOURCE_ROOT}"; then
+    "${SOURCE_ARGS[@]}"; then
     BASELINE_SOURCES_READY=1
     break
   fi
@@ -365,6 +375,22 @@ for bootstrap_attempt in 1 2 3; do
 done
 if (( BASELINE_SOURCES_READY == 0 )); then
   echo "H200_BASELINE_EXTERNAL_SOURCES_DEGRADED=bootstrap_failed" >&2
+fi
+
+if [[ "${H200_VIM_TINY_ONLY:-0}" == "1" ]]; then
+  "${ENV_ROOT}/bin/python" scripts/prepare_h200_vim_native.py \
+    --cache-root "${OUTPUT_BASE}/external-wheels/vim" \
+    --native-root "${OUTPUT_BASE}/vim-native" \
+    --uv-bootstrap "${UV_BOOTSTRAP}" --python "${ENV_ROOT}/bin/python"
+  export PYTHONPATH="${OUTPUT_BASE}/vim-native:${PYTHONPATH}"
+  export LIBRARY_PATH="${OUTPUT_BASE}/vim-native:${LIBRARY_PATH:-}"
+  VIM_ROOT="${RUN_ROOT}/vim-tiny-s521"
+  "${ENV_ROOT}/bin/python" -u scripts/run_h200_vim_tiny_s521.py \
+    --data-root "${DATA_ROOT}" --source-root "${SOURCE_ROOT}" --output-root "${VIM_ROOT}" --preflight
+  "${ENV_ROOT}/bin/python" -u scripts/run_h200_vim_tiny_s521.py \
+    --data-root "${DATA_ROOT}" --source-root "${SOURCE_ROOT}" --output-root "${VIM_ROOT}"
+  echo "H200_VIM_TINY_COMPLETE=${VIM_ROOT}/seed_521/result.json"
+  exit 0
 fi
 
 # UniConvNet-A is the only native-extension lane. Build from a disposable MIT

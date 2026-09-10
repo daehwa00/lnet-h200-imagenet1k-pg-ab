@@ -597,6 +597,16 @@ export const CAMPAIGN = {
         "ip-scoped-untrusted"
       ]
     },
+    "bed909f0698c3144": {
+      "displayName": "H200-Vim-Tiny-s521",
+      "tags": [
+        "H200",
+        "ImageNet-1K",
+        "Vim-Tiny",
+        "100ep",
+        "seed521"
+      ]
+    },
     "c2cc300f2d9d071f": {
       "displayName": "H200-LNet-I1K-K64-P80x4-s501",
       "tags": [

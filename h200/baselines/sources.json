@@ -17,6 +17,14 @@
       "redistribution_allowed": true,
       "models": ["sret_tiny"]
     },
+    "vision_mamba": {
+      "repository": "https://github.com/hustvl/Vim.git",
+      "commit": "dd0358ad1e42701f22afbefa0717cc8825cf9f45",
+      "license": "Apache-2.0",
+      "license_file": "LICENSE.txt",
+      "redistribution_allowed": true,
+      "models": ["vision_mamba_tiny"]
+    },
     "moganet": {
       "repository": "https://github.com/Westlake-AI/MogaNet.git",
       "commit": "c83e328b513289fddd2921e17a9143b0f966c0a1",

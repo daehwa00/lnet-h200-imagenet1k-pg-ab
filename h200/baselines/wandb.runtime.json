@@ -948,6 +948,22 @@
           ]
         }
       }
+    },
+    "vision_mamba_tiny": {
+      "display_name": "Vision Mamba (Vim-Tiny)",
+      "seeds": {
+        "521": {
+          "display_name": "H200-Vim-Tiny-s521",
+          "id": "bed909f0698c3144",
+          "tags": [
+            "H200",
+            "ImageNet-1K",
+            "Vim-Tiny",
+            "100ep",
+            "seed521"
+          ]
+        }
+      }
     }
   },
   "schema_version": 1,

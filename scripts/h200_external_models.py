@@ -30,6 +30,7 @@ MODEL_SOURCES = {
     "parc_net_s": "parc_net",
     "sret_tiny": "sret",
     "moganet_xt": "moganet",
+    "vision_mamba_tiny": "vision_mamba",
     "uniconvnet_a": "uniconvnet",
     "efficientmod_xxs": "efficientmod",
     "emov2_1m": "emov2",
@@ -161,12 +162,32 @@ def _compat_import_context(
     finally:
         if registry_module is not None and original_register is not None:
             registry_module.register_model = original_register
+        retained = {}
+        if os.environ.get("LNET_RETAIN_EXTERNAL_IMPORTS") == "1":
+            retained = {
+                name: module for name, module in sys.modules.items()
+                if any(name == prefix or name.startswith(f"{prefix}.") for prefix in prefixes)
+            }
         for name in list(sys.modules):
             if any(name == prefix or name.startswith(f"{prefix}.") for prefix in prefixes):
                 del sys.modules[name]
         sys.modules.update(saved)
         sys.path[:] = old_path
         sys.dont_write_bytecode = old_dont_write_bytecode
+        # Dynamo imports the defining module again while tracing. Retain exact
+        # pinned modules on opt-in; merge package search paths but reject a real
+        # same-name/different-file module collision between two model sources.
+        for name, module in retained.items():
+            prior = saved.get(name)
+            if prior is not None and prior is not module:
+                if hasattr(prior, "__path__") and hasattr(module, "__path__"):
+                    module.__path__ = list(dict.fromkeys([*module.__path__, *prior.__path__]))
+                    for attr, value in vars(prior).items():
+                        if not attr.startswith('__') and not hasattr(module, attr):
+                            setattr(module, attr, value)
+                elif getattr(prior, '__file__', None) != getattr(module, '__file__', None):
+                    raise RuntimeError(f'conflicting external module for compile: {name}')
+            sys.modules[name] = module
 
 
 def _external_module(
@@ -262,6 +283,12 @@ torch.cuda.synchronize()
 
 
 def _build_model(key: str, checkout: Path, num_classes: int) -> nn.Module:  # noqa: PLR0911
+    if key == 'vision_mamba_tiny':
+        from vision_mamba_compat import build_vision_mamba
+        model=build_vision_mamba(checkout,num_classes)
+        if sum(p.numel() for p in model.parameters()) != 7_148_008:
+            raise RuntimeError('Vim-Tiny parameter count changed')
+        return model
     if key.startswith("parc_net_"):
         module = _external_module(
             checkout,

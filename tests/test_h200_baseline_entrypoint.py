@@ -31,7 +31,7 @@ def test_baseline_runtime_contains_baselines_and_lnet_k96_runs() -> None:
         for model in runtime["runs"].values()
         for record in model["seeds"].values()
     }
-    assert len(run_ids) == 67
+    assert len(run_ids) == 68
     assert set(runtime["runs"]["lnet_k96_p128x4_d2262_clean_restart_v3"]["seeds"]) == {
         "509",
         "521",

@@ -12,6 +12,7 @@ import importlib.util
 import json
 import math
 import os
+import operator
 import random
 import signal
 import subprocess
@@ -155,6 +156,13 @@ def _source_digests(model_key: str) -> dict[str, str]:
         "worker": Path(__file__).resolve(),
         "registry": Path(cast("str", registry.__file__)).resolve(),
     }
+    if model_key == 'vision_mamba_tiny':
+        paths['vision_mamba_compat'] = Path(__file__).with_name('vision_mamba_compat.py')
+        for module_name in ('selective_scan_cuda','causal_conv1d_cuda','causal_conv1d.cpp_functions'):
+            spec=importlib.util.find_spec(module_name)
+            if spec is None or spec.origin is None:
+                raise RuntimeError(f'missing Vision Mamba native dependency: {module_name}')
+            paths[module_name]=Path(spec.origin)
     if registry.model_spec(model_key).backend == "external":
         external = importlib.util.find_spec("h200_external_models")
         if external is None or external.origin is None:
@@ -278,7 +286,9 @@ def _contract(task: BaselineTask) -> dict[str, Any]:
         "external_source_provenance": external_provenance,
         "native_extension": native_extension,
         "runtime": {
+            "external_imports_retained": os.environ.get("LNET_RETAIN_EXTERNAL_IMPORTS") == "1",
             "torch_compile_mode": os.environ.get("H200_BASELINE_TORCH_COMPILE_MODE"),
+            "torch_compile_recompile_limit": os.environ.get('LNET_COMPILE_RECOMPILE_LIMIT'),
             "torch_compile_dynamic": False,
             "torch_compile_fullgraph": False,
             "gpu_memory_fraction": os.environ.get("H200_GPU_MEMORY_FRACTION"),
@@ -459,12 +469,13 @@ def _build_loaders(task: BaselineTask, device: torch.device) -> LoaderBundle:
         "num_workers": task.workers,
         "pin_memory": device.type == "cuda",
     }
-    context=os.environ.get('LNET_LOADER_CONTEXT','').strip()
+    context = os.environ.get('LNET_LOADER_CONTEXT', '').strip()
     if context and context not in {'spawn','forkserver'}:
         raise ValueError('LNET_LOADER_CONTEXT must be spawn or forkserver')
     if task.workers:
         common["prefetch_factor"] = 2
-        if context: common['multiprocessing_context']=context
+        if context:
+            common['multiprocessing_context'] = context
     train = DataLoader(
         train_dataset,
         shuffle=True,
@@ -498,6 +509,13 @@ def _make_mixup() -> _Mixup:
         label_smoothing=LABEL_SMOOTHING,
         num_classes=NUM_CLASSES,
     )
+
+
+def _shutdown_loaders(bundle: LoaderBundle) -> None:
+    for loader in (bundle.train, bundle.validation):
+        iterator=getattr(loader,'_iterator',None)
+        if iterator is not None:
+            iterator._shutdown_workers()
 
 
 def _move_training_batch(
@@ -751,6 +769,11 @@ def _train_one_epoch(
         optimizer.zero_grad(set_to_none=True)
         global_step += 1
         optimizer_steps += 1
+        if os.environ.get('LNET_BATCH_PROGRESS') == '1' and optimizer_steps % 100 == 0:
+            _atomic_json(task.output_dir/'step-progress.json', {
+                'epoch':epoch, 'batch':optimizer_steps, 'batches_per_epoch':optimizer_steps_per_epoch,
+                'global_step':global_step,
+            })
         window_start = batch_index + 1
         if task.max_steps is not None and global_step >= task.max_steps:
             stopped = True
@@ -825,10 +848,24 @@ def _evaluate_streaming(
     }
 
 
+def _prepare_compile_constants(model: nn.Module) -> None:
+    # Some upstream models store np.gcd(...) as Conv.groups. Its integer value
+    # is fixed topology, but Dynamo treats the NumPy scalar as runtime tensor data.
+    for module in model.modules():
+        if isinstance(module, nn.modules.conv._ConvNd) and type(module.groups) is not int:
+            module.groups = operator.index(module.groups)
+
+
 def _compiled_runtime(model: nn.Module, device: torch.device) -> nn.Module:
     mode = os.environ.get("H200_BASELINE_TORCH_COMPILE_MODE", "").strip()
     if not mode or device.type != "cuda":
         return model
+    _prepare_compile_constants(model)
+    limit=os.environ.get('LNET_COMPILE_RECOMPILE_LIMIT')
+    if limit:
+        value=int(limit)
+        if not 8<=value<=128: raise ValueError('invalid compile recompile limit')
+        torch._dynamo.config.recompile_limit=value
     return cast(
         "nn.Module",
         torch.compile(
@@ -1254,6 +1291,10 @@ def run_task(
         _backfill_telemetry(task, history)
 
     active_model = _compiled_runtime(model, resolved_device)
+    if os.environ.get('LNET_BATCH_PROGRESS') == '1':
+        _append_telemetry(task, {'id':'initialized','kind':'lifecycle','step':0,
+            'metrics':{'lifecycle/initialized':1}})
+        mirror.sync()
     started = time.monotonic()
     stopped_at_max_steps = False
     for epoch in range(completed_epochs + 1, task.epochs + 1):
@@ -1272,12 +1313,22 @@ def run_task(
             torch.cuda.synchronize(resolved_device)
         train_seconds = time.monotonic() - train_started
         train_metrics["images_per_second"] = train_metrics["examples"] / max(train_seconds, 1.0e-12)
-        validation_metrics = _evaluate_streaming(
-            active_model,
-            loaders.validation,
-            resolved_device,
-            use_bfloat16=_validation_uses_bfloat16(task.model_key),
-        )
+        try:
+            validation_metrics = _evaluate_streaming(
+                active_model, loaders.validation, resolved_device,
+                use_bfloat16=_validation_uses_bfloat16(task.model_key),
+            )
+        except FloatingPointError:
+            # Preserve forensic evidence without promoting an unvalidated epoch
+            # to the resumable, authoritative training checkpoint.
+            _atomic_torch(task.output_dir/'nonfinite-evidence.pt', {
+                'epoch':epoch, 'global_step':global_step, 'train':train_metrics,
+                'model':model.state_dict(), 'optimizer':optimizer.state_dict(),
+                'rng':_capture_rng(loaders), 'contract':contract,
+                'nonfinite_parameters':[n for n,p in model.named_parameters() if not torch.isfinite(p).all()],
+                'nonfinite_buffers':[n for n,b in model.named_buffers() if not torch.isfinite(b).all()],
+            })
+            raise
         if resolved_device.type == "cuda":
             torch.cuda.synchronize(resolved_device)
         training_seconds = elapsed_before_resume + time.monotonic() - started
@@ -1324,6 +1375,10 @@ def run_task(
             "contract_sha256": contract_sha256,
         }
         _emit_progress(task, progress)
+        stop_file = os.environ.get('LNET_STOP_FILE')
+        if stop_file and Path(stop_file).exists():
+            _shutdown_loaders(loaders)
+            return {'status':'paused','completed_epochs':epoch,'checkpoint_path':str(task.checkpoint_path)}
         if stopped:
             stopped_at_max_steps = True
             break
@@ -1392,9 +1447,7 @@ def run_task(
     _emit_progress(task, final_progress)
     print(f"{RESULT_PREFIX}{json.dumps(result, sort_keys=True)}", flush=True)
     mirror.finish(result)
-    for loader in (loaders.train, loaders.validation):
-        iterator=getattr(loader,'_iterator',None)
-        if iterator is not None: iterator._shutdown_workers()
+    _shutdown_loaders(loaders)
     return result
 
 
