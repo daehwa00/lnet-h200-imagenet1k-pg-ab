@@ -1,0 +1,9 @@
+{
+  "schema": "lnet.remote_run_control.v1",
+  "campaign_id": "h200-imagenet1k-moga-emo-100ep-s501-v2",
+  "target_commit": "831b7c8c479de855bccf842b7e8184cf574cbc93",
+  "generation": 1,
+  "action": "run",
+  "updated_at": "2026-09-10T23:01:00+09:00",
+  "reason": "Run matched original Vim-Tiny seed521 on whole H200; qlab retains501 and509 with521 excluded by handoff"
+}
