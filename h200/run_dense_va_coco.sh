@@ -40,12 +40,31 @@ ENV_ROOT="${TASK_ROOT}/environment-va-coco-v1"
 if [[ ! -x "${ENV_ROOT}/bin/python" ]]; then
   uv_run venv --python 3.13.11 "${ENV_ROOT}"
 fi
-uv_run pip sync --python "${ENV_ROOT}/bin/python" --index-strategy unsafe-best-match h200/dense_transfer/requirements.txt
+# This file pins direct requirements, not the full dependency closure.
+# pip sync does not resolve missing transitive dependencies; pip install does.
+uv_run pip install --python "${ENV_ROOT}/bin/python" --index-strategy unsafe-best-match -r h200/dense_transfer/requirements.txt
+uv_run pip check --python "${ENV_ROOT}/bin/python"
 export PYTHONPATH="${PROJECT_ROOT}/scripts:${PROJECT_ROOT}/src"
 export LNET_DISABLE_LAUNCH_AUTOTUNE=1
 export TRITON_CACHE_DIR="${TASK_ROOT}/cache/triton-va-coco-v1"
 export OMP_NUM_THREADS=4
 export WANDB_MODE=disabled
+echo 'Checking runtime imports before GPU validation...'
+"${ENV_ROOT}/bin/python" - <<'PY'
+import torch
+import torchvision
+import timm
+import triton
+import pycocotools.mask
+import typing_extensions
+import run_dense_transfer
+import validate_dense_transfer_runtime
+from dense_transfer import backbones, data, engine, metrics, models
+print(f'Runtime imports OK: torch={torch.__version__}, torchvision={torchvision.__version__}', flush=True)
+if not torch.cuda.is_available():
+    raise RuntimeError('CUDA is unavailable in the H200 container')
+print(f'CUDA available: {torch.cuda.get_device_name(0)}', flush=True)
+PY
 OUT="${TASK_ROOT}/runs/coco-va_k128-seed501"
 mkdir -p "${OUT}"
 # Keep physical batch 2 initially: identical padding/accumulation to the 4090
