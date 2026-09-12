@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Persistent, validation-gated VA-K128 COCO run. No dataset downloads.
-set -euo pipefail
+# Reuse verified COCO, or prepare it in this same container before training.
+set -Eeuo pipefail
+trap 'rc=$?; echo "ERROR: line ${LINENO}, exit ${rc}: ${BASH_COMMAND}" >&2; exit "$rc"' ERR
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TASK_ROOT=/app/output/daehwa00/dense-transfer
 CHECKPOINT="${TASK_ROOT}/checkpoints/va_k128_seed501_ep100.pt"
@@ -18,9 +19,15 @@ if [[ ! -f "${CHECKPOINT}" ]]; then
   unlink "${CHECKPOINT}.part"
 fi
 printf '%s  %s\n' "${CHECKPOINT_SHA}" "${CHECKPOINT}" | sha256sum -c -
-[[ -d "${TASK_ROOT}/datasets/coco/train2017" ]]
-[[ -f "${TASK_ROOT}/datasets/coco/annotations/instances_val2017.json" ]]
 cd "${PROJECT_ROOT}"
+echo "Storage diagnostics: host=$(hostname), task_root=${TASK_ROOT}"
+df -h "${TASK_ROOT}"
+if [[ ! -d "${TASK_ROOT}/datasets/coco/train2017" ]]; then
+  echo 'COCO train2017 is absent in this container. Prior output may be on another volume/node; checking reusable data before download.'
+fi
+python3 -u scripts/prepare_h200_dense_data.py --only-coco
+DATA_ROOT="$(python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["ready"]; print(r["datasets"]["coco"]["path"])' "${TASK_ROOT}/datasets-ready.json")"
+echo "Verified COCO root: ${DATA_ROOT}"
 export UV_PYTHON_INSTALL_DIR="${TASK_ROOT}/uv-python"
 export UV_CACHE_DIR="${TASK_ROOT}/cache/uv"
 BOOTSTRAP="${TASK_ROOT}/uv-bootstrap-0.9.26"
@@ -44,7 +51,7 @@ mkdir -p "${OUT}"
 # Keep physical batch 2 initially: identical padding/accumulation to the 4090
 # recipe. Increasing it is a separate measured optimization, not assumed exact.
 ARGS=(--task coco --model va_k128 --checkpoint "${CHECKPOINT}"
-      --data-root "${TASK_ROOT}/datasets/coco" --output-root "${OUT}"
+      --data-root "${DATA_ROOT}" --output-root "${OUT}"
       --physical-batch-size 2 --effective-batch-size 16 --workers 4)
 "${ENV_ROOT}/bin/python" -u scripts/validate_dense_transfer_runtime.py "${ARGS[@]}" --mode smoke --max-probe-updates 2 2>&1 | tee "${OUT}/validation.log"
 "${ENV_ROOT}/bin/python" -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["status"]=="ready", r' "${OUT}/queue/readiness.json"

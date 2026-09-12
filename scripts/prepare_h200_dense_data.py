@@ -13,7 +13,7 @@ import prepare_dense_transfer_assets as assets
 ROOT = Path('/app/output/daehwa00/dense-transfer')
 
 
-def prepare(root: Path = ROOT) -> dict:
+def prepare(root: Path = ROOT, *, only_coco: bool = False) -> dict:
     root.mkdir(parents=True, exist_ok=True)
     with (root / 'prepare.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -25,6 +25,8 @@ def prepare(root: Path = ROOT) -> dict:
                 ('coco', 'coco', assets.verify_coco, [Path('/app/data/coco'), Path('/app/data/COCO')]),
                 ('ade20k', 'ADEChallengeData2016', assets.verify_ade, [Path('/app/data/ADEChallengeData2016'), Path('/app/data/ade20k')]),
             ):
+                if only_coco and kind != 'coco':
+                    continue
                 target = root / 'datasets' / dirname
                 selected = next((p for p in [target, *candidates] if p.is_dir() and verify(p)['ready']), None)
                 if selected is None:
@@ -69,7 +71,11 @@ def prepare(root: Path = ROOT) -> dict:
 
 
 if __name__ == '__main__':
-    result = prepare()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--only-coco', action='store_true')
+    args = parser.parse_args()
+    result = prepare(only_coco=args.only_coco)
     print(json.dumps({'ready': result['ready'], 'manifest': str(ROOT / 'datasets-ready.json'),
                       'datasets': {k: v['path'] for k, v in result['datasets'].items()},
                       'training_started': False}), flush=True)
