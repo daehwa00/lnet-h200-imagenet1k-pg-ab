@@ -177,6 +177,26 @@ class _AutogradContext(Protocol):
     def save_for_backward(self, *tensors: Tensor) -> None: ...
 
 
+def dense_scan_geometry(height: int) -> LaunchGeometry | None:
+    """Bound tall scan tiles instead of compiling unsafe large candidates.
+
+    Dense inputs produce 128..512-row feature maps. The old path-collapse
+    search starts at four modes per CTA and grows to 64; at 512 rows even
+    its small candidates can exceed the 99-KiB shared-memory limit. Keeping
+    height * modes <= 512 bounds the scan/dot scratch and compiler workload.
+    This partitions independent modes, not the recurrence/spatial context.
+    Classification-sized scans keep their existing selection behavior.
+    """
+    if height <= 64:
+        return None
+    padded_height = triton.next_power_of_2(height)
+    modes = max(1, min(8, 512 // padded_height))
+    return LaunchGeometry.build(
+        num_warps=4, num_stages=1,
+        blocks={"BLOCK_LINES": 1, "BLOCK_MODES": modes},
+    )
+
+
 def _scan_launch_scope(
     kernel: object,
     source: Tensor,
@@ -1519,6 +1539,7 @@ def _launch_product_scan4_backward(  # noqa: C901, PLR0912
     backward_kernel = autotuned(
         _product_scan_coarse4_associative_backward_kernel,
         launch_name,
+        geometry=dense_scan_geometry(height),
         key=(
             "height",
             "width",
@@ -1911,6 +1932,7 @@ def _launch_product_scan4_forward(
     forward_kernel = autotuned(
         _product_scan_coarse4_associative_forward_kernel,
         launch_name,
+        geometry=dense_scan_geometry(height),
         key=(
             "height",
             "width",

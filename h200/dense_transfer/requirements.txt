@@ -1,0 +1,15 @@
+# Version-pinned dense runtime. CUDA 12.8/Python 3.13 were used for local checks.
+# The inherited h200/baselines/requirements.lock is also available for the base
+# environment; this compact file is not advertised as a hash-locked artifact.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.9.1+cu128
+torchvision==0.24.1+cu128
+timm==1.0.26
+triton==3.5.1
+numpy==2.4.6
+scipy==1.16.3
+pillow==12.1.0
+einops==0.8.1
+pycocotools==2.0.11
+pyyaml==6.0.3
+wandb==0.22.3
