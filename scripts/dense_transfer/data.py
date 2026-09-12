@@ -1051,7 +1051,14 @@ def evaluate(
             from .metrics import COCOEvaluator
 
             evaluator = COCOEvaluator(getattr(loader, "dataset", None))
-            with torch.inference_mode():
+            # Honor the same precision contract as training and ADE evaluation.
+            # VA's fused CUDA path explicitly requires BF16 autocast.
+            autocast = (
+                torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+                if bf16 and target_device.type == "cuda"
+                else nullcontext()
+            )
+            with torch.inference_mode(), autocast:
                 for images, targets in loader:
                     device_images = [_move_nested(image, target_device) for image in images]
                     outputs = model(device_images)

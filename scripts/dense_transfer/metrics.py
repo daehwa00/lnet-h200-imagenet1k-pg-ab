@@ -496,7 +496,7 @@ def evaluate_coco(
 
 
 class COCOEvaluator:
-    """Small accumulating wrapper around :func:`evaluate_coco`."""
+    """Accumulate encoded COCO rows, not full-resolution float mask tensors."""
 
     def __init__(
         self,
@@ -506,10 +506,11 @@ class COCOEvaluator:
     ) -> None:
         self.dataset_or_coco = dataset_or_coco
         self.iou_types = tuple(iou_types)
-        self.predictions: list[Prediction] = []
+        self.rows: dict[str, list[dict[str, Any]]] = {"bbox": [], "segm": []}
 
     def reset(self) -> None:
-        self.predictions.clear()
+        for rows in self.rows.values():
+            rows.clear()
 
     def update(
         self,
@@ -524,14 +525,17 @@ class COCOEvaluator:
             current = prediction
             if image_ids is not None and "image_id" not in current and "id" not in current:
                 current = {**current, "image_id": int(image_ids[index])}
-            self.predictions.append(current)
+            encoded = coco_result_rows(self.dataset_or_coco, [current])
+            for kind in self.rows:
+                self.rows[kind].extend(encoded[kind])
 
     def compute(self) -> dict[str, float]:
-        return evaluate_coco(
-            self.dataset_or_coco,
-            self.predictions,
-            iou_types=self.iou_types,
-        )
+        coco, _ = _coco_object(self.dataset_or_coco)
+        _, evaluator = _load_coco_modules()
+        result: dict[str, float] = {}
+        for kind in dict.fromkeys(self.iou_types):
+            result.update(_evaluate_coco_type(coco, self.rows[kind], kind, coco_eval_class=evaluator))
+        return result
 
     def evaluate(self) -> dict[str, float]:
         return self.compute()
