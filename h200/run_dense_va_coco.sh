@@ -9,8 +9,13 @@ mkdir -p "${TASK_ROOT}"
 exec 9>"${TASK_ROOT}/va-coco.lock"
 flock -n 9 || { echo 'Another VA-COCO launcher owns the lock'; exit 1; }
 if [[ ! -f "${CHECKPOINT}" ]]; then
-  echo "Missing pretrained checkpoint: ${CHECKPOINT}. Transfer the original seed501/100ep file privately before submitting."
-  exit 2
+  mkdir -p "${TASK_ROOT}/checkpoints"
+  curl --fail --location --retry 3 --connect-timeout 30 --continue-at - \
+    --output "${CHECKPOINT}.part" \
+    https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab/releases/download/dense-va-k128-seed501-ep100-v1/va_k128_seed501_ep100.pt
+  printf '%s  %s\n' "${CHECKPOINT_SHA}" "${CHECKPOINT}.part" | sha256sum -c -
+  ln "${CHECKPOINT}.part" "${CHECKPOINT}"
+  unlink "${CHECKPOINT}.part"
 fi
 printf '%s  %s\n' "${CHECKPOINT_SHA}" "${CHECKPOINT}" | sha256sum -c -
 [[ -d "${TASK_ROOT}/datasets/coco/train2017" ]]
@@ -41,7 +46,7 @@ mkdir -p "${OUT}"
 ARGS=(--task coco --model va_k128 --checkpoint "${CHECKPOINT}"
       --data-root "${TASK_ROOT}/datasets/coco" --output-root "${OUT}"
       --physical-batch-size 2 --effective-batch-size 16 --workers 4)
-"${ENV_ROOT}/bin/python" -u scripts/validate_dense_transfer_runtime.py "${ARGS[@]}" --mode smoke --max-probe-updates 2 >"${OUT}/validation.log" 2>&1
+"${ENV_ROOT}/bin/python" -u scripts/validate_dense_transfer_runtime.py "${ARGS[@]}" --mode smoke --max-probe-updates 2 2>&1 | tee "${OUT}/validation.log"
 "${ENV_ROOT}/bin/python" -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["status"]=="ready", r' "${OUT}/queue/readiness.json"
 RESUME=()
 if [[ -f "${OUT}/checkpoints/last.pt" ]]; then
