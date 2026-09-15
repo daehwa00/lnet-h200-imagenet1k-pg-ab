@@ -12,6 +12,7 @@ from __future__ import annotations
 # pyright: reportGeneralTypeIssues=false, reportMissingParameterType=false
 # pyright: reportPrivateUsage=false, reportUnknownLambdaType=false
 from typing import Protocol, cast
+import os
 
 import torch
 import triton
@@ -190,7 +191,12 @@ def dense_scan_geometry(height: int) -> LaunchGeometry | None:
     if height <= 64:
         return None
     padded_height = triton.next_power_of_2(height)
-    modes = max(1, min(8, 512 // padded_height))
+    budget = int(os.environ.get('LNET_DENSE_MODE_BUDGET', '512'))
+    if budget not in (512, 1024, 2048):
+        raise ValueError('Unsupported dense mode budget')
+    if os.environ.get('LNET_DENSE_ADAPTIVE_TILES') == '1' and padded_height <= 256:
+        budget = 512
+    modes = max(1, min(8, budget // padded_height))
     return LaunchGeometry.build(
         num_warps=4, num_stages=1,
         blocks={"BLOCK_LINES": 1, "BLOCK_MODES": modes},

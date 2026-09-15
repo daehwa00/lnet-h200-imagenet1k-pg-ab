@@ -4,7 +4,7 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  "main": "src/index.ts",
+  "main": "src/entry.ts",
   "name": "lnet-h200-baseline-relay-v1",
   "observability": {
     "enabled": true,

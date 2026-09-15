@@ -1,0 +1,33 @@
+{
+  "entity": "daehwa",
+  "project": "alphabet2d-dense-transfer",
+  "group": "h200-va-coco-ft501-v2-20260915",
+  "wandb_sdk_version": "0.22.3",
+  "wandb_base_url": "https://lnet-h200-baseline-relay-v1.gpupulse-monitor.workers.dev/dense-v2",
+  "wandb_app_url": "https://wandb.ai",
+  "runs": {
+    "train": {
+      "id": "e3ec67e73d61028d",
+      "display_name": "H200-VA-COCO-ft501-v2",
+      "tags": [
+        "H200",
+        "COCO",
+        "VA-K128",
+        "seed501",
+        "12ep",
+        "optimized-v2",
+        "ip-scoped-untrusted"
+      ]
+    },
+    "canary": {
+      "id": "a3f5d2756fbc5127",
+      "display_name": "H200-dense-relay-canary-v2",
+      "tags": [
+        "H200",
+        "COCO",
+        "relay-canary",
+        "not-training"
+      ]
+    }
+  }
+}

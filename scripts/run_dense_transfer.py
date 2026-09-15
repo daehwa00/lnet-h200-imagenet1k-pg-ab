@@ -42,6 +42,10 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--physical-batch-size", type=int, default=2)
     command.add_argument("--effective-batch-size", type=int, default=16)
     command.add_argument("--workers", type=int, default=2)
+    command.add_argument('--seed', type=int, default=501, choices=(501,509,521))
+    command.add_argument('--no-pin-memory', action='store_true')
+    command.add_argument('--prefetch-factor', type=int, default=2)
+    command.add_argument('--sharing-strategy', choices=('file_descriptor','file_system'), default='file_descriptor')
     command.add_argument("--no-bf16", action="store_true")
     command.add_argument("--compile-backbone", action="store_true", help="opt in; eager is the default")
     command.add_argument("--checkpoint-backbone-blocks", action="store_true", help="opt in for VA/ConvNeXt activation checkpointing; TinyViM rejects it")
@@ -65,6 +69,8 @@ def settings_from_args(args: argparse.Namespace) -> RunSettings:
         workers=args.workers, bf16=not args.no_bf16, compiled_backbone=args.compile_backbone,
         channels_last=args.channels_last, fused_adamw=args.fused_adamw,
         checkpoint_backbone_blocks=args.checkpoint_backbone_blocks,
+        seed=getattr(args,'seed',501), pin_memory=not getattr(args,'no_pin_memory',False),
+        prefetch_factor=getattr(args,'prefetch_factor',2), sharing_strategy=getattr(args,'sharing_strategy','file_descriptor'),
     )
 
 
@@ -91,8 +97,9 @@ def build_loaders(data: Any, settings: RunSettings, device: torch.device) -> tup
     options = {
         "task": settings.task, "data_root": settings.data_root,
         "physical_batch_size": settings.physical_batch_size, "batch_size": settings.physical_batch_size,
-        "workers": settings.workers, "pin_memory": device.type == "cuda",
+        "workers": settings.workers, "pin_memory": settings.pin_memory and device.type == "cuda",
         "persistent_workers": settings.workers > 0, "seed": settings.seed,
+        "prefetch_factor": settings.prefetch_factor, "sharing_strategy": settings.sharing_strategy,
     }
     if hasattr(data, "build_loaders"):
         loaders = _call_supported(data.build_loaders, **options)
@@ -103,7 +110,7 @@ def build_loaders(data: Any, settings: RunSettings, device: torch.device) -> tup
     collate = data.ade_collate if settings.task == "ade20k" else data.coco_collate
     train = data.build_dataset(settings.task, settings.data_root, "train", train=True)
     validation = data.build_dataset(settings.task, settings.data_root, "val", train=False)
-    common = {"num_workers": settings.workers, "pin_memory": device.type == "cuda",
+    common = {"num_workers": settings.workers, "pin_memory": settings.pin_memory and device.type == "cuda",
               "persistent_workers": settings.workers > 0, "collate_fn": collate}
     train_loader = DataLoader(train, batch_size=settings.physical_batch_size, shuffle=True, generator=generator, **common)
     validation_loader = DataLoader(validation, batch_size=settings.physical_batch_size, shuffle=False, **common)
@@ -220,6 +227,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     require_idle_cuda(requested_device, args.allow_busy if args.mode in {"smoke", "benchmark"} else False)
     set_seed(settings.seed)
     model, train_loader, val_loader, optimizer, scheduler, contract, device = build_runtime(settings, plan)
+    telemetry=getattr(args,'telemetry',None)
+    if telemetry is not None:
+        telemetry.attach(train_loader,val_loader,contract)
     if args.mode == "train":
         require_train_permission(settings, contract, args.confirm_training)
     if args.mode == "evaluate":
@@ -242,6 +252,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             args.resume, model, optimizer, scheduler, contract,
             getattr(train_loader, "dense_transfer_generator", None),
         )
+    if telemetry is not None:
+        telemetry.progress(progress, force=True)
     epochs = plan.epochs if plan.epochs else 10**9
     update_cap = scheduler.total_updates if args.max_updates is None else min(args.max_updates, scheduler.total_updates)
     metrics: dict[str, float | int] = {}
@@ -254,6 +266,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     def save_checkpoint(state: str) -> None:
         atomic_torch(checkpoint_target, checkpoint_payload(model, optimizer, scheduler, progress, contract, getattr(train_loader, "dense_transfer_generator", None)))
         atomic_json(progress_status, {"state": state, "progress": {"optimizer_updates": progress.optimizer_updates, "epoch": progress.epoch, "batch_in_epoch": progress.batch_in_epoch}, "checkpoint": str(checkpoint_target)})
+        if telemetry is not None:
+            telemetry.checkpoint(progress, checkpoint_target, state)
 
     stop_requested, restore_handlers = _install_stop_handlers()
     paused = False
@@ -274,8 +288,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 if current.optimizer_updates % interval == 0:
                     save_checkpoint("running")
 
-            outcome = train_batches(model, iterator, optimizer, scheduler, device, settings.accumulation_steps, progress=progress, max_updates=update_cap, bf16=settings.bf16, channels_last=settings.channels_last, physical_batch_size=settings.physical_batch_size, stop_requested=stop_requested, on_update=periodic)
+            outcome = train_batches(model, iterator, optimizer, scheduler, device, settings.accumulation_steps, progress=progress, max_updates=update_cap, bf16=settings.bf16, channels_last=settings.channels_last, physical_batch_size=settings.physical_batch_size, stop_requested=stop_requested, on_update=periodic, on_metrics=None if telemetry is None else telemetry.progress)
             metrics = {key: value for key, value in outcome.items() if key != "interrupted"}
+            atomic_json(settings.output_root/'status/training-metrics.json', {'epoch':epoch,'optimizer_updates':progress.optimizer_updates,'seed':settings.seed,'metrics':metrics})
             epoch_finished = progress.batch_in_epoch >= len(train_loader)
             paused = bool(outcome["interrupted"])
             capped = progress.optimizer_updates >= update_cap

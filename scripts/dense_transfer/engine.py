@@ -75,6 +75,9 @@ class RunSettings:
     fused_adamw: bool = False
     checkpoint_backbone_blocks: bool = False
     seed: int = 501
+    pin_memory: bool = True
+    prefetch_factor: int = 2
+    sharing_strategy: str = "file_descriptor"
 
     @property
     def accumulation_steps(self) -> int:
@@ -450,6 +453,11 @@ class TrainProgress:
 
 
 def _require_finite_gradients(model: nn.Module, micro_step: int) -> None:
+    if os.environ.get('LNET_BATCH_FINITE_CHECKS') == '1':
+        checks = [torch.isfinite(p.grad).all() for p in model.parameters() if p.grad is not None]
+        if not checks or bool(torch.stack(checks).all()):
+            return
+        # Keep exact diagnostics on failure; normal updates synchronize once.
     for name, parameter in model.named_parameters():
         if parameter.grad is not None and not torch.isfinite(parameter.grad).all():
             raise FloatingPointError(f"non-finite gradient for {name} at micro step {micro_step}")
@@ -509,6 +517,7 @@ def train_batches(
     physical_batch_size: int | None = None,
     stop_requested: Callable[[], bool] | None = None,
     on_update: Callable[[TrainProgress], None] | None = None,
+    on_metrics: Callable[[TrainProgress, dict[str, float]], None] | None = None,
     loss_fn: Callable[[Any, Any], Tensor] = default_loss,
 ) -> dict[str, float | int | bool]:
     """Train an iterable, with an exact correction for a short final window.
@@ -548,6 +557,8 @@ def train_batches(
                 optimizer.zero_grad(set_to_none=True)
                 if on_update is not None:
                     on_update(progress)
+                if on_metrics is not None:
+                    on_metrics(progress, {'loss':sum(losses[-window:])/max(1,window)})
                 interrupted = stop_requested is not None and stop_requested()
             break
         inputs, targets = split_batch(_move(batch, device, channels_last))
@@ -564,8 +575,10 @@ def train_batches(
                 f"non-finite loss at micro step {progress.micro_steps}; "
                 f"{_loss_diagnostics(outputs, targets)}"
             )
+        fast_checks = os.environ.get('LNET_BATCH_FINITE_CHECKS') == '1'
+        logged_loss = float(loss.detach().cpu()) if fast_checks else None
         (loss * examples / (physical_batch_size * accumulation_steps)).backward()
-        losses.append(float(loss.detach().cpu()))
+        losses.append(logged_loss if fast_checks else float(loss.detach().cpu()))
         progress.micro_steps += 1
         progress.batch_in_epoch += 1
         window += 1
@@ -583,6 +596,8 @@ def train_batches(
             optimizer.zero_grad(set_to_none=True)
             if on_update is not None:
                 on_update(progress)
+            if on_metrics is not None:
+                on_metrics(progress, {'loss':sum(losses[-window:])/window})
             window = 0
             window_examples = 0
             interrupted = stop_requested is not None and stop_requested()

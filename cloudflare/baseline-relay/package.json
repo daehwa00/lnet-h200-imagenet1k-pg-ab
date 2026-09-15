@@ -5,7 +5,7 @@
   "type": "module",
   "engines": {"node": ">=22"},
   "scripts": {
-    "campaign:check": "python ../../h200/baselines/generate_wandb_contract.py --check",
+    "campaign:check": "python3 ../../h200/baselines/generate_wandb_contract.py --check && python3 ../../h200/dense_transfer/generate_relay.py --check",
     "check": "npm run campaign:check && npm run types:check && tsc --noEmit && tsc -p test/tsconfig.json --noEmit && vitest run",
     "deploy:dry": "wrangler deploy --dry-run",
     "test": "vitest run",

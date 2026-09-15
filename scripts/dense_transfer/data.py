@@ -20,6 +20,7 @@ large amount of memory and make preparation unexpectedly expensive.
 from __future__ import annotations
 
 import random
+import os
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
@@ -871,6 +872,9 @@ def build_dataset(
 
 
 def _seed_worker(worker_id: int) -> None:
+    strategy = os.environ.get('LNET_MP_SHARING_STRATEGY')
+    if strategy:
+        torch.multiprocessing.set_sharing_strategy(strategy)
     # DataLoader derives each worker's torch seed from its generator.  Mirror
     # that seed into Python/NumPy because ADE's geometric and photometric
     # augmentations intentionally use those two RNGs.
@@ -887,6 +891,8 @@ def build_loaders(
     pin_memory: bool = True,
     persistent_workers: bool = True,
     seed: int = 501,
+    prefetch_factor: int = 2,
+    sharing_strategy: str = 'file_descriptor',
     **dataset_kwargs: Any,
 ) -> LoaderBundle:
     """Build deterministic train/validation loaders for the dense engine.
@@ -909,6 +915,10 @@ def build_loaders(
         raise ValueError("physical_batch_size must be positive")
     if workers < 0:
         raise ValueError("workers must be non-negative")
+    if prefetch_factor < 1 or sharing_strategy not in torch.multiprocessing.get_all_sharing_strategies():
+        raise ValueError('invalid loader IPC profile')
+    torch.multiprocessing.set_sharing_strategy(sharing_strategy)
+    os.environ['LNET_MP_SHARING_STRATEGY'] = sharing_strategy
     train_options = dict(dataset_kwargs.pop("train_dataset_kwargs", {}) or {})
     val_options = dict(dataset_kwargs.pop("val_dataset_kwargs", {}) or {})
     # ``validate_files`` is useful for a one-time preparation audit but can be
@@ -935,7 +945,7 @@ def build_loaders(
         # The parent initializes CUDA before creating these loaders. Do not
         # inherit its CUDA/native-library state through fork.
         common["multiprocessing_context"] = "spawn"
-        common["prefetch_factor"] = 2
+        common["prefetch_factor"] = prefetch_factor
     train_loader = DataLoader(
         train_dataset,
         shuffle=True,

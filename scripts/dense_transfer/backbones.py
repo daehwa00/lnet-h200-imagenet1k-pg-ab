@@ -205,6 +205,15 @@ def build_backbone(
         kernel = Path(__file__).resolve().parents[2] / "src/lnet/pac_triton_product_scan_coarse4.py"
         provenance["dense_kernel_sha256"] = hashlib.sha256(kernel.read_bytes()).hexdigest()
         provenance["dense_launch_autotune_disabled"] = os.environ.get("LNET_DISABLE_LAUNCH_AUTOTUNE") == "1"
+        source_dir = kernel.parent
+        provenance['dense_performance'] = {
+            'odd_vertical_fused': os.environ.get('LNET_FUSED_ODD_VERTICAL') == '1',
+            'batch_finite_checks': os.environ.get('LNET_BATCH_FINITE_CHECKS') == '1',
+            'mode_budget': int(os.environ.get('LNET_DENSE_MODE_BUDGET', '512')),
+            'adaptive_tiles': os.environ.get('LNET_DENSE_ADAPTIVE_TILES') == '1',
+            'odd_kernel_sha256': hashlib.sha256((source_dir/'pac_vertical_recurrence_fused.py').read_bytes()).hexdigest(),
+            'same_resolution_sha256': hashlib.sha256((source_dir/'pac_same_resolution_depth.py').read_bytes()).hexdigest(),
+        }
         adapter = VASpatialBackbone
     elif model_key == "convnextv2_atto":
         import timm

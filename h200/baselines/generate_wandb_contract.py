@@ -224,7 +224,7 @@ def _outputs() -> dict[Path, str]:
     wrangler = {
         "$schema": "./node_modules/wrangler/config-schema.json",
         "name": WORKER_NAME,
-        "main": "src/index.ts",
+        "main": "src/entry.ts",
         "compatibility_date": "2026-08-20",
         "compatibility_flags": ["nodejs_compat"],
         "workers_dev": True,
