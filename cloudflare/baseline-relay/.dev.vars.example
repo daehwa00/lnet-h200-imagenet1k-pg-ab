@@ -2,3 +2,4 @@
 # Production values are Worker secrets and must never be committed.
 WANDB_API_KEY=replace-with-a-scoped-wandb-key
 ALLOWED_EGRESS_IPS=replace-with-the-h200-egress-ip-list
+IN10_OWNER_TOKEN=replace-with-private-in10-owner-token

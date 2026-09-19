@@ -83,7 +83,7 @@ class InsightSpec:
 
     @property
     def descriptor_dim(self) -> int:
-        return 4 * sum(self.pole_modes)
+        return self.q4_dim
 
     @property
     def q4_dim(self) -> int:

@@ -99,11 +99,11 @@ class VASpatialBackbone(nn.Module):
         ):
             if self.checkpoint_blocks and self.training and torch.is_grad_enabled():
                 state = activation_checkpoint(
-                    lambda real, imag, module=stage: module(real, imag)[0],
+                    lambda real, imag, module=stage: module(real, imag),
                     *state, use_reentrant=False,
                 )
             else:
-                state, _unused_global_descriptor = stage(*state)
+                state = stage(*state)
             if state is None:
                 raise RuntimeError("Spatial stage unexpectedly returned only a readout")
             state = self._at(resolution, state)

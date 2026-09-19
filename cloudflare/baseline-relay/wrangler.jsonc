@@ -28,4 +28,6 @@
     }
   ],
   "workers_dev": true
+  ,"durable_objects":{"bindings":[{"name":"IN10_CONTROL","class_name":"In10Control"},{"name":"IN10_ARTIFACT","class_name":"In10Artifact"}]}
+  ,"migrations":[{"tag":"in10-v1","new_sqlite_classes":["In10Control","In10Artifact"]}]
 }

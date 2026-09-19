@@ -12,7 +12,6 @@ from __future__ import annotations
 # This module is the public residual-depth boundary around the existing compact
 # pole coefficient builder; duplicating that algebra would be the worse API.
 from typing import TYPE_CHECKING, cast
-import os
 
 import torch
 from torch import Tensor, nn
@@ -86,10 +85,6 @@ def _vertical_product_scan(
     if source_variance.shape != source_real.shape:
         message = "vertical product scan variance has an incompatible shape"
         raise ValueError(message)
-
-    if source_real.is_cuda and not source_variance.requires_grad and os.environ.get('LNET_FUSED_ODD_VERTICAL') == '1':
-        from .pac_vertical_recurrence_fused import vertical_product_scan
-        return vertical_product_scan(pole, source, source_variance, reverse=reverse)
 
     storage_dtype = source_real.dtype
     active_real = source_real.float()

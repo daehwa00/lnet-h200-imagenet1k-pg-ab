@@ -12,7 +12,6 @@ from __future__ import annotations
 # pyright: reportGeneralTypeIssues=false, reportMissingParameterType=false
 # pyright: reportPrivateUsage=false, reportUnknownLambdaType=false
 from typing import Protocol, cast
-import os
 
 import torch
 import triton
@@ -176,31 +175,6 @@ class _AutogradContext(Protocol):
     gain_kind: int
 
     def save_for_backward(self, *tensors: Tensor) -> None: ...
-
-
-def dense_scan_geometry(height: int) -> LaunchGeometry | None:
-    """Bound tall scan tiles instead of compiling unsafe large candidates.
-
-    Dense inputs produce 128..512-row feature maps. The old path-collapse
-    search starts at four modes per CTA and grows to 64; at 512 rows even
-    its small candidates can exceed the 99-KiB shared-memory limit. Keeping
-    height * modes <= 512 bounds the scan/dot scratch and compiler workload.
-    This partitions independent modes, not the recurrence/spatial context.
-    Classification-sized scans keep their existing selection behavior.
-    """
-    if height <= 64:
-        return None
-    padded_height = triton.next_power_of_2(height)
-    budget = int(os.environ.get('LNET_DENSE_MODE_BUDGET', '512'))
-    if budget not in (512, 1024, 2048):
-        raise ValueError('Unsupported dense mode budget')
-    if os.environ.get('LNET_DENSE_ADAPTIVE_TILES') == '1' and padded_height <= 256:
-        budget = 512
-    modes = max(1, min(8, budget // padded_height))
-    return LaunchGeometry.build(
-        num_warps=4, num_stages=1,
-        blocks={"BLOCK_LINES": 1, "BLOCK_MODES": modes},
-    )
 
 
 def _scan_launch_scope(
@@ -837,35 +811,42 @@ def _product_scan_coarse4_associative_backward_kernel(  # noqa: PLR0912
     r1, i1 = tl.where(active, pbr * inverse_pb, 0.0), tl.where(active, pbi * inverse_pb, 0.0)
     r2, i2 = tl.where(active, nar * inverse_na, 0.0), tl.where(active, nai * inverse_na, 0.0)
     r3, i3 = tl.where(active, nbr * inverse_nb, 0.0), tl.where(active, nbi * inverse_nb, 0.0)
-    descriptor_base = batch * (4 * modes) + mode
-    raw_factor0 = tl.load(
-        descriptor_gradient_factor + descriptor_base,
-        mask=valid_mode & HAS_DESCRIPTOR_GRAD,
-        other=0.0,
-    )
-    raw_factor1 = tl.load(
-        descriptor_gradient_factor + descriptor_base + modes,
-        mask=valid_mode & HAS_DESCRIPTOR_GRAD,
-        other=0.0,
-    )
-    raw_factor2 = tl.load(
-        descriptor_gradient_factor + descriptor_base + 2 * modes,
-        mask=valid_mode & HAS_DESCRIPTOR_GRAD,
-        other=0.0,
-    )
-    raw_factor3 = tl.load(
-        descriptor_gradient_factor + descriptor_base + 3 * modes,
-        mask=valid_mode & HAS_DESCRIPTOR_GRAD,
-        other=0.0,
-    )
-    grad_r0 = 2.0 * raw_factor0 * r0 * inverse_pa
-    grad_i0 = 2.0 * raw_factor0 * i0 * inverse_pa
-    grad_r1 = 2.0 * raw_factor1 * r1 * inverse_pb
-    grad_i1 = 2.0 * raw_factor1 * i1 * inverse_pb
-    grad_r2 = 2.0 * raw_factor2 * r2 * inverse_na
-    grad_i2 = 2.0 * raw_factor2 * i2 * inverse_na
-    grad_r3 = 2.0 * raw_factor3 * r3 * inverse_nb
-    grad_i3 = 2.0 * raw_factor3 * i3 * inverse_nb
+    # A missing descriptor has exactly zero contribution. Do not build
+    # eight state-dependent 0*x intermediates and keep them live through CFFN.
+    if HAS_DESCRIPTOR_GRAD:
+        descriptor_base = batch * (4 * modes) + mode
+        raw_factor0 = tl.load(
+            descriptor_gradient_factor + descriptor_base,
+            mask=valid_mode & HAS_DESCRIPTOR_GRAD,
+            other=0.0,
+        )
+        raw_factor1 = tl.load(
+            descriptor_gradient_factor + descriptor_base + modes,
+            mask=valid_mode & HAS_DESCRIPTOR_GRAD,
+            other=0.0,
+        )
+        raw_factor2 = tl.load(
+            descriptor_gradient_factor + descriptor_base + 2 * modes,
+            mask=valid_mode & HAS_DESCRIPTOR_GRAD,
+            other=0.0,
+        )
+        raw_factor3 = tl.load(
+            descriptor_gradient_factor + descriptor_base + 3 * modes,
+            mask=valid_mode & HAS_DESCRIPTOR_GRAD,
+            other=0.0,
+        )
+        grad_r0 = 2.0 * raw_factor0 * r0 * inverse_pa
+        grad_i0 = 2.0 * raw_factor0 * i0 * inverse_pa
+        grad_r1 = 2.0 * raw_factor1 * r1 * inverse_pb
+        grad_i1 = 2.0 * raw_factor1 * i1 * inverse_pb
+        grad_r2 = 2.0 * raw_factor2 * r2 * inverse_na
+        grad_i2 = 2.0 * raw_factor2 * i2 * inverse_na
+        grad_r3 = 2.0 * raw_factor3 * r3 * inverse_nb
+        grad_i3 = 2.0 * raw_factor3 * i3 * inverse_nb
+    else:
+        zero_grad = tl.full((BLOCK_HEIGHT, BLOCK_LINES, BLOCK_MODES), 0.0, tl.float32)
+        grad_r0, grad_i0, grad_r1, grad_i1 = zero_grad, zero_grad, zero_grad, zero_grad
+        grad_r2, grad_i2, grad_r3, grad_i3 = zero_grad, zero_grad, zero_grad, zero_grad
 
     if COLLAPSE_PATHS_GRAD:
         r0_flat = tl.reshape(
@@ -1545,7 +1526,6 @@ def _launch_product_scan4_backward(  # noqa: C901, PLR0912
     backward_kernel = autotuned(
         _product_scan_coarse4_associative_backward_kernel,
         launch_name,
-        geometry=dense_scan_geometry(height),
         key=(
             "height",
             "width",
@@ -1938,7 +1918,6 @@ def _launch_product_scan4_forward(
     forward_kernel = autotuned(
         _product_scan_coarse4_associative_forward_kernel,
         launch_name,
-        geometry=dense_scan_geometry(height),
         key=(
             "height",
             "width",

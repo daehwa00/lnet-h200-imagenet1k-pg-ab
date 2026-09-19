@@ -1,0 +1,4 @@
+{
+  "tinyvim": {"repository":"https://github.com/xwmaxwma/TinyViM.git","commit":"cff64524117b1439becf89827a3428a288677b95","redistribute":false},
+  "parc_net": {"repository":"https://github.com/hkzhang91/ParC-Net.git","commit":"f6780d0ad795835df2181b8fd4737276deb6e211","redistribute":false}
+}

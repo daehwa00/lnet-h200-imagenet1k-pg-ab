@@ -38,6 +38,7 @@ MODEL_SOURCES = {
     "tinynext_t": "tinynext",
     "tinynext_s": "tinynext",
     "tinynext_m": "tinynext",
+    "tinyvim_s": "tinyvim",
 }
 
 _IMPORT_LOCK = threading.RLock()
@@ -332,6 +333,29 @@ def _build_model(key: str, checkout: Path, num_classes: int) -> nn.Module:  # no
         module = _external_module(classification, "models.tinynext", ("models",))
         constructor = getattr(module, key)
         return constructor(pretrained=False, num_classes=num_classes, distillation=False)
+    if key == "tinyvim_s":
+        if importlib.util.find_spec("selective_scan_cuda") is None:
+            msg = "TinyViM-S requires the pinned selective_scan_cuda compatibility wheel"
+            raise RuntimeError(msg)
+        helper_name = "timm.models.layers.helpers"
+        saved_helper = sys.modules.get(helper_name)
+        helper = types.ModuleType(helper_name)
+        from timm.layers import to_2tuple
+
+        helper.to_2tuple = to_2tuple  # type: ignore[attr-defined]
+        sys.modules[helper_name] = helper
+        try:
+            module = _external_module(checkout, "model.tinyvim", ("model",))
+        finally:
+            if saved_helper is None:
+                sys.modules.pop(helper_name, None)
+            else:
+                sys.modules[helper_name] = saved_helper
+        return module.TinyViM_S(
+            pretrained=False,
+            num_classes=num_classes,
+            distillation=False,
+        )
     msg = f"no external model builder for {key!r}"
     raise ValueError(msg)
 

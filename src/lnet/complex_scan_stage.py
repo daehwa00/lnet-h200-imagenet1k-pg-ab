@@ -510,7 +510,7 @@ class ComplexScanStage(nn.Module):
         self,
         real: Tensor,
         imag: Tensor,
-    ) -> tuple[ComplexField | None, Tensor]:
+    ) -> ComplexField | Tensor:
         if real.shape != imag.shape or real.ndim != 4 or real.shape[-1] != self.input_modes:
             message = "complex scan stage inputs must be matching NHWM tensors"
             raise ValueError(message)
@@ -550,21 +550,23 @@ class ComplexScanStage(nn.Module):
 
         input_shape = cast("tuple[int, int, int, int]", tuple(real.shape))
         positive_x, positive_y = self.pole_coefficients(input_shape)
-        scan_output = run_product_scan_pipeline(
-            positive_x,
-            positive_y,
-            (real, imag),
-            epilogue=epilogue,
-            gain_normalization=self.product_gain_normalization,
-            memory_policy=self.scan_memory_policy,
-        )
+        if self.output_modes is not None:
+            from .pac_spatial_product_scan import spatial_product_scan
+            spatial = spatial_product_scan(positive_x, positive_y, (real, imag),
+                epilogue=epilogue, gain_normalization=self.product_gain_normalization,
+                memory_policy=self.scan_memory_policy)
+            coarse_real, coarse_imag = spatial
+        else:
+            scan_output = run_product_scan_pipeline(
+                positive_x,
+                positive_y,
+                (real, imag),
+                epilogue=epilogue,
+                gain_normalization=self.product_gain_normalization,
+                memory_policy=self.scan_memory_policy,
+            )
         if self.output_modes is None:
-            return None, cast("Tensor", scan_output)
-
-        coarse_real, coarse_imag, descriptor = cast(
-            "tuple[Tensor, Tensor, Tensor]",
-            scan_output,
-        )
+            return cast("Tensor", scan_output)
         path_real, path_imag = coarse_real, coarse_imag
         collapse_product_paths = False
         if self.quadrant_path_mode_combiner is not None:
@@ -659,4 +661,4 @@ class ComplexScanStage(nn.Module):
             gate = torch.tanh(self.aligned_residual_gate).to(dtype=projected_real.dtype)
             projected_real = projected_real + gate * aligned_real
             projected_imag = projected_imag + gate * aligned_imag
-        return (projected_real, projected_imag), descriptor
+        return projected_real, projected_imag

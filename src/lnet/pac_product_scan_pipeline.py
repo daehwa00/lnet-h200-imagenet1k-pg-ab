@@ -934,7 +934,8 @@ def run_product_scan_path_collapse_pipeline(
         message = f"unsupported scan memory policy: {memory_policy}"
         raise ValueError(message)
     if not source[0].is_cuda:
-        full = run_product_scan_pipeline(
+        from .pac_spatial_product_scan import spatial_product_scan
+        full = spatial_product_scan(
             pole_x,
             pole_y,
             source,

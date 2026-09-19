@@ -116,13 +116,13 @@ class SameResolutionFactorialBackbone(ComplexScanBackbone):
     ) -> tuple[ComplexField, ComplexField, ComplexField]:
         excitation = self._initial_excitation(inputs)
         excitation = self._apply_at(56, excitation)
-        state2, _ = self.stage1(*excitation)
+        state2 = self.stage1(*excitation)
         state2 = self._require_state(state2)
         state2 = self._apply_at(28, state2)
-        state3, _ = self.stage2(*state2)
+        state3 = self.stage2(*state2)
         state3 = self._require_state(state3)
         state3 = self._apply_at(14, state3)
-        state4, _ = self.stage3(*state3)
+        state4 = self.stage3(*state3)
         state4 = self._require_state(state4)
         state4 = self._apply_at(7, state4)
         return state2, state3, state4
@@ -130,22 +130,18 @@ class SameResolutionFactorialBackbone(ComplexScanBackbone):
     def raw_descriptor(self, inputs: Tensor) -> Tensor:
         excitation = self._initial_excitation(inputs)
         excitation = self._apply_at(56, excitation)
-        state2, descriptor1 = self.stage1(*excitation)
+        state2 = self.stage1(*excitation)
         state2 = self._require_state(state2)
         state2 = self._apply_at(28, state2)
-        state3, descriptor2 = self.stage2(*state2)
+        state3 = self.stage2(*state2)
         state3 = self._require_state(state3)
         state3 = self._apply_at(14, state3)
-        state4, descriptor3 = self.stage3(*state3)
+        state4 = self.stage3(*state3)
         state4 = self._require_state(state4)
         state4 = self._apply_at(7, state4)
-        _, descriptor4 = self.terminal(*state4)
-        descriptor = torch.cat(
-            (descriptor1, descriptor2, descriptor3, descriptor4),
-            dim=-1,
-        )
+        descriptor = self.terminal(*state4)
         if descriptor.shape[-1] != self.descriptor_dim:
-            message = "same-resolution placement changed the established Raw-Q width"
+            message = "terminal Q4 width changed"
             raise RuntimeError(message)
         return descriptor
 

@@ -64,7 +64,7 @@ class CapacitySpec:
 
     @property
     def descriptor_dim(self) -> int:
-        return 4 * sum(self.pole_modes)
+        return self.q4_dim
 
     @property
     def q4_dim(self) -> int:
@@ -90,7 +90,7 @@ SPECS = {
 class CapacityQ4OnlyAffineClassifier(A2DAffineQClassifier):
     """Select terminal raw-Q coordinates for a dynamic pole schedule."""
 
-    def __init__(self, descriptor_dim: int, q4_dim: int, output_dim: int) -> None:
+    def __init__(self, q4_dim: int, output_dim: int) -> None:
         super().__init__(
             q4_dim,
             output_dim,
@@ -101,17 +101,12 @@ class CapacityQ4OnlyAffineClassifier(A2DAffineQClassifier):
             beta_lrq=None,
             affine_auxiliary_weight=0.0,
         )
-        self.full_descriptor_dim = descriptor_dim
         self.q4_dim = q4_dim
 
-    def select_q4(self, descriptor: Tensor) -> Tensor:
-        if descriptor.shape[-1] != self.full_descriptor_dim:
-            message = "capacity Q4 head received an incompatible full descriptor"
-            raise ValueError(message)
-        return descriptor[..., -self.q4_dim :]
-
-    def forward(self, descriptor: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        return super().forward(self.select_q4(descriptor))
+    def forward(self, q4: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        if q4.shape[-1] != self.q4_dim:
+            raise ValueError('Terminal descriptor width does not match Q4 classifier')
+        return super().forward(q4)
 
 
 def resize_terminal_poles_(
@@ -133,10 +128,9 @@ def resize_terminal_poles_(
     if source_q4_dim % source_poles:
         raise RuntimeError("terminal Q4 width is not divisible by the source pole count")
     directions = source_q4_dim // source_poles
-    prefix_dim = model.descriptor_dim - source_q4_dim
     if target_poles <= 0 or target_poles % R2K3_ORIENTATIONS:
         raise ValueError("terminal pole width must contain complete orientation groups")
-    descriptor_dim = prefix_dim + directions * target_poles
+    descriptor_dim = directions * target_poles
     q4_dim = directions * target_poles
     if target_poles == source_poles:
         return
@@ -179,7 +173,6 @@ def resize_terminal_poles_(
         if not isinstance(source_affine, StandardizedAffineModalHead):
             raise TypeError("terminal resize requires a standardized affine head")
         expanded = CapacityQ4OnlyAffineClassifier(
-            descriptor_dim,
             q4_dim,
             source_affine.linear.out_features,
         )
@@ -334,10 +327,10 @@ def _build_spec(spec: CapacitySpec, config: ComplexScanConfig) -> ComplexScanBac
     )
     install_r2k3_pole_initialization(model, STAGE_NAMES)
     model.classifier = CapacityQ4OnlyAffineClassifier(
-        spec.descriptor_dim,
         spec.q4_dim,
         config.output_dim,
     )
+    model.descriptor_dim = spec.q4_dim
     _assert_model(model, spec)
     return model
 
@@ -402,7 +395,6 @@ def _assert_model(model: ComplexScanBackbone, spec: CapacitySpec) -> None:
     if (
         not isinstance(classifier, CapacityQ4OnlyAffineClassifier)
         or classifier.input_dim != spec.q4_dim
-        or classifier.full_descriptor_dim != spec.descriptor_dim
     ):
         message = "capacity model lost its terminal Raw-Q affine head"
         raise RuntimeError(message)
