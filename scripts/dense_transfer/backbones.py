@@ -20,7 +20,7 @@ from torch import Tensor, nn
 from torch.utils.checkpoint import checkpoint as activation_checkpoint
 
 
-EXPECTED_PARAMETERS = {"va_k128": 5_083_176, "convnextv2_atto": 3_708_400, "tinyvim_s": 5_684_084}
+EXPECTED_PARAMETERS = {"va_k128": 5_083_176, "va_k96": 3_253_224, "convnextv2_atto": 3_708_400, "tinyvim_s": 5_684_084}
 
 
 def _checkpoint(path: Path, key: str) -> tuple[dict[str, Tensor], dict[str, Any]]:
@@ -35,7 +35,7 @@ def _checkpoint(path: Path, key: str) -> tuple[dict[str, Tensor], dict[str, Any]
         raise ValueError("Checkpoint has no model state")
     # Training-only torch.compile wrappers do not belong to the model identity.
     clean = {name.removeprefix("_orig_mod."): value for name, value in state.items()}
-    if key in ("va_k128", "tinyvim_s"):
+    if key in ("va_k128", "va_k96", "tinyvim_s"):
         if not all(name.startswith("model.") for name in clean):
             raise ValueError("Expected the original primary-logits wrapper")
         clean = {name[len("model."):].removeprefix("_orig_mod."): value for name, value in clean.items()}
@@ -109,6 +109,10 @@ class VASpatialBackbone(nn.Module):
             state = self._at(resolution, state)
             outputs[str(index)] = self._real(state)
         return outputs
+
+
+class K96SpatialBackbone(VASpatialBackbone):
+    feature_channels = (192, 192, 192, 192)
 
 
 class ConvNeXtSpatialBackbone(nn.Module):
@@ -215,6 +219,10 @@ def build_backbone(
             'same_resolution_sha256': hashlib.sha256((source_dir/'pac_same_resolution_depth.py').read_bytes()).hexdigest(),
         }
         adapter = VASpatialBackbone
+    elif model_key == "va_k96":
+        import run_lnet_k96_p128_d2262_imagenet1k as k96
+        model = k96._build_model(k96.MODEL_KEY, None, 1000).model
+        adapter = K96SpatialBackbone
     elif model_key == "convnextv2_atto":
         import timm
         model = timm.create_model("convnextv2_atto", pretrained=False, num_classes=1000)

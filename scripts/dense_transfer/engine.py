@@ -28,7 +28,7 @@ from torch import Tensor, nn
 
 SCHEMA = "dense-transfer.engine.v1"
 VALID_TASKS = ("ade20k", "coco")
-VALID_MODELS = ("va_k128", "convnextv2_atto", "tinyvim_s")
+VALID_MODELS = ("va_k128", "va_k96", "convnextv2_atto", "tinyvim_s")
 
 
 @dataclass(frozen=True, slots=True)

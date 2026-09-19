@@ -39,3 +39,6 @@ auth.json
 *.fdb_latexmk
 *.fls
 *.synctex.gz
+
+# Local Cloudflare build state; never ship credentials or generated caches.
+.wrangler/
