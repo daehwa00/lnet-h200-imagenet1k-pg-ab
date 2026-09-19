@@ -1,0 +1,22 @@
+{
+  "date": "2026-09-20",
+  "unit_tests_passed": 11,
+  "shell_syntax": "passed",
+  "python_syntax": "passed",
+  "cpu_epoch_resume": "bitwise-equal toy trajectory",
+  "cpu_forward_224x224_200_classes": ["va_k96", "va_k128", "convnextv2_atto", "parc_net_s"],
+  "tinyvim_s": "constructor and parameter count verified; CUDA forward pending H200 preflight",
+  "cub_parameters": {"va_k96":2842824,"va_k128":4672776,"convnextv2_atto":3451600,"tinyvim_s":5504084,"parc_net_s":4524288},
+  "live_wandb_canary": {
+    "url": "https://wandb.ai/daehwa/alphabet2d-cub200/runs/1iqh3gf7",
+    "console_file_uploaded": true,
+    "remote_stop_received": true,
+    "child_exit_code": -15,
+    "forced": false,
+    "gpu_used": false
+  },
+  "h200_execution_verified": false,
+  "h200_request_submitted": false,
+  "h200_authentication_configured": false,
+  "full_dataset_downloaded_locally": false
+}

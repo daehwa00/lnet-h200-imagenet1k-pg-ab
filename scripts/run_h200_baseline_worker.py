@@ -769,7 +769,8 @@ def _train_one_epoch(
         optimizer.zero_grad(set_to_none=True)
         global_step += 1
         optimizer_steps += 1
-        if os.environ.get('LNET_BATCH_PROGRESS') == '1' and optimizer_steps % 100 == 0:
+        progress_interval = max(1, int(os.environ.get('LNET_BATCH_PROGRESS_INTERVAL', '100')))
+        if os.environ.get('LNET_BATCH_PROGRESS') == '1' and optimizer_steps % progress_interval == 0:
             _atomic_json(task.output_dir/'step-progress.json', {
                 'epoch':epoch, 'batch':optimizer_steps, 'batches_per_epoch':optimizer_steps_per_epoch,
                 'global_step':global_step,
