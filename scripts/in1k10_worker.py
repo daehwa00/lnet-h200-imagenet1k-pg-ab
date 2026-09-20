@@ -151,7 +151,7 @@ def main():
     signal.signal(signal.SIGTERM,terminate);signal.signal(signal.SIGINT,terminate)
     if stop.exists():raise RuntimeError('STOP already requested')
     os.environ.update(LNET_GPU_MIXUP='1',LNET_YIELD_BEFORE_FETCH='1',LNET_VALIDATION_PERSISTENT='1',
-        LNET_PROGRESS_INTERVAL='20',
+        LNET_PROGRESS_INTERVAL='20',LNET_RETAIN_EXTERNAL_IMPORTS='1',
         LNET_LOADER_CONTEXT='spawn',LNET_BATCH_PROGRESS='1',LNET_COMPILE_RECOMPILE_LIMIT='32',
         H200_BASELINE_TORCH_COMPILE_MODE='default',LNET_DISABLE_LAUNCH_AUTOTUNE='1',
         H200_GPU_MEMORY_FRACTION='.90',WANDB_MODE='disabled')

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-TASK_ROOT=/app/output/in1k10-v1
+TASK_ROOT=/app/output/in1k10-local-v2
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PYTHONUNBUFFERED=1 PYTHONFAULTHANDLER=1
 if [[ "${1:-}" != "--inside-guard" ]]; then

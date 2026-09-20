@@ -28,10 +28,13 @@ describe('IN10 isolated control and private checkpoint handoff',()=>{
   const id=await enroll();
   expect((await call('/control','c'.repeat(64),id)).status).toBe(401);
   expect((await call('/command',token,id,{action:'stop'})).status).toBe(403);
+  expect((await call('/command',token,id,{action:'finish',job:'va_k96-501'})).status).toBe(403);
+  await call('/command',owner,id,{action:'finish',job:'va_k96-501'});
   expect((await call('/command',owner,id,{action:'ready',job:'va_k96-501'})).status).toBe(200);
   await call('/command',owner,id,{action:'stop'});
   const c=await (await call('/control',token,id)).json() as any;
   expect(c.stop).toBe(true);expect(c.ready_jobs).toEqual(['va_k96-501']);
+  expect(c.finished_jobs).toEqual(['va_k96-501']);
  });
  it('makes a lost enrollment response retry safe',async()=>{
   const id=await enroll();expect(await enroll()).toBe(id);

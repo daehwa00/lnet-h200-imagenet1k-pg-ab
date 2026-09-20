@@ -39,9 +39,12 @@ installs a private pinned Python 3.13.11 / Torch 2.9.1+cu128 environment and ver
 the existing native-extension wheel checksum. It copies committed code out of
 the scratch checkout before installation or training.
 
-Each job follows: restore checkpoint → two-update/512-validation-image GPU
-preflight → owner-side W&B readiness acknowledgment → full training → externally
-verified final checkpoint → next job. Preflight weights are never reused.
+Restart v2 is explicitly authorized to start from scratch. Each job follows:
+two-update/512-validation-image GPU preflight → owner-side W&B readiness
+acknowledgment → full training → final W&B metrics acknowledgment → next job.
+There is no external checkpoint upload, restore, or backup-failure stop condition.
+Preflight weights are never reused. Local resume is possible only if a checkpoint
+is visible in this same output root and its strict contract still matches.
 Failed setup, nonfinite evaluation, missing data, changed source/recipe, or failed
 gates stop the campaign rather than silently skipping a model or changing batch.
 
@@ -60,7 +63,9 @@ The independent stdlib watchdog starts before environment setup. Console output
 goes both to the platform and an authenticated relay; progress is sampled every
 20 optimizer updates. A qlab observer records logs and forwards real metrics to
 15 stable runs in `daehwa/alphabet2d-imagenet1k-10pct`, group
-`simclr10-100ep-v1`. The GPU process receives no W&B API key.
+`simclr10-local-v2`. Run IDs differ from the interrupted v1 attempt, so new
+epoch-zero training does not get appended to the old 12-epoch curve. The GPU
+process receives no W&B API key.
 
 Owner commands (key supplied through a private file, never through the form):
 
@@ -78,23 +83,20 @@ Kubernetes resource release or save a checkpoint after a whole-container SIGKILL
 Do not use `release`/`arm` while an old container is still running.
 
 Checkpoint files are atomically saved after each validated epoch under
-`/app/output/in1k10-v1`. Every ten epochs, at final completion, and on graceful
-stop, a background subprocess transfers the checkpoint to private transient
-relay storage. The qlab observer downloads it, verifies SHA256, epoch/update count
-and model parameter count, then acknowledges it. Training does not wait for
-periodic copies; it waits for the final verified copy before starting another run.
-Small paced chunks and bounded retries are used because larger concurrent
-transfers were unreliable in the tested controller network. The controller keeps
-one current recovery checkpoint per job; the relay prunes older acknowledged
-versions. No R2 activation, public release, or public checkpoint URL is required.
+`/app/output/in1k10-local-v2`, **on H200 only**. The user explicitly disabled
+external weight backups after build802 failed with RemoteDisconnected during
+its epoch10 checkpoint upload. The watchdog stopped that run after epoch12.
+The observer now transfers only logs and metrics, never model/optimizer weights.
+The campaign still waits for final metrics to reach W&B before the next model;
+that acknowledgment is a small control message, not a checkpoint transfer.
 
 The H200 platform mounts `/app/output` **per request**. Saving there alone does
-not make old files visible in the next request. A replacement request using the
-same commit restores from the private relay, with hash/contract validation. This
-is epoch-boundary recovery, not a promise of bitwise-identical augmentation RNG
-after a worker-process restart. Abrupt termination can lose progress since the
-last successful external backup (normally up to ten epochs; longer during an
-outage). Existing local backups remain on qlab even after H200 resource return.
+not make old files visible in the next request. There is **no cross-request
+automatic checkpoint recovery** in v2. If a container is returned and its volume
+is not exposed again, restarting from scratch may be required. Logs and W&B
+metrics survive independently, but they cannot reconstruct model weights.
+Same-volume resume is epoch-boundary recovery, not a promise of bitwise-identical
+augmentation RNG after a worker-process restart.
 
 The existing H200 egress-IP allowlist is reused without widening it. Enrollment
 uses a runtime-generated agent token, and privileged stop/ack commands require a
@@ -108,8 +110,12 @@ private. External baseline sources are cloned at pinned revisions listed in
 Verified before submission: pinned list/counts, all five CPU model constructions
 and parameter counts, collation value preservation, watchdog forced termination,
 control/artifact tests, Python/shell/TypeScript checks, and an isolated live
-transport/stop/W&B canary. The canary is explicitly not a training run.
+transport/stop/W&B canary. That small v1 canary did not establish reliable transfer
+of actual H200 checkpoints; v2 deliberately removes weight transfer. Additional
+tests verify all15 jobs advance without backup files and the guard never calls
+artifact endpoints. The canary is explicitly not a training run.
 
 Not yet verified: GPU preflight on the requested H200 image, H200-specific speed,
 100-epoch completion, or all-15-run duration. Platform time limits may require a
-new user-submitted request and checkpoint recovery. No automatic resubmission.
+new user-submitted request; without a visible old volume this means another fresh
+start. No automatic resubmission or external checkpoint recovery.

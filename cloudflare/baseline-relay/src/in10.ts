@@ -4,7 +4,7 @@ const MODELS=['va_k96','va_k128','convnextv2_atto','tinyvim_s','parc_net_s'];
 export const JOBS=new Set(MODELS.flatMap(m=>[501,509,521].map(s=>`${m}-${s}`)));
 const CHUNK=32*1024;
 type Obj=Record<string,any>;
-type ControlState={stop:boolean,force:boolean,ready_jobs:string[],observer_seen:number};
+type ControlState={stop:boolean,force:boolean,ready_jobs:string[],finished_jobs:string[],observer_seen:number};
 type ArtifactMeta={sha:string,bytes:number,chunks:number,epoch:number,complete:boolean,verified:boolean,created:number,workers:number};
 const reply=(value:unknown,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store'}});
 async function body(req:Request,limit=65536):Promise<Obj> {
@@ -34,18 +34,19 @@ export class In10Control extends DurableObject<Env> {
     if(this.read('control')?.stop)throw Error('campaign_stopped');
     const session={id:crypto.randomUUID(),pod:value.pod,tokenHash:value.token_hash,code:value.code_sha,
       created:Date.now(),lastSeen:Date.now(),ended:false};
-    this.write('session',session);const c=this.control();c.ready_jobs=[];this.write('control',c);return {session_id:session.id,chunk_bytes:CHUNK};
+    this.write('session',session);const c=this.control();c.ready_jobs=[];c.finished_jobs=[];this.write('control',c);return {session_id:session.id,chunk_bytes:CHUNK};
   }
   auth(id:string,hash:string){const s=this.read('session');return !!s&&s.id===id&&s.tokenHash===hash;}
-  control():ControlState{return {stop:false,force:false,ready_jobs:[],observer_seen:0,...(this.read('control')||{})};}
+  control():ControlState{return {stop:false,force:false,ready_jobs:[],finished_jobs:[],observer_seen:0,...(this.read('control')||{})};}
   command(action:string,job?:string){
     const c=this.control();
     if(action==='stop'){c.stop=true;c.force=false;}
     else if(action==='force'){c.stop=true;c.force=true;}
     else if(action==='ready'&&job&&JOBS.has(job)){c.ready_jobs=Array.from(new Set([...c.ready_jobs,job]));}
+    else if(action==='finish'&&job&&JOBS.has(job)){c.finished_jobs=Array.from(new Set([...c.finished_jobs,job]));}
     else if(action==='heartbeat'){c.observer_seen=Date.now();}
     else if(action==='release'){const s=this.read('session');if(s){s.ended=true;this.write('session',s);}}
-    else if(action==='arm'){const s=this.read('session');if(s&&!s.ended)throw Error('active_session');c.stop=false;c.force=false;c.ready_jobs=[];}
+    else if(action==='arm'){const s=this.read('session');if(s&&!s.ended)throw Error('active_session');c.stop=false;c.force=false;c.ready_jobs=[];c.finished_jobs=[];}
     else throw Error('invalid_command');
     this.write('control',c);return c;
   }
