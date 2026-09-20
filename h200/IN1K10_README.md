@@ -15,10 +15,10 @@ the repository does not create a GitHub issue or allocate resources itself.
 | Train images | 128,116 images, all 1,000 classes; 128–129 images/class |
 | Validation | Original ImageNet-1K 50,000 images |
 | Resolution / epochs | 224 × 224 / 100 |
-| Batch / updates | Physical and effective 256; 500/epoch; 50,000 total |
+| Batch / updates | One common physical/effective 512 or 1024 selected before training; 250 or125 updates/epoch |
 | Optimizer | Main recipe: AdamW, LR 0.003, WD 0.05, five-epoch warmup, cosine |
 | Augmentation | Existing Main worker's RandAugment, mixup, random erasing and smoothing |
-| Reporting | Final epoch Top-1, mean ± sample SD across three seeds |
+| Evaluation / reporting | Full validation only at epoch100; final Top-1 mean ± sample SD across three seeds |
 
 The identical public subset is used for every model and seed. It is **not** an
 independently sampled subset per seed, nor exactly 10% of each original class.
@@ -39,7 +39,27 @@ installs a private pinned Python 3.13.11 / Torch 2.9.1+cu128 environment and ver
 the existing native-extension wheel checksum. It copies committed code out of
 the scratch checkout before installation or training.
 
-Restart v2 is explicitly authorized to start from scratch. Each job follows:
+Restart v3 is explicitly authorized to start from scratch and increase the common
+batch for all five models. This differs from Main ImageNet batch256 and must not
+be described as an otherwise identical training recipe. LR stays0.003; no linear
+LR scaling is silently introduced. Total updates are25,000 at batch512, or12,500
+at batch1024, for all models/seeds. All still see128,000 shuffled images/epoch.
+
+A bounded pre-training probe compares old NumPy-pipe input with lossless memfd
+input, chooses2/4/8 workers within detected CPU/RAM limits (or1 if constrained),
+and measures VA-K96 GPU-resident compute at batch256/512/1024. The smaller batch
+within5% of the fastest successful expanded-batch compute result is preferred.
+All five models must then pass full-input preflight at that common batch before
+any production run. An actual batch1024 CUDA OOM permits a common fallback512;
+an insufficient batch-aware host-RAM budget also permits fallback512. Worker
+counts are clamped again for the selected batch, and train workers are closed
+before final validation to avoid overlapping two persistent worker pools.
+Other errors stop the campaign. Probe weights are discarded. This is a bounded
+VA-K96-guided choice with an all-model memory gate, not a proof of globally
+optimal throughput for all architectures. Input profiles include a repeated
+baseline to expose cache/order effects.
+
+Each job then follows:
 two-update/512-validation-image GPU preflight → owner-side W&B readiness
 acknowledgment → full training → final W&B metrics acknowledgment → next job.
 There is no external checkpoint upload, restore, or backup-failure stop condition.
@@ -51,11 +71,19 @@ gates stop the campaign rather than silently skipping a model or changing batch.
 The selected implementation uses BF16, fused AdamW, GPU mixup/prefetch,
 channels-last, torch.compile, persistent loaders, bounded compilation threads,
 and the numerically checked VA spill cleanup. Failed state-cache/split-backward
-prototypes are excluded. NumPy pipe collation avoids large Torch shared-memory
-IPC buffers without changing image transforms. Worker count is two, or zero for
-a small cgroup memory allowance. This is a conservative configuration, **not a
-claim of measured H200-optimal throughput**; H200 preflight and actual timing
-remain to be measured after submission. GPU clocks/occupancy are not hardcoded.
+prototypes are excluded. Lossless Linux memfd collation transfers small FD
+descriptors rather than147MiB FP32 batch payloads through a pipe. Standard
+DataLoader pin-memory threads materialize parent-owned tensors asynchronously.
+The actual transformed FP32 values and labels are preserved bit-for-bit; there
+is no FP16/uint8 compression or changed augmentation. memfd consumes RAM under
+the cgroup limit without relying on the small /dev/shm mount. Actual H200 speed
+and real pinned allocation remain to be measured after submission. GPU
+clocks/occupancy are not hardcoded.
+
+Host loader wait, pin/materialization time, and CUDA step spans are logged each
+epoch. These overlap and must not be summed as GPU idle time. CUDA spans include
+launch gaps and first-epoch compilation effects, not solely kernel busy time.
+The guard also records CPU quota/throttling and sampled GPU utilization/clock.
 
 ## Logs, W&B, stop, and checkpoint recovery
 
@@ -63,8 +91,8 @@ The independent stdlib watchdog starts before environment setup. Console output
 goes both to the platform and an authenticated relay; progress is sampled every
 20 optimizer updates. A qlab observer records logs and forwards real metrics to
 15 stable runs in `daehwa/alphabet2d-imagenet1k-10pct`, group
-`simclr10-local-v2`. Run IDs differ from the interrupted v1 attempt, so new
-epoch-zero training does not get appended to the old 12-epoch curve. The GPU
+`simclr10-finaleval-v3`. Run IDs differ from both interrupted prior attempts, so new
+epoch-zero training does not get appended to either old learning curve. The GPU
 process receives no W&B API key.
 
 Owner commands (key supplied through a private file, never through the form):
@@ -83,7 +111,7 @@ Kubernetes resource release or save a checkpoint after a whole-container SIGKILL
 Do not use `release`/`arm` while an old container is still running.
 
 Checkpoint files are atomically saved after each validated epoch under
-`/app/output/in1k10-local-v2`, **on H200 only**. The user explicitly disabled
+`/app/output/in1k10-finaleval-v3`, **on H200 only**. The user explicitly disabled
 external weight backups after build802 failed with RemoteDisconnected during
 its epoch10 checkpoint upload. The watchdog stopped that run after epoch12.
 The observer now transfers only logs and metrics, never model/optimizer weights.
@@ -92,7 +120,7 @@ that acknowledgment is a small control message, not a checkpoint transfer.
 
 The H200 platform mounts `/app/output` **per request**. Saving there alone does
 not make old files visible in the next request. There is **no cross-request
-automatic checkpoint recovery** in v2. If a container is returned and its volume
+automatic checkpoint recovery** in v3. If a container is returned and its volume
 is not exposed again, restarting from scratch may be required. Logs and W&B
 metrics survive independently, but they cannot reconstruct model weights.
 Same-volume resume is epoch-boundary recovery, not a promise of bitwise-identical

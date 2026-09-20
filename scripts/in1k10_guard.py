@@ -31,6 +31,7 @@ def main():
     signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGINT,stop)
     seq=offset=printed=0;last_contact=time.monotonic();deadline=None;forced=False;last_signature=None;last_progress=time.monotonic()
     last_error=None;started=time.monotonic();drain_deadline=None
+    gpu_metrics=None;gpu_metrics_time=0.
     with (root/'console.log').open('ab',buffering=0) as console:
         child=subprocess.Popen(args.command,stdout=console,stderr=subprocess.STDOUT,start_new_session=True,
                                env=dict(os.environ,PYTHONUNBUFFERED='1',PYTHONFAULTHANDLER='1'))
@@ -50,7 +51,7 @@ def main():
                 progress=read(output/'step-progress.json') if output else {}
                 checkpoint=read(output/'checkpoint-meta.json') if output else {}
                 result=read(output/'result.json') if output else {}
-                signature=(job,current.get('stage'),progress.get('global_step'),checkpoint.get('epoch'))
+                signature=(job,current.get('stage'),current.get('probe_step'),progress.get('global_step'),checkpoint.get('epoch'))
                 if signature!=last_signature:last_signature=signature;last_progress=now
                 if now-last_progress>args.stall_seconds:stopped=True;last_error='progress_stalled'
                 if stopped and deadline is None:
@@ -67,9 +68,18 @@ def main():
                         'result':{k:result.get(k) for k in ('status','completed_epochs','global_step','final_validation')},
                         'exit_code':child.poll(),'stop_requested':stopped,'forced':forced,'error':last_error,
                         'ended':child.poll() is not None}
-                for name in ('memory.current','memory.max','memory.events'):
+                for name in ('memory.current','memory.max','memory.events','cpu.max','cpu.stat','cpuset.cpus.effective'):
                     try:status[name]=Path('/sys/fs/cgroup',name).read_text().strip()
                     except OSError:pass
+                if now-gpu_metrics_time>=30:
+                    try:
+                        probe=subprocess.run(['nvidia-smi','--query-gpu=index,name,utilization.gpu,memory.used,clocks.sm,power.draw',
+                            '--format=csv,noheader,nounits'],capture_output=True,text=True,timeout=3)
+                        gpu_metrics={'sampled_at':time.time(),'csv':probe.stdout.strip(),'exit_code':probe.returncode}
+                    except (OSError,subprocess.TimeoutExpired) as error:
+                        gpu_metrics={'sampled_at':time.time(),'error':type(error).__name__}
+                    gpu_metrics_time=now
+                status['gpu_metrics']=gpu_metrics
                 atomic(root/'guard-status.json',status)
                 with (root/'console.log').open('rb') as stream:
                     stream.seek(printed);visible=stream.read(16000)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-TASK_ROOT=/app/output/in1k10-local-v2
+TASK_ROOT=/app/output/in1k10-finaleval-v3
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PYTHONUNBUFFERED=1 PYTHONFAULTHANDLER=1
 if [[ "${1:-}" != "--inside-guard" ]]; then
@@ -53,5 +53,7 @@ echo 'IN10_BOOT subset and sources'
 "${ENV_ROOT}/bin/python" -B -u scripts/in1k10_prepare_sources.py --root "${TASK_ROOT}/sources"
 "${ENV_ROOT}/bin/python" -c 'import torch; assert torch.cuda.is_available(); p=torch.cuda.get_device_properties(0); print({"gpu":p.name,"memory":p.total_memory,"torch":torch.__version__}); assert p.total_memory >= 80*1024**3, "Request full GPU (7), not one MIG slice"'
 echo 'IN10_BOOT campaign'
+timeout --signal=TERM --kill-after=30s 2400 "${ENV_ROOT}/bin/python" -B -u scripts/in1k10_probe.py \
+  --root "${TASK_ROOT}" --data-root /app/data/ImageNet-2012 --sources "${TASK_ROOT}/sources"
 exec "${ENV_ROOT}/bin/python" -B -u scripts/in1k10_campaign.py --root "${TASK_ROOT}" \
   --data-root /app/data/ImageNet-2012 --sources "${TASK_ROOT}/sources"

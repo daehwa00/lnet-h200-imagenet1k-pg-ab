@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import time
 import dataclasses
 import numpy as np
 from types import SimpleNamespace
@@ -14,6 +15,7 @@ from torch.utils.data import Dataset,DataLoader,Subset
 from torchvision.datasets.folder import default_loader
 import run_h200_baseline_worker as worker
 from in1k10_subset import parse
+from in1k10_ipc import BatchLoader,memfd_collate
 
 MODELS={'va_k96':3253224,'va_k128':5083176,'convnextv2_atto':3708400,'tinyvim_s':5684084,'parc_net_s':5037088}
 
@@ -33,9 +35,19 @@ class ArrayLoader:
     def _iterator(self):return self.loader._iterator
     def __len__(self):return len(self.loader)
     def __iter__(self):
-        for images,labels in self.loader:
+        self.timing={'loader_wait_seconds':0.,'pin_seconds':0.,'host_image_bytes':0}
+        iterator=iter(self.loader)
+        while True:
+            started=time.perf_counter()
+            try:images,labels=next(iterator)
+            except StopIteration:return
+            self.timing['loader_wait_seconds']+=time.perf_counter()-started
+            self.timing['host_image_bytes']+=images.nbytes
             x,y=torch.from_numpy(images),torch.from_numpy(labels)
-            yield (x.pin_memory(),y.pin_memory()) if self.pin else (x,y)
+            started=time.perf_counter()
+            if self.pin:x,y=x.pin_memory(),y.pin_memory()
+            self.timing['pin_seconds']+=time.perf_counter()-started
+            yield x,y
 
 
 class FixedTrainingSubset(Dataset):
@@ -79,15 +91,18 @@ def main():
     p.add_argument('--data-root',type=Path,required=True);p.add_argument('--sources',type=Path,required=True)
     p.add_argument('--model',choices=MODELS,required=True);p.add_argument('--seed',type=int,choices=(501,509,521),required=True)
     p.add_argument('--phase',choices=('preflight','full'),required=True);p.add_argument('--workers',type=int,default=0)
+    p.add_argument('--batch-size',type=int,choices=(256,512,1024),default=256)
     p.add_argument('--resume',action='store_true');args=p.parse_args()
     manifest=args.root/'dataset/subset-manifest.json';meta=json.loads(manifest.read_text())
     dataset_id=hashlib.sha256(manifest.read_bytes()).hexdigest()
     key='in10_'+args.model;job=f'{args.model}-{args.seed}'
-    output=args.root/('runs' if args.phase=='full' else 'preflight')/job
+    output=args.root/('runs' if args.phase=='full' else f'preflight-b{args.batch_size}')/job
+    worker.EFFECTIVE_BATCH_SIZE=args.batch_size
+    epoch_updates=128116//args.batch_size
     task=worker.BaselineTask(phase=args.phase,model_key=key,seed=args.seed,learning_rate=.003,
         epochs=100 if args.phase=='full' else 1,data_root=args.data_root,output_dir=output,
         result_path=output/'result.json',checkpoint_path=output/'checkpoint.pt',source_root=args.sources,
-        batch_size=256,workers=args.workers,wandb_mode='disabled',resume=args.resume,
+        batch_size=args.batch_size,workers=args.workers,wandb_mode='disabled',resume=args.resume,
         max_steps=None if args.phase=='full' else 2)
     old_spec=worker.registry.model_spec
     worker.registry.model_spec=lambda k:SimpleNamespace(backend='internal',display_name=args.model,precision='bfloat16') if k==key else old_spec(k)
@@ -108,7 +123,8 @@ def main():
     def contract(t):
         value=original_contract(t)
         value['recipe']['loader_prefetch_factor']=1 if args.workers else None
-        value['recipe']['loader_ipc']='numpy-pipe' if args.workers else 'in-process'
+        value['recipe']['loader_ipc']='memfd' if args.workers else 'in-process'
+        value['recipe']['step_timing_enabled']=True
         return value
     worker._contract=contract
     def loaders(t,device):
@@ -122,17 +138,18 @@ def main():
         finally:torchvision.datasets.ImageFolder=original
         if args.workers:
             def wrap(dataset,generator,training):
-                inner=DataLoader(dataset,batch_size=256,shuffle=training,drop_last=training,
+                inner=DataLoader(dataset,batch_size=args.batch_size,shuffle=training,drop_last=training,
                     num_workers=args.workers,prefetch_factor=1,persistent_workers=True,
-                    multiprocessing_context='spawn',collate_fn=numpy_collate,generator=generator)
-                return ArrayLoader(inner,device.type=='cuda')
+                    multiprocessing_context='spawn',collate_fn=memfd_collate,generator=generator,
+                    pin_memory=device.type=='cuda')
+                return BatchLoader(inner,device.type=='cuda')
             bundle.train=wrap(bundle.train.dataset,bundle.train_generator,True)
             bundle.validation=wrap(bundle.validation.dataset,bundle.validation_generator,False)
         if len(bundle.train.dataset)!=128116 or len(bundle.validation.dataset)!=50000:
             raise RuntimeError('Dataset sizes changed')
-        if len(bundle.train)!=500:raise RuntimeError('Expected500updates/epoch at batch256')
+        if len(bundle.train)!=epoch_updates:raise RuntimeError('Unexpected update count for the declared common batch')
         if args.phase=='preflight':
-            bundle.validation=DataLoader(Subset(bundle.validation.dataset,range(512)),batch_size=256,
+            bundle.validation=DataLoader(Subset(bundle.validation.dataset,range(512)),batch_size=args.batch_size,
                                          num_workers=0,pin_memory=device.type=='cuda')
         return bundle
     save=worker._atomic_torch
@@ -152,12 +169,13 @@ def main():
     if stop.exists():raise RuntimeError('STOP already requested')
     os.environ.update(LNET_GPU_MIXUP='1',LNET_YIELD_BEFORE_FETCH='1',LNET_VALIDATION_PERSISTENT='1',
         LNET_PROGRESS_INTERVAL='20',LNET_RETAIN_EXTERNAL_IMPORTS='1',
+        LNET_FINAL_EVAL_ONLY='1',LNET_STEP_TIMING='1',
         LNET_LOADER_CONTEXT='spawn',LNET_BATCH_PROGRESS='1',LNET_COMPILE_RECOMPILE_LIMIT='32',
         H200_BASELINE_TORCH_COMPILE_MODE='default',LNET_DISABLE_LAUNCH_AUTOTUNE='1',
         H200_GPU_MEMORY_FRACTION='.90',WANDB_MODE='disabled')
     result=worker.run_task(task,model_builder=build_model,loader_builder=loaders)
     if args.phase=='full' and result.get('status')=='completed':
-        if result['completed_epochs']!=100 or result['global_step']!=50000 or result['final_validation']['examples']!=50000:
+        if result['completed_epochs']!=100 or result['global_step']!=100*epoch_updates or result['final_validation']['examples']!=50000:
             raise RuntimeError('Incomplete final endpoint')
     print('IN10_RESULT='+json.dumps({k:result.get(k) for k in ('status','model_key','seed','completed_epochs','global_step','final_validation')}),flush=True)
 

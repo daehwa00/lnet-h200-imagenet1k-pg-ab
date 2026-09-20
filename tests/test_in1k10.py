@@ -66,18 +66,20 @@ def test_watchdog_forces_unresponsive_child_without_github(tmp_path,monkeypatch)
     assert 'visible' in (tmp_path/'console.log').read_text()
 
 
-def test_all15_runs_advance_without_backup_files(tmp_path,monkeypatch):
+@pytest.mark.parametrize('batch_size',[512,1024])
+def test_all15_runs_advance_without_backup_files(tmp_path,monkeypatch,batch_size):
     jobs=[f'{m}-{s}' for s in (501,509,521) for m in campaign.MODELS]
     campaign.atomic(tmp_path/'dataset/subset-manifest.json',{'images':128116,'validation_count':50000,'sha256':'fixed'})
+    campaign.atomic(tmp_path/'input-profile.json',{'workers':2,'ipc':'memfd','batch_size':batch_size})
     campaign.atomic(tmp_path/'control.json',{'ready_jobs':jobs,'finished_jobs':jobs})
     seen=[]
     def fake_run(command):
         job=campaign.read(tmp_path/'current.json')['job']
-        campaign.atomic(tmp_path/'preflight'/job/'result.json',{'global_step':2,'final_validation':{'examples':512}})
+        campaign.atomic(tmp_path/f'preflight-b{batch_size}'/job/'result.json',{'global_step':2,'final_validation':{'examples':512}})
         return SimpleNamespace(returncode=0)
     def fake_popen(command):
         job=campaign.read(tmp_path/'current.json')['job'];seen.append(job)
-        campaign.atomic(tmp_path/'runs'/job/'result.json',{'completed_epochs':100,'global_step':50000,'final_validation':{'accuracy':.5}})
+        campaign.atomic(tmp_path/'runs'/job/'result.json',{'completed_epochs':100,'global_step':100*(128116//batch_size),'final_validation':{'accuracy':.5}})
         return SimpleNamespace(pid=123,wait=lambda:0)
     monkeypatch.setattr(campaign.subprocess,'run',fake_run)
     monkeypatch.setattr(campaign.subprocess,'Popen',fake_popen)
@@ -89,3 +91,25 @@ def test_all15_runs_advance_without_backup_files(tmp_path,monkeypatch):
     assert seen==jobs
     assert len(campaign.read(tmp_path/'completed.json'))==15
     assert not list(tmp_path.glob('backup-*')) and not list(tmp_path.glob('restored-*'))
+
+
+def test_final_evaluation_policy_preserves_preflight_and_default(monkeypatch):
+    from run_h200_baseline_worker import _should_evaluate
+    full=SimpleNamespace(phase='full',epochs=100)
+    preflight=SimpleNamespace(phase='preflight',epochs=1)
+    monkeypatch.delenv('LNET_FINAL_EVAL_ONLY',raising=False)
+    assert _should_evaluate(full,1)
+    monkeypatch.setenv('LNET_FINAL_EVAL_ONLY','1')
+    assert not any(_should_evaluate(full,n) for n in range(1,100))
+    assert _should_evaluate(full,100) and _should_evaluate(preflight,1)
+
+
+def test_unmeasured_validation_is_not_logged_as_zero():
+    from in1k10_observer import checkpoint_metrics
+    cp={'epoch':1,'global_step':500,'train':{'loss':2.,'images_per_second':800.,'loader_wait_seconds':1.},
+        'validation':{'accuracy':None,'top5_accuracy':None,'examples':0,'not_evaluated':True}}
+    value=checkpoint_metrics(cp)
+    assert not any(k.startswith('validation/') for k in value)
+    assert value['timing/loader_wait_seconds']==1.
+    cp['validation']={'accuracy':.5,'top5_accuracy':.8,'examples':50000}
+    assert checkpoint_metrics(cp)['validation/top1_percent']==50.

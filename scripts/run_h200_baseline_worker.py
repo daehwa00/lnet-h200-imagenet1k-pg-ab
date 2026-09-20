@@ -240,6 +240,7 @@ def _contract(task: BaselineTask) -> dict[str, Any]:
         },
         "recipe": {
             "image_size": IMAGE_SIZE,
+            "evaluation_policy": "final_epoch_only" if os.environ.get('LNET_FINAL_EVAL_ONLY')=='1' else "every_epoch",
             "optimizer": "AdamW",
             "learning_rate": task.learning_rate,
             "weight_decay": WEIGHT_DECAY,
@@ -734,10 +735,16 @@ def _train_one_epoch(
     optimizer_steps = 0
     stopped = False
     window_start = 0
+    timing_events = []
+    measure_steps = device.type == 'cuda' and os.environ.get('LNET_STEP_TIMING') == '1'
     use_bfloat16 = registry.model_spec(task.model_key).precision == "bfloat16"
 
     batches = _training_batches(loader, mixup, device)
     for batch_index, (inputs, hard_targets, soft_targets) in enumerate(batches):
+        if measure_steps:
+            step_begin = torch.cuda.Event(enable_timing=True)
+            step_end = torch.cuda.Event(enable_timing=True)
+            step_begin.record()
         if batch_index == window_start:
             window_size = min(accumulation, len(loader) - window_start)
         with torch.autocast(
@@ -755,6 +762,8 @@ def _train_one_epoch(
 
         end_of_window = batch_index + 1 == window_start + window_size
         if not end_of_window:
+            if measure_steps:
+                step_end.record(); timing_events.append((step_begin,step_end))
             continue
         learning_rate = _learning_rate(
             task.learning_rate,
@@ -767,6 +776,8 @@ def _train_one_epoch(
             group["lr"] = learning_rate
         optimizer.step()
         optimizer.zero_grad(set_to_none=True)
+        if measure_steps:
+            step_end.record(); timing_events.append((step_begin,step_end))
         global_step += 1
         optimizer_steps += 1
         if os.environ.get('LNET_BATCH_PROGRESS') == '1' and optimizer_steps % int(os.environ.get('LNET_PROGRESS_INTERVAL','100')) == 0:
@@ -796,10 +807,17 @@ def _train_one_epoch(
             "examples": float(total),
             "optimizer_steps": float(optimizer_steps),
             "learning_rate": float(optimizer.param_groups[0]["lr"]),
+            **({'gpu_step_span_seconds':sum(a.elapsed_time(b) for a,b in timing_events)/1000,
+                'timed_microbatches':len(timing_events)} if timing_events else {}),
+            **getattr(loader,'timing',{}),
         },
         global_step,
         stopped,
     )
+
+
+def _should_evaluate(task: BaselineTask, epoch: int) -> bool:
+    return task.phase != 'full' or epoch == task.epochs or os.environ.get('LNET_FINAL_EVAL_ONLY') != '1'
 
 
 def _evaluate_streaming(
@@ -1314,11 +1332,17 @@ def run_task(
             torch.cuda.synchronize(resolved_device)
         train_seconds = time.monotonic() - train_started
         train_metrics["images_per_second"] = train_metrics["examples"] / max(train_seconds, 1.0e-12)
+        if task.phase=='full' and epoch==task.epochs and os.environ.get('LNET_FINAL_EVAL_ONLY')=='1':
+            iterator=getattr(loaders.train,'_iterator',None)
+            if iterator is not None:iterator._shutdown_workers()
         try:
             validation_metrics = _evaluate_streaming(
                 active_model, loaders.validation, resolved_device,
                 use_bfloat16=_validation_uses_bfloat16(task.model_key),
-            )
+            ) if _should_evaluate(task,epoch) else {
+                'accuracy':None,'top5_accuracy':None,'cross_entropy':None,
+                'examples':0,'not_evaluated':True,
+            }
         except FloatingPointError:
             # Preserve forensic evidence without promoting an unvalidated epoch
             # to the resumable, authoritative training checkpoint.
