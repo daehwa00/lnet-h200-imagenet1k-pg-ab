@@ -1,4 +1,4 @@
-"""Sequential15-run campaign: local checkpoints, remote metrics, no weight transfer."""
+"""Continue the matched15-run panel: one verified prior result and14remaining runs."""
 import argparse
 import json
 import os
@@ -8,16 +8,19 @@ import subprocess
 import sys
 import time
 from in1k10_transport import atomic,read
+from in1k10_completed import CAMPAIGN,FIXED_PROFILE,load_completed
 
 MODELS=('va_k96','va_k128','convnextv2_atto','tinyvim_s','parc_net_s')
-CAMPAIGN='simclr10-finaleval-v3'
 
 
-def wait_for(root,predicate,label,seconds=600):
-    deadline=time.monotonic()+seconds
+def wait_for(root,predicate,label):
+    # A telemetry outage must not throw away a completed epoch/job or terminate
+    # the container. Preserve local evidence and wait at the next run boundary.
+    last_notice=0.
     while not predicate():
         if (root/'STOP').exists():raise InterruptedError('Stop requested while '+label)
-        if time.monotonic()>deadline:raise TimeoutError(label)
+        if time.monotonic()-last_notice>=60:
+            print('IN10_WAITING_FOR_TELEMETRY '+label,flush=True);last_notice=time.monotonic()
         time.sleep(2)
 
 
@@ -30,16 +33,20 @@ def main():
     manifest=read(root/'dataset/subset-manifest.json')
     if manifest.get('images')!=128116 or manifest.get('validation_count')!=50000:raise RuntimeError('Subset manifest not ready')
     profile=read(root/'input-profile.json')
-    if profile.get('ipc')!='memfd' or not 1<=profile.get('workers',0)<=8:
-        raise RuntimeError('Bounded input/compute probe must select a valid profile before training')
+    if any(profile.get(k)!=v for k,v in FIXED_PROFILE.items()):
+        raise RuntimeError('Restart must preserve the verified batch512/workers8/memfd protocol')
     workers=profile['workers']
     batch_size=profile.get('batch_size')
     if batch_size not in (512,1024):raise RuntimeError('Expected user-approved common batch512 or1024')
     total_updates=100*(128116//batch_size)
-    scripts=Path(__file__).resolve().parent;completed=[]
+    scripts=Path(__file__).resolve().parent;completed=load_completed()
+    prior_jobs={row['job'] for row in completed}
+    atomic(root/'completed.json',completed)
+    print('IN10_CARRIED_COMPLETED='+json.dumps(completed),flush=True)
     for seed in (501,509,521):
         for model in MODELS:
             job=f'{model}-{seed}';output=root/'runs'/job
+            if job in prior_jobs:continue
             def stage(name,**extra):
                 atomic(root/'current.json',{'stage':name,'job':job,'model':model,'seed':seed,
                     'output':str(output),'subset_sha256':manifest['sha256'],'workers':workers,
@@ -74,7 +81,8 @@ def main():
                               'checkpoint':str(output/'checkpoint.pt'),'external_backup':False})
             atomic(root/'completed.json',completed)
     atomic(root/'current.json',{'stage':'completed','completed_runs':len(completed),'preflight_only':args.preflight_only})
-    print('IN10_CAMPAIGN_COMPLETE='+json.dumps({'runs':len(completed),'preflight_only':args.preflight_only}),flush=True)
+    print('IN10_CAMPAIGN_COMPLETE='+json.dumps({'runs':len(completed),'carried_runs':len(prior_jobs),
+        'executed_runs':len(completed)-len(prior_jobs),'preflight_only':args.preflight_only}),flush=True)
     return 0
 
 

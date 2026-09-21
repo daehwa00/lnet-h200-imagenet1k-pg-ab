@@ -1,0 +1,35 @@
+{
+  "schema": "in1k10.verified_completed.v1",
+  "dataset": "SimCLR ImageNet-1K 10%",
+  "subset_sha256": "6d09de11e7bdaf5b1f3b1f249b6183695f97310cdd20f0c03e7235b6b9392091",
+  "recipe": {
+    "epochs": 100,
+    "physical_batch": 512,
+    "effective_batch": 512,
+    "workers": 8,
+    "image_size": 224,
+    "optimizer": "AdamW",
+    "learning_rate": 0.003,
+    "weight_decay": 0.05,
+    "warmup_epochs": 5,
+    "evaluation_policy": "final_epoch_only"
+  },
+  "completed": [
+    {
+      "job": "va_k96-501",
+      "model": "va_k96",
+      "seed": 501,
+      "completed_epochs": 100,
+      "global_step": 25000,
+      "validation_examples": 50000,
+      "top1": 0.55904,
+      "top5": 0.79816,
+      "source_code": "eccc623cbfcb3ff886de980c8c3dfedd4e2f4c07",
+      "wandb_run": "abe62b007c5346a1",
+      "wandb_url": "https://wandb.ai/daehwa/alphabet2d-imagenet1k-10pct/runs/abe62b007c5346a1",
+      "wandb_state_verified": "finished",
+      "verified_date": "2026-09-21",
+      "weights_available_in_new_container": false
+    }
+  ]
+}

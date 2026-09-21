@@ -5,9 +5,9 @@ import json
 from pathlib import Path
 import time
 import wandb
-from in1k10_transport import API,atomic,read
+from in1k10_transport import API,atomic,read,error_details,retry_delay
+from in1k10_completed import CAMPAIGN,load_completed
 
-CAMPAIGN='simclr10-finaleval-v3'
 MODELS=('va_k96','va_k128','convnextv2_atto','tinyvim_s','parc_net_s')
 JOBS={f'{m}-{s}' for m in MODELS for s in (501,509,521)}
 PROJECT='alphabet2d-imagenet1k-10pct'
@@ -33,24 +33,34 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--root',type=Path,required=True);p.add_argument('--secrets',type=Path,required=True)
     args=p.parse_args();root=args.root;root.mkdir(parents=True,exist_ok=True)
     api=API(read(args.secrets)['IN10_OWNER_TOKEN'])
-    state_path=root/'observer-state-finaleval-v3.json';state=read(state_path)
-    cursor=state.get('cursor',read(root/'observer-state-local-v2.json').get('cursor',0))
-    steps=state.get('steps',{});epochs=state.get('epochs',{});completed=set(state.get('completed',[]))
+    state_path=root/'observer-state-networkfix-v4.json';state=read(state_path)
+    cursor=state.get('cursor',read(root/'observer-state-finaleval-v3.json').get('cursor',0))
+    steps=state.get('steps',{});epochs=state.get('epochs',{});completed=set(state.get('completed',[]))|{r['job'] for r in load_completed()}
     run=None;active_job=None;last_api_check=0.;wb_api=wandb.Api(timeout=15)
+    failures=0;next_api=0.;last_heartbeat=0.;acknowledged=set();ready_acknowledged=set();session_id=None
+    def call(path,value=None):return api.call(path,value,attempts=1,timeout=8)
+    def persist(**extra):
+        atomic(state_path,{'cursor':cursor,'steps':steps,'epochs':epochs,'active_job':active_job,
+            'completed':sorted(completed),'heartbeat':time.time(),'external_backup':False,**extra})
     while True:
+        if time.monotonic()<next_api:
+            time.sleep(min(5,next_api-time.monotonic()));continue
         try:
-            view=api.call('/snapshot?after='+str(cursor))
+            view=call('/snapshot?after='+str(cursor))
+            if (view.get('session') or {}).get('id')!=session_id:
+                session_id=(view.get('session') or {}).get('id');acknowledged.clear();ready_acknowledged.clear()
+            ready_acknowledged.update(view['control'].get('ready_jobs',[]))
             for event in view['events']:
                 value=json.loads(event['value']);status=value.get('status',{});current=status.get('current',{})
-                with (root/'events-finaleval-v3.jsonl').open('a') as stream:stream.write(json.dumps(event)+'\n')
+                with (root/'events-networkfix-v4.jsonl').open('a') as stream:stream.write(json.dumps(event)+'\n')
                 job=current.get('job')
                 if current.get('campaign_id')!=CAMPAIGN:
                     cursor=event['id'];continue
                 if job in JOBS and job not in completed and current.get('stage') in ('waiting_wandb','training','waiting_metrics') and (job!=active_job or run is None):
                     if run:run.finish(exit_code=0 if active_job in completed else 1)
                     model,seed=job.rsplit('-',1);identifier=run_id(job)
-                    run=wandb.init(entity='daehwa',project=PROJECT,group=CAMPAIGN,id=identifier,resume='allow',
-                        name=f'IN1K10-{model}-s{seed}-finaleval3',config={'model':model,'seed':int(seed),'scratch':True,
+                    run=wandb.init(entity='daehwa',project=PROJECT,group=CAMPAIGN,id=identifier,resume='allow',mode='online',
+                        name=f'IN1K10-{model}-s{seed}-networkfix4',config={'model':model,'seed':int(seed),'scratch':True,
                             'train_images':128116,'validation_images':50000,'classes':1000,'subset_sha256':current['subset_sha256'],
                             'epochs':100,'optimizer_updates':current['updates'],'effective_batch':current['batch_size'],'physical_batch':current['batch_size'],
                             'optimizer':'AdamW','learning_rate':.003,'weight_decay':.05,'warmup_epochs':5,'image_size':224,
@@ -63,7 +73,9 @@ def main():
                     run.summary['logging_canary']='ready'
                     wb_api.flush()
                     wb_api.run(f'daehwa/{PROJECT}/{identifier}')
-                    active_job=job;api.call('/command',{'action':'ready','job':job})
+                    active_job=job
+                if run and job==active_job and job not in ready_acknowledged:
+                    call('/command',{'action':'ready','job':job});ready_acknowledged.add(job)
                 if run and job==active_job:
                     checkpoint=status.get('checkpoint',{});epoch=checkpoint.get('epoch',0)
                     if checkpoint.get('phase')=='full' and epoch>epochs.get(job,0):
@@ -86,20 +98,26 @@ def main():
                         if saved.summary.get('completed_epochs')!=100 or saved.summary.get('global_step')!=current['updates']:
                             raise RuntimeError('Final W&B metrics not visible yet')
                         completed.add(job)
-                if job in completed:api.call('/command',{'action':'finish','job':job})
+                if job in completed and job not in acknowledged:
+                    call('/command',{'action':'finish','job':job});acknowledged.add(job)
                 cursor=event['id']
             if run and time.monotonic()-last_api_check>60:
                 wb_api.flush()
                 wb_api.run(f'daehwa/{PROJECT}/{run.id}');last_api_check=time.monotonic()
-            api.call('/command',{'action':'heartbeat'})
-            atomic(state_path,{'cursor':cursor,'steps':steps,'epochs':epochs,'active_job':active_job,
-                'completed':sorted(completed),'heartbeat':time.time(),'external_backup':False})
+            if time.monotonic()-last_heartbeat>=60:
+                call('/command',{'action':'heartbeat'});last_heartbeat=time.monotonic()
+            failures=0;next_api=0.
+            persist(relay_connected=True)
             if view['session'] and view['session']['ended'] and not view['events']:
                 if run:run.finish(exit_code=0 if active_job in completed else 1);run=None;active_job=None
         except Exception as error:
-            atomic(root/'observer-error-finaleval-v3.json',{'time':time.time(),'error':type(error).__name__+': '+str(error)[:300]})
-            print('IN10_OBSERVER_ERROR '+type(error).__name__,flush=True)
-        time.sleep(5)
+            failures+=1;delay=retry_delay(error,failures);next_api=time.monotonic()+delay
+            detail={'time':time.time(),'error':error_details(error),'retry_seconds':delay,'cursor':cursor}
+            atomic(root/'observer-error-networkfix-v4.json',detail)
+            with (root/'observer-diagnostics-networkfix-v4.jsonl').open('a') as stream:stream.write(json.dumps(detail)+'\n')
+            print('IN10_OBSERVER_ERROR '+json.dumps(detail),flush=True)
+            persist(relay_connected=False,last_error=detail)
+        time.sleep(15)
 
 
 if __name__=='__main__':main()

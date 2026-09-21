@@ -66,11 +66,11 @@ def test_watchdog_forces_unresponsive_child_without_github(tmp_path,monkeypatch)
     assert 'visible' in (tmp_path/'console.log').read_text()
 
 
-@pytest.mark.parametrize('batch_size',[512,1024])
-def test_all15_runs_advance_without_backup_files(tmp_path,monkeypatch,batch_size):
+def test_remaining14_runs_start_with_k128_and_keep_completed_k96(tmp_path,monkeypatch):
+    batch_size=512
     jobs=[f'{m}-{s}' for s in (501,509,521) for m in campaign.MODELS]
     campaign.atomic(tmp_path/'dataset/subset-manifest.json',{'images':128116,'validation_count':50000,'sha256':'fixed'})
-    campaign.atomic(tmp_path/'input-profile.json',{'workers':2,'ipc':'memfd','batch_size':batch_size})
+    campaign.atomic(tmp_path/'input-profile.json',dict(campaign.FIXED_PROFILE))
     campaign.atomic(tmp_path/'control.json',{'ready_jobs':jobs,'finished_jobs':jobs})
     seen=[]
     def fake_run(command):
@@ -88,9 +88,17 @@ def test_all15_runs_advance_without_backup_files(tmp_path,monkeypatch,batch_size
     try:assert campaign.main()==0
     finally:
         for s,h in previous.items():signal.signal(s,h)
-    assert seen==jobs
+    assert seen==jobs[1:] and seen[0]=='va_k128-501'
     assert len(campaign.read(tmp_path/'completed.json'))==15
     assert not list(tmp_path.glob('backup-*')) and not list(tmp_path.glob('restored-*'))
+
+
+def test_completed_receipt_rejects_partial_run(tmp_path):
+    from in1k10_completed import load_completed
+    original=Path(__file__).parents[1]/'h200/in1k10_completed_v3.json'
+    receipt=json.loads(original.read_text());receipt['completed'][0]['completed_epochs']=37
+    target=tmp_path/'partial.json';target.write_text(json.dumps(receipt))
+    with pytest.raises(ValueError,match='Incomplete'):load_completed(target)
 
 
 def test_final_evaluation_policy_preserves_preflight_and_default(monkeypatch):
