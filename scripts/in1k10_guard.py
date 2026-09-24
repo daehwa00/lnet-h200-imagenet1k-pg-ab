@@ -22,6 +22,7 @@ def error_label(error):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--root',type=Path,required=True);p.add_argument('--code-sha',required=True)
     p.add_argument('--relay-url',default=BASE)
+    p.add_argument('--share-token-with-child',action='store_true')
     p.add_argument('--grace-seconds',type=int,default=900);p.add_argument('--stall-seconds',type=int,default=1200)
     p.add_argument('--poll-seconds',type=float,default=15)
     p.add_argument('command',nargs=argparse.REMAINDER);args=p.parse_args()
@@ -48,9 +49,13 @@ def main():
     last_error=None;started=time.monotonic();drain_deadline=None
     control={};next_control=next_event=0.;control_failures=event_failures=0;last_warning=None;sent_ended=False
     gpu_metrics=None;gpu_metrics_time=0.
+    child_env=dict(os.environ,PYTHONUNBUFFERED='1',PYTHONFAULTHANDLER='1')
+    if args.share_token_with_child:
+        child_env['H200_AGENT_TOKEN']=token
+        child_env['H200_SESSION_ID']=api.session
     with (root/'console.log').open('ab',buffering=0) as console:
         child=subprocess.Popen(args.command,stdout=console,stderr=subprocess.STDOUT,start_new_session=True,
-                               env=dict(os.environ,PYTHONUNBUFFERED='1',PYTHONFAULTHANDLER='1'))
+                               env=child_env)
         try:
             while True:
                 now=time.monotonic();current=read(root/'current.json');job=current.get('job')

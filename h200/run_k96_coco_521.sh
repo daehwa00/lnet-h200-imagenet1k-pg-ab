@@ -20,6 +20,7 @@ if [[ "${1:-}" != "--inside-guard" ]]; then
   exec python3 -B -u "${CODE_ROOT}/scripts/in1k10_guard.py" \
     --root "${TASK_ROOT}" --code-sha "${COMMIT}" \
     --relay-url https://lnet-h200-baseline-relay-v1.gpupulse-monitor.workers.dev/k96coco \
+    --share-token-with-child \
     --stall-seconds 7200 -- /bin/bash "${CODE_ROOT}/h200/run_k96_coco_521.sh" --inside-guard
 fi
 
@@ -45,15 +46,10 @@ export TRITON_CACHE_DIR="${TASK_ROOT}/cache/triton" TORCHINDUCTOR_CACHE_DIR="${T
 export LNET_DISABLE_LAUNCH_AUTOTUNE=1 LNET_FUSED_ODD_VERTICAL=1 LNET_BATCH_FINITE_CHECKS=1
 export LNET_DENSE_MODE_BUDGET=1024 LNET_DENSE_ADAPTIVE_TILES=1 WANDB_MODE=disabled
 CHECKPOINT="${TASK_ROOT}/checkpoints/va_k96_seed501_ep100.pt"
-CHECKPOINT_URL=https://github.com/daehwa00/lnet-h200-imagenet1k-pg-ab/releases/download/dense-va-k96-seed501-ep100-v1/va_k96_seed501_ep100.pt
 CHECKPOINT_SHA256=a72b70a422dc96d06c0cd88bf29a822793af40c65c67858d48f1467f6503e752
 mkdir -p "${TASK_ROOT}/checkpoints"
-if [[ ! -f "${CHECKPOINT}" ]]; then
-  curl --fail --silent --show-error --location --retry 3 --connect-timeout 30 --continue-at - \
-    --output "${CHECKPOINT}.part" "${CHECKPOINT_URL}"
-  printf '%s  %s\n' "${CHECKPOINT_SHA256}" "${CHECKPOINT}.part" | sha256sum -c -
-  mv "${CHECKPOINT}.part" "${CHECKPOINT}"
-fi
+python3 -B -u scripts/h200_k96_fetch_checkpoint.py --output "${CHECKPOINT}" --sha256 "${CHECKPOINT_SHA256}"
+unset H200_AGENT_TOKEN H200_SESSION_ID
 printf '%s  %s\n' "${CHECKPOINT_SHA256}" "${CHECKPOINT}" | sha256sum -c -
 "${ENV_ROOT}/bin/python" -B -u scripts/prepare_h200_dense_data.py \
   --only-coco --root "${TASK_ROOT}/dense-data"
