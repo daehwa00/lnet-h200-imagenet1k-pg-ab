@@ -33,7 +33,8 @@ def main() -> None:
             if session and session['code'] == args.code_sha:
                 if session['id'] != session_id:
                     session_id = session['id']
-                    cursor = 0
+                    # Event IDs are monotonic across sessions in this relay.
+                    # Keep the cursor so an aborted run is not replayed into W&B.
                 if run is None:
                     import wandb
                     run = wandb.init(entity='daehwa', project='alphabet2d-dense-transfer',
