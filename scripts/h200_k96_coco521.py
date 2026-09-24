@@ -52,7 +52,7 @@ def main() -> int:
     shared = ['--task', 'coco', '--model', 'va_k96', '--seed', '521',
               '--checkpoint', str(args.checkpoint), '--data-root', str(args.data_root),
               '--output-root', str(output), '--physical-batch-size', '2',
-              '--effective-batch-size', '16', '--workers', '0',
+              '--effective-batch-size', '16', '--workers', '2',
               '--prefetch-factor', '1', '--sharing-strategy', 'file_system']
     atomic_json(current, {'job': 'k96coco-521', 'seed': 521, 'stage': 'validating',
                           'output': str(output), 'training_started': False})
@@ -71,18 +71,23 @@ def main() -> int:
                           'output': str(output), 'training_started': True})
     print('K96_COCO521 training fixed downstream seed521', flush=True)
     command = [python, '-u', str(scripts / 'run_dense_transfer.py'), *shared,
-               '--mode', 'train', '--confirm-training', 'DENSE_TRANSFER_TRAIN']
+               '--mode', 'train', '--confirm-training', 'DENSE_TRANSFER_TRAIN',
+               '--heartbeat-interval-updates', '5']
     checkpoint = output / 'checkpoints/last.pt'
     if checkpoint.is_file():
         command.extend(['--resume', str(checkpoint)])
     finish = threading.Event()
     progress_path = output / 'status/progress.json'
+    heartbeat_path = output / 'status/heartbeat.json'
     step_path = output / 'step-progress.json'
 
     def bridge():
         previous = -1
         while not finish.wait(15):
             progress = read_json(progress_path).get('progress', {})
+            heartbeat = read_json(heartbeat_path)
+            if int(heartbeat.get('optimizer_updates', 0)) > int(progress.get('optimizer_updates', 0)):
+                progress = heartbeat
             step = int(progress.get('optimizer_updates', 0))
             if step != previous:
                 atomic_json(step_path, {'global_step': step, 'epoch': progress.get('epoch', 0)})

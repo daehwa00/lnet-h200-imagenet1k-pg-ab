@@ -38,8 +38,8 @@ def main() -> None:
                     import wandb
                     run = wandb.init(entity='daehwa', project='alphabet2d-dense-transfer',
                                      group='coco-k96-3seed-20260922',
-                                     id='k96coco521h200sep24', resume='allow',
-                                     name='COCO-VA-K96-seed521-H200', mode='online',
+                                     id='k96coco521h200fastsep24', resume='allow',
+                                     name='COCO-VA-K96-seed521-H200-fast', mode='online',
                                      config={'task': 'coco', 'model': 'va_k96', 'seed': 521,
                                              'pretrain_seed': 501, 'pretrain_epochs': 100,
                                              'epochs': 12, 'optimizer_updates': 88716,

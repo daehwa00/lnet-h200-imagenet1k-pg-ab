@@ -56,6 +56,7 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--epochs", type=int)
     command.add_argument("--max-updates", type=int)
     command.add_argument("--checkpoint-interval-updates", type=int, default=200)
+    command.add_argument("--heartbeat-interval-updates", type=int, default=0)
     command.add_argument("--resume", type=Path)
     command.add_argument("--confirm-training", metavar="TOKEN")
     return command
@@ -262,6 +263,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     interval = getattr(args, "checkpoint_interval_updates", 200)
     if interval <= 0:
         raise ValueError("--checkpoint-interval-updates must be positive")
+    heartbeat_interval = getattr(args, "heartbeat_interval_updates", 0)
+    if heartbeat_interval < 0:
+        raise ValueError("--heartbeat-interval-updates must not be negative")
+    heartbeat_status = settings.output_root / "status" / "heartbeat.json"
 
     def save_checkpoint(state: str) -> None:
         atomic_torch(checkpoint_target, checkpoint_payload(model, optimizer, scheduler, progress, contract, getattr(train_loader, "dense_transfer_generator", None)))
@@ -285,6 +290,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 progress.batch_in_epoch = 0
 
             def periodic(current: TrainProgress) -> None:
+                if heartbeat_interval and current.optimizer_updates % heartbeat_interval == 0:
+                    atomic_json(heartbeat_status, {"optimizer_updates": current.optimizer_updates,
+                                                   "epoch": current.epoch,
+                                                   "batch_in_epoch": current.batch_in_epoch})
                 if current.optimizer_updates % interval == 0:
                     save_checkpoint("running")
 
