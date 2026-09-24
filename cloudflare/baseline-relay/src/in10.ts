@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 
 const MODELS=['va_k96','va_k128','convnextv2_atto','tinyvim_s','parc_net_s'];
 export const JOBS=new Set(MODELS.flatMap(m=>[501,509,521].map(s=>`${m}-${s}`)));
+const K96_COCO_JOBS=new Set(['k96coco-521']);
 const CHUNK=32*1024;
 type Obj=Record<string,any>;
 type ControlState={stop:boolean,force:boolean,ready_jobs:string[],finished_jobs:string[],observer_seen:number};
@@ -107,16 +108,17 @@ export class In10Artifact extends DurableObject<Env> {
 
 export default {
   async fetch(req:Request,env:Env):Promise<Response>{try{
-    const url=new URL(req.url),route=url.pathname.slice('/in10'.length);
-    if(route==='/health')return reply({ok:true,campaign:'simclr-in1k10-v1',jobs:15});
+    const url=new URL(req.url),k96=url.pathname.startsWith('/k96coco/');
+    const route=url.pathname.slice((k96?'/k96coco':'/in10').length);
+    if(route==='/health')return reply({ok:true,campaign:k96?'k96-coco521-v1':'simclr-in1k10-v1',jobs:k96?1:15});
     const token=(req.headers.get('Authorization')||'').replace(/^Bearer /,'');
     const owner=!!env.IN10_OWNER_TOKEN&&token===env.IN10_OWNER_TOKEN;
     const test=url.searchParams.get('test')==='1';if(test&&!owner)return reply({error:'test_requires_owner'},403);
-    const control=env.IN10_CONTROL.getByName(test?'simclr-in1k10-test':'simclr-in1k10-v1');
+    const control=env.IN10_CONTROL.getByName(k96?(test?'k96-coco521-test':'k96-coco521-v1'):(test?'simclr-in1k10-test':'simclr-in1k10-v1'));
     const ip=req.headers.get('CF-Connecting-IP')||'';
     const allowed=!!env.ALLOWED_EGRESS_IPS&&env.ALLOWED_EGRESS_IPS.split(',').map(s=>s.trim()).includes(ip);
     if(!owner&&!allowed)return reply({error:'source_not_allowed'},403);
-    if(!await env.RELAY_RATE_LIMITER.limit({key:'in10:'+ip+':'+String(owner)}).then(r=>r.success))return reply({error:'rate_limited'},429);
+    if(!await env.RELAY_RATE_LIMITER.limit({key:(k96?'k96coco:':'in10:')+ip+':'+String(owner)}).then(r=>r.success))return reply({error:'rate_limited'},429);
     if(route==='/enroll'&&req.method==='POST'){
       const m=await body(req,2048);
       if(!/^job-daehwa00-\d+-[a-z0-9]+$/.test(m.pod)||! /^[a-f0-9]{64}$/.test(m.token_hash)||! /^[a-f0-9]{40}$/.test(m.code_sha))return reply({error:'enrollment_identity'},400);
@@ -132,8 +134,8 @@ export default {
       return reply(await control.snapshot(after));}
     if(owner&&route==='/command'&&req.method==='POST'){const m=await body(req,2048);return reply(await control.command(m.action,m.job));}
     const parts=route.split('/').filter(Boolean);
-    if(parts[0]==='artifact'&&JOBS.has(parts[1]||'')){
-      const artifact=env.IN10_ARTIFACT.getByName(`${test?'test':'v1'}/${parts[1]}`);
+    if(parts[0]==='artifact'&&(k96?K96_COCO_JOBS:JOBS).has(parts[1]||'')){
+      const artifact=env.IN10_ARTIFACT.getByName(`${k96?'k96coco/':''}${test?'test':'v1'}/${parts[1]}`);
       if(parts[2]==='latest'&&req.method==='GET')return reply(await artifact.latest());
       if(parts[2]==='begin'&&req.method==='POST'){
         const m=await body(req,4096);

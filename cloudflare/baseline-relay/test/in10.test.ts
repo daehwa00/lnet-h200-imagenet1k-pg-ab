@@ -24,6 +24,20 @@ describe('IN10 isolated control and private checkpoint handoff',()=>{
  it('rejects enrollment outside the original IP gate',async()=>{
   expect((await call('/enroll',token,'',{},'203.0.113.9')).status).toBe(403);
  });
+ it('isolates K96 COCO stop state from the completed IN10 campaign',async()=>{
+  const send=(path:string,key:string,session='',value?:unknown)=>service.fetch(
+   new Request('https://test/k96coco'+path,{method:value===undefined?'GET':'POST',
+    headers:{'Authorization':'Bearer '+key,'X-Session-ID':session,'CF-Connecting-IP':'198.51.100.10','Content-Type':'application/json'},
+    body:value===undefined?undefined:JSON.stringify(value)}),bindings);
+  const response=await send('/enroll',token,'',{
+   pod:'job-daehwa00-901-test',code_sha:'c'.repeat(40),token_hash:await hash(token)});
+  expect(response.status).toBe(200);
+  const id=(await response.json() as any).session_id as string;
+  expect((await send('/command',token,id,{action:'stop'})).status).toBe(403);
+  expect((await send('/command',owner,id,{action:'stop'})).status).toBe(200);
+  expect((await (await send('/control',token,id)).json() as any).stop).toBe(true);
+  expect((await (await call('/control',owner)).json() as any).stop).toBe(false);
+ });
  it('keeps agent read/ingest separate from owner stop/ready',async()=>{
   const id=await enroll();
   expect((await call('/control','c'.repeat(64),id)).status).toBe(401);

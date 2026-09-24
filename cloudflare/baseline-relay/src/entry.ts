@@ -9,7 +9,7 @@ export { In10Control, In10Artifact } from "./in10";
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname.startsWith('/in10/')) return in10.fetch(request, env);
+    if (url.pathname.startsWith('/in10/') || url.pathname.startsWith('/k96coco/')) return in10.fetch(request, env);
     if (url.pathname.startsWith('/cub-v1/')) {
       url.pathname=url.pathname.slice('/cub-v1'.length);
       return cub.fetch(new Request(url,request),env);

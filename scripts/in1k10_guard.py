@@ -9,7 +9,7 @@ import signal
 import subprocess
 import sys
 import time
-from in1k10_transport import API,atomic,read,retry_delay,error_details
+from in1k10_transport import API,BASE,atomic,read,retry_delay,error_details
 
 
 WAITING_STAGES={'waiting_wandb','waiting_metrics','wait_backup'}
@@ -21,13 +21,14 @@ def error_label(error):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--root',type=Path,required=True);p.add_argument('--code-sha',required=True)
+    p.add_argument('--relay-url',default=BASE)
     p.add_argument('--grace-seconds',type=int,default=900);p.add_argument('--stall-seconds',type=int,default=1200)
     p.add_argument('--poll-seconds',type=float,default=15)
     p.add_argument('command',nargs=argparse.REMAINDER);args=p.parse_args()
     if args.command[:1]==['--']:args.command=args.command[1:]
     if not args.command:raise ValueError('Missing supervised command')
     root=args.root;root.mkdir(parents=True,exist_ok=True)
-    token=secrets.token_hex(32);api=API(token)
+    token=secrets.token_hex(32);api=API(token,base=args.relay_url)
     response=api.call('/enroll',{'pod':os.uname().nodename,'token_hash':hashlib.sha256(token.encode()).hexdigest(),'code_sha':args.code_sha},attempts=1,timeout=8)
     api.session=response['session_id'];atomic(root/'session.json',{'id':api.session,'code_sha':args.code_sha})
     print('IN10_SESSION='+api.session,flush=True)

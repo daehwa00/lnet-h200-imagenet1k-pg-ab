@@ -74,8 +74,9 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--only-coco', action='store_true')
+    parser.add_argument('--root',type=Path,default=ROOT)
     args = parser.parse_args()
-    result = prepare(only_coco=args.only_coco)
-    print(json.dumps({'ready': result['ready'], 'manifest': str(ROOT / 'datasets-ready.json'),
+    result = prepare(root=args.root,only_coco=args.only_coco)
+    print(json.dumps({'ready': result['ready'], 'manifest': str(args.root / 'datasets-ready.json'),
                       'datasets': {k: v['path'] for k, v in result['datasets'].items()},
                       'training_started': False}), flush=True)

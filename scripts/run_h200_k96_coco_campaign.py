@@ -14,7 +14,10 @@ def main():
     p.add_argument('--checkpoint-sha256',required=True)
     p.add_argument('--root',required=True,type=Path)
     p.add_argument('--data-root',required=True,type=Path)
+    p.add_argument('--seeds',nargs='+',type=int,choices=(501,509,521),default=(501,509,521))
     args=p.parse_args()
+    if len(set(args.seeds))!=len(args.seeds):
+        raise ValueError('Duplicate downstream seed')
     if not args.checkpoint.is_file():
         raise FileNotFoundError('K96 fixed ImageNet checkpoint is not visible: '+str(args.checkpoint))
     with args.checkpoint.open('rb') as stream:
@@ -29,7 +32,7 @@ def main():
     signal.signal(signal.SIGINT,stop)
     scripts=Path(__file__).resolve().parent
     # Conservative IPC profile; same batch, optimizer, head, resolution and schedule.
-    for seed in (501,509,521):
+    for seed in args.seeds:
         if stopped:return 130
         output=args.root/f'seed_{seed}'
         final=output/'status/final.json'
