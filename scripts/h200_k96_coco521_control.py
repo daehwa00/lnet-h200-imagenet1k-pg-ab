@@ -12,14 +12,14 @@ def main() -> None:
     api = API(read(args.secrets)['IN10_OWNER_TOKEN'],
               base='https://lnet-h200-baseline-relay-v1.gpupulse-monitor.workers.dev/k96coco')
     if args.stop:
-        session = api.call('/snapshot', attempts=1, timeout=8).get('session')
+        session = api.call('/snapshot?after=9007199254740991', attempts=1, timeout=8).get('session')
         if not session or session.get('ended'):
             print({'stop_requested': False, 'reason': 'no active H200 session'})
             return
         result = api.call('/command', {'action': 'stop'}, 'POST', attempts=1, timeout=8)
         print({'stop_requested': result.get('stop', False)})
     else:
-        view = api.call('/snapshot', attempts=1, timeout=8)
+        view = api.call('/snapshot?after=9007199254740991', attempts=1, timeout=8)
         print({'session': view.get('session'), 'stop_requested': view['control']['stop'],
                'events': len(view.get('events', []))})
 
