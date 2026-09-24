@@ -2,11 +2,11 @@ import { DurableObject } from 'cloudflare:workers';
 
 const MODELS=['va_k96','va_k128','convnextv2_atto','tinyvim_s','parc_net_s'];
 export const JOBS=new Set(MODELS.flatMap(m=>[501,509,521].map(s=>`${m}-${s}`)));
-const K96_COCO_JOBS=new Set(['k96coco-521']);
+const K96_COCO_JOBS=new Set(['k96coco-521-8k']);
 const CHUNK=32*1024;
 type Obj=Record<string,any>;
 type ControlState={stop:boolean,force:boolean,ready_jobs:string[],finished_jobs:string[],observer_seen:number};
-type ArtifactMeta={sha:string,bytes:number,chunks:number,epoch:number,complete:boolean,verified:boolean,created:number,workers:number};
+type ArtifactMeta={sha:string,bytes:number,chunks:number,epoch:number,complete:boolean,verified:boolean,created:number,workers:number,chunk_bytes?:number};
 const reply=(value:unknown,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store'}});
 async function body(req:Request,limit=65536):Promise<Obj> {
   if(Number(req.headers.get('Content-Length')||0)>limit)throw Error('body_limit');
@@ -81,12 +81,13 @@ export class In10Artifact extends DurableObject<Env> {
     // versions are removed only after the controller confirms a newer download.
     const count=this.ctx.storage.sql.exec<{n:number}>('SELECT COUNT(*) AS n FROM versions').one().n;
     if(count>=3)throw Error('artifact_queue_full');
-    const value:ArtifactMeta={sha:m.sha,bytes:m.bytes,chunks:m.chunks,epoch:m.epoch,workers:m.workers??0,complete:false,verified:false,created:Date.now()};
+    const value:ArtifactMeta={sha:m.sha,bytes:m.bytes,chunks:m.chunks,epoch:m.epoch,workers:m.workers??0,chunk_bytes:m.chunk_bytes??CHUNK,complete:false,verified:false,created:Date.now()};
     this.ctx.storage.sql.exec('INSERT INTO versions VALUES (?,?)',m.sha,JSON.stringify(value));return value;
   }
   put(sha:string,part:number,data:ArrayBuffer){
     const m=this.meta(sha);if(!m||m.complete||part>=m.chunks)throw Error('invalid_chunk');
-    const expected=part===m.chunks-1?m.bytes-CHUNK*part:CHUNK;
+    const size=m.chunk_bytes??CHUNK;
+    const expected=part===m.chunks-1?m.bytes-size*part:size;
     if(data.byteLength!==expected)throw Error('chunk_size');
     this.ctx.storage.sql.exec('INSERT OR REPLACE INTO chunks VALUES (?,?,?)',sha,part,data);return {ok:true};
   }
@@ -139,13 +140,15 @@ export default {
       if(parts[2]==='latest'&&req.method==='GET')return reply(await artifact.latest());
       if(parts[2]==='begin'&&req.method==='POST'){
         const m=await body(req,4096);
-        if(!/^[a-f0-9]{64}$/.test(m.sha)||!Number.isInteger(m.epoch)||m.epoch<1||m.epoch>100||!Number.isInteger(m.bytes)||m.bytes<1||m.bytes>192*1024**2||m.chunks!==Math.ceil(m.bytes/CHUNK))return reply({error:'artifact_shape'},400);
+        const chunkBytes=k96?8192:CHUNK;
+        if(!/^[a-f0-9]{64}$/.test(m.sha)||!Number.isInteger(m.epoch)||m.epoch<1||m.epoch>100||!Number.isInteger(m.bytes)||m.bytes<1||m.bytes>192*1024**2||m.chunks!==Math.ceil(m.bytes/chunkBytes))return reply({error:'artifact_shape'},400);
+        m.chunk_bytes=chunkBytes;
         return reply(await artifact.begin(m));}
       const sha=parts[2];if(!/^[a-f0-9]{64}$/.test(sha||''))return reply({error:'sha'},400);
       if(parts[3]==='finish'&&req.method==='POST')return reply(await artifact.finish(sha));
       if(parts[3]==='ack'&&req.method==='POST')return owner?reply(await artifact.ack(sha)):reply({error:'owner_required'},403);
       const part=Number(parts[3]);if(!/^\d+$/.test(parts[3]||'')||!Number.isSafeInteger(part)||part>6143)return reply({error:'part'},400);
-      if(req.method==='PUT'){
+      if(req.method==='PUT'||(k96&&owner&&req.method==='POST')){
         const length=Number(req.headers.get('Content-Length')||0);
         if(!Number.isInteger(length)||length<1||length>CHUNK*1.4)return reply({error:'chunk_size'},413);
         let bytes:ArrayBuffer;

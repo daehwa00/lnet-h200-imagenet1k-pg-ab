@@ -8,7 +8,7 @@ from in1k10_transport import API, download
 
 
 BASE = 'https://lnet-h200-baseline-relay-v1.gpupulse-monitor.workers.dev/k96coco'
-JOB = 'k96coco-521'
+JOB = 'k96coco-521-8k'
 
 
 def sha256(path):
